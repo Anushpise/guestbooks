@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # Python PaddleOCR FastAPI Backend Service
+  paddle_ocr_backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hotel_paddle_ocr_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # React / Vite Hotel PMS Frontend App
+  hotel_frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: hotel_pms_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - paddle_ocr_backend
+    restart: always
