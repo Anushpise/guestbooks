@@ -9,9 +9,9 @@ docker compose up --build -d
 
 echo.
 echo ========================================================
-echo   Docker Containers Live & Running!
+echo   Docker Containers Live and Running!
 echo   - Frontend App: http://localhost:5173
-echo   - Backend API:  http://localhost:8000
+echo   - Backend API:  http://localhost:8008
 echo   - DB Storage:   ./backend/data/hotel_pms.db (Persistent)
 echo ========================================================
 pause
