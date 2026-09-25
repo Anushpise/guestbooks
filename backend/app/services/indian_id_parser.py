@@ -393,14 +393,17 @@ def parse_indian_id_text(text: str) -> dict:
         pincode = pin_m.group(1)
 
     addr_start_rx = re.compile(
-        r'\b(?:Address|पता|S\/O|W\/O|D\/O|C\/O|House|H\.?No\.?|H-No|Flat|Plot|Door|'
-        r'Village|Vill\.|Post|P\.O\.|Ward|Block|Sector|Floor|Near|Beside|Opposite|'
-        r'Gali|Mohalla|Chowk|Street|Road|Lane|Nagar|Colony|Park)\b',
+        r'\b(?:Address|पत्ता|पता|आत्मज|पत्नी|मुलगा|मुलगी|पुत्र|पुत्री|'
+        r'S\/O|W\/O|D\/O|C\/O|S\/o|W\/o|D\/o|C\/o|Care of|Son of|Daughter of|Wife of|'
+        r'House|H\.?No\.?|H-No|Flat|Plot|Door|Bldg|Apartment|Room|Survey|Gat|'
+        r'Village|Vill\.|Post|P\.O\.|मु\.पो|मु\. पो|मुकाम|पोस्ट|तहसील|तालुका|जिल्हा|'
+        r'Dist|District|Ward|Block|Sector|Floor|Near|Beside|Opposite|Behind|Adjacent|'
+        r'Gali|Mohalla|Chowk|Street|Road|Lane|Nagar|Colony|Park|Marg|Layout|Vihar|Enclave)\b',
         re.I
     )
     addr_stop_rx = re.compile(
         r'\b(?:Date of Issue|Valid Upto|Signature|UIDAI Help|Toll Free|Email|www\.|'
-        r'http|Mobile|Phone|Tel)\b',
+        r'http|Mobile|Phone|Tel|1947|help@|uidai\.gov)\b',
         re.I
     )
 
@@ -417,15 +420,42 @@ def parse_indian_id_text(text: str) -> dict:
         if addr_stop_rx.search(line):
             break
 
-        cl = re.sub(r'^(?:Address|पता)\s*[:\-]\s*', '', line, flags=re.I)
+        cl = re.sub(r'^(?:Address|पत्ता|पता)\s*[:\-]\s*', '', line, flags=re.I)
         cl = re.sub(r'\|', ' ', cl).strip()
-        if cl and len(cl) >= 3 and not re.match(r'^\d{1,3}$', cl):
+        if cl and len(cl) >= 3 and not re.match(r'^\d{1,4}$', cl):
             addr_lines.append(cl)
 
         if pincode and pincode in line:
             break
-        if len(addr_lines) >= 5:
+        if len(addr_lines) >= 6:
             break
+
+    # If forward scan yielded nothing or only 1 short line, use backward scan from pincode line
+    if len(addr_lines) < 2 and pincode:
+        pin_idx = -1
+        for i, l in enumerate(all_lines):
+            if pincode in l:
+                pin_idx = i
+                break
+        if pin_idx >= 0:
+            collected = []
+            for i in range(max(0, pin_idx - 5), pin_idx + 1):
+                l = all_lines[i].strip()
+                if not l or len(l) < 3:
+                    continue
+                # Skip pure number lines / IDs / noise
+                if re.match(r'^\d{4}\s*\d{4}\s*\d{4}$', l) or re.match(r'^\d{1,4}$', l):
+                    continue
+                if addr_stop_rx.search(l):
+                    continue
+                if any(k in l.lower() for k in ['unique identification', 'authority of india', 'help@', '1947', 'government of india', 'भारत सरकार']):
+                    continue
+                cl = re.sub(r'^(?:Address|पत्ता|पता)\s*[:\-]\s*', '', l, flags=re.I)
+                cl = re.sub(r'\|', ' ', cl).strip()
+                if cl and len(cl) >= 3:
+                    collected.append(cl)
+            if collected:
+                addr_lines = collected
 
     if addr_lines:
         address = ', '.join(addr_lines)
@@ -433,24 +463,40 @@ def parse_indian_id_text(text: str) -> dict:
     elif pincode:
         address = f"PIN Code: {pincode}"
 
-    # ── 7. City ───────────────────────────────────────────────────────────────
+    # ── 7. City & State ───────────────────────────────────────────────────────
 
     city = ''
-    CITIES = re.compile(
-        r'\b(Delhi|New Delhi|Mumbai|Bengaluru|Bangalore|Hyderabad|Chennai|Kolkata|'
-        r'Pune|Ahmedabad|Jaipur|Lucknow|Chandigarh|Indore|Bhopal|Surat|Nagpur|'
-        r'Patna|Gurugram|Gurgaon|Noida|Ghaziabad|Faridabad|Agra|Varanasi|Meerut|'
-        r'Kanpur|Nashik|Vizag|Visakhapatnam|Coimbatore|Madurai|Kochi|Bhubaneswar|'
-        r'Guwahati|Ranchi|Raipur|Vadodara|Rajkot|Amritsar|Ludhiana|Jodhpur|Udaipur|'
-        r'Prayagraj|Allahabad|Dehradun|Jammu|Srinagar|Mysuru|Mysore|Mangaluru|'
-        r'Hubli|Dharwad|Nellore|Guntur|Tirupati|Warangal|Bhilai|Durgapur|Asansol|'
-        r'Siliguri|Imphal|Shillong|Aizawl|Itanagar|Kohima|Agartala|Gangtok|Panaji|'
-        r'Thane|Navi Mumbai|Aurangabad|Solapur|Kolhapur|Akola|Amravati|Latur|Dhule)\b',
-        re.I
-    )
-    city_m = CITIES.search(full_text)
-    if city_m:
-        city = city_m.group(1)
+    # A. Try extracting from pincode line (e.g., "Wardha, Maharashtra - 442001" or "Nalwadi, Wardha, Maharashtra 442001")
+    if pincode:
+        for l in all_lines:
+            if pincode in l:
+                clean_l = re.sub(r'[\s\-]*' + pincode + r'.*$', '', l).strip(' ,-')
+                parts = [p.strip() for p in clean_l.split(',') if p.strip() and len(p.strip()) > 2]
+                if parts:
+                    if len(parts) >= 2:
+                        city = f"{parts[-2]}, {parts[-1]}"
+                    else:
+                        city = parts[-1]
+                break
+
+    # B. If not found or too short, search standard Indian cities in full text / address
+    if not city or len(city) < 3:
+        CITIES = re.compile(
+            r'\b(Delhi|New Delhi|Mumbai|Bengaluru|Bangalore|Hyderabad|Chennai|Kolkata|'
+            r'Pune|Ahmedabad|Jaipur|Lucknow|Chandigarh|Indore|Bhopal|Surat|Nagpur|'
+            r'Patna|Gurugram|Gurgaon|Noida|Ghaziabad|Faridabad|Agra|Varanasi|Meerut|'
+            r'Kanpur|Nashik|Vizag|Visakhapatnam|Coimbatore|Madurai|Kochi|Bhubaneswar|'
+            r'Guwahati|Ranchi|Raipur|Vadodara|Rajkot|Amritsar|Ludhiana|Jodhpur|Udaipur|'
+            r'Prayagraj|Allahabad|Dehradun|Jammu|Srinagar|Mysuru|Mysore|Mangaluru|'
+            r'Hubli|Dharwad|Nellore|Guntur|Tirupati|Warangal|Bhilai|Durgapur|Asansol|'
+            r'Siliguri|Imphal|Shillong|Aizawl|Itanagar|Kohima|Agartala|Gangtok|Panaji|'
+            r'Thane|Navi Mumbai|Aurangabad|Solapur|Kolhapur|Akola|Amravati|Latur|Dhule|'
+            r'Wardha|Yavatmal|Chandrapur|Bhandara|Gondia|Nanded|Jalgaon|Ahmednagar|Satara|Sangli|Ratnagiri)\b',
+            re.I
+        )
+        city_m = CITIES.search(full_text)
+        if city_m:
+            city = city_m.group(1)
 
     return {
         "idType":   id_type,

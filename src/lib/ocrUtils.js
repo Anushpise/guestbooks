@@ -557,13 +557,15 @@ export function parseIndianIDText(rawText) {
 
   // ── 5. Address Extraction ────────────────────────────────────────────────
 
+  // ── 5. Address Extraction ────────────────────────────────────────────────
+
   let address = '';
   const pinRx = /\b([1-9][0-9]{5})\b/;
   const pinM  = text.match(pinRx);
 
-  const addrStartRx = /\b(?:Address|पता|S\/O|W\/O|D\/O|C\/O|House|H\.?No\.?|H-No|Flat|Plot|Door|Village|Vill\.|Post|P\.O\.|Ward|Block|Sector|Floor|Near|Beside|Opposite|Gali|Mohalla|Chowk)\b/i;
-  const addrStopRx  = /\b(?:Date of Issue|Valid Upto|Signature|UIDAI Help|Toll Free|Email|www\.|http|Mobile|Phone)\b/i;
-  const headerRx    = /\b(?:AADHAAR|GOVERNMENT OF INDIA|ELECTION COMMISSION|INCOME TAX DEPT|UNIQUE IDENTIFICATION|REPUBLIC OF INDIA)\b/i;
+  const addrStartRx = /\b(?:Address|पत्ता|पता|आत्मज|पत्नी|मुलगा|मुलगी|पुत्र|पुत्री|S\/O|W\/O|D\/O|C\/O|S\/o|W\/o|D\/o|C\/o|Care of|Son of|Daughter of|Wife of|House|H\.?No\.?|H-No|Flat|Plot|Door|Bldg|Apartment|Room|Survey|Gat|Village|Vill\.|Post|P\.O\.|मु\.पो|मु\. पो|मुकाम|पोस्ट|तहसील|तालुका|जिल्हा|Dist|District|Ward|Block|Sector|Floor|Near|Beside|Opposite|Behind|Adjacent|Gali|Mohalla|Chowk|Street|Road|Lane|Nagar|Colony|Park|Marg|Layout|Vihar|Enclave)\b/i;
+  const addrStopRx  = /\b(?:Date of Issue|Valid Upto|Signature|UIDAI Help|Toll Free|Email|www\.|http|Mobile|Phone|Tel|1947|help@|uidai\.gov)\b/i;
+  const headerRx    = /\b(?:AADHAAR|GOVERNMENT OF INDIA|ELECTION COMMISSION|INCOME TAX DEPT|UNIQUE IDENTIFICATION|REPUBLIC OF INDIA|भारत सरकार)\b/i;
 
   const addrLines = [];
   let inAddr = false;
@@ -576,44 +578,66 @@ export function parseIndianIDText(rawText) {
     if (headerRx.test(line)) continue;
 
     let cl = line
-      .replace(/^(?:Address|पता)\s*[:\-]\s*/i, '')
+      .replace(/^(?:Address|पत्ता|पता)\s*[:\-]\s*/i, '')
       .replace(/\|/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
     if (!cl || cl.length < 3 || !isReadable(cl)) continue;
-    if (/^\d{1,3}$/.test(cl)) continue;
+    if (/^\d{1,4}$/.test(cl)) continue;
 
     addrLines.push(cl);
     if (pinM && cl.includes(pinM[1])) break;
-    if (addrLines.length >= 5) break;
+    if (addrLines.length >= 6) break;
   }
 
-  if (addrLines.length > 0) {
+  if (addrLines.length >= 2) {
     address = addrLines.join(', ')
       .replace(/,\s*,/g, ',')
       .replace(/,\s*$/, '')
       .replace(/\s+/g, ' ')
       .trim();
   } else if (pinM) {
-    // Grab lines around pincode
+    // Grab up to 5 lines before pincode
     const pi = allLines.findIndex((l) => l.includes(pinM[1]));
     if (pi >= 0) {
-      address = allLines
-        .slice(Math.max(0, pi - 3), pi + 1)
-        .filter(isReadable)
-        .map((l) => l.replace(/\|/g, ' ').trim())
-        .join(', ')
-        .trim();
+      const candidates = [];
+      for (let i = Math.max(0, pi - 4); i <= pi; i++) {
+        const l = allLines[i];
+        if (!l || l.length < 3 || headerRx.test(l) || addrStopRx.test(l)) continue;
+        const cl = l.replace(/^(?:Address|पत्ता|पता)\s*[:\-]\s*/i, '').replace(/\|/g, ' ').trim();
+        if (cl.length >= 3 && !/^\d{4}\s*\d{4}\s*\d{4}$/.test(cl)) {
+          candidates.push(cl);
+        }
+      }
+      if (candidates.length > 0) {
+        address = candidates.join(', ').replace(/,\s*,/g, ',').replace(/\s+/g, ' ').trim();
+      }
     }
   }
 
-  // ── 6. City ───────────────────────────────────────────────────────────────
+  // ── 6. City & State ───────────────────────────────────────────────────────
 
   let city = '';
-  const CITIES = /\b(Delhi|New Delhi|Mumbai|Bengaluru|Bangalore|Hyderabad|Chennai|Kolkata|Pune|Ahmedabad|Jaipur|Lucknow|Chandigarh|Indore|Bhopal|Surat|Nagpur|Patna|Gurugram|Gurgaon|Noida|Ghaziabad|Faridabad|Agra|Varanasi|Meerut|Kanpur|Nashik|Vizag|Visakhapatnam|Coimbatore|Madurai|Kochi|Bhubaneswar|Guwahati|Ranchi|Raipur|Vadodara|Rajkot|Amritsar|Ludhiana|Jodhpur|Udaipur|Prayagraj|Allahabad|Dehradun|Jammu|Srinagar|Mysuru|Mysore|Mangaluru|Hubli|Dharwad|Nellore|Guntur|Tirupati|Warangal|Bhilai|Durgapur|Asansol|Siliguri|Imphal|Shillong|Aizawl|Itanagar|Kohima|Agartala|Gangtok|Panaji|Silvassa|Daman|Kavaratti|Port Blair)\b/i;
-  const cityM = text.match(CITIES);
-  if (cityM) city = cityM[1];
+  // Try extracting from pincode line
+  if (pinM) {
+    const pinLine = allLines.find((l) => l.includes(pinM[1]));
+    if (pinLine) {
+      const cleanLine = pinLine.replace(new RegExp('[\\s\\-]*' + pinM[1] + '.*$'), '').replace(/[,\-\s]+$/, '').trim();
+      const parts = cleanLine.split(',').map((p) => p.trim()).filter((p) => p.length > 2);
+      if (parts.length >= 2) {
+        city = `${parts[parts.length - 2]}, ${parts[parts.length - 1]}`;
+      } else if (parts.length === 1) {
+        city = parts[0];
+      }
+    }
+  }
 
-  return { idType, idNumber, name, dob, age, gender, address, city, rawText };
+  if (!city || city.length < 3) {
+    const CITIES = /\b(Delhi|New Delhi|Mumbai|Bengaluru|Bangalore|Hyderabad|Chennai|Kolkata|Pune|Ahmedabad|Jaipur|Lucknow|Chandigarh|Indore|Bhopal|Surat|Nagpur|Patna|Gurugram|Gurgaon|Noida|Ghaziabad|Faridabad|Agra|Varanasi|Meerut|Kanpur|Nashik|Vizag|Visakhapatnam|Coimbatore|Madurai|Kochi|Bhubaneswar|Guwahati|Ranchi|Raipur|Vadodara|Rajkot|Amritsar|Ludhiana|Jodhpur|Udaipur|Prayagraj|Allahabad|Dehradun|Jammu|Srinagar|Mysuru|Mysore|Mangaluru|Hubli|Dharwad|Nellore|Guntur|Tirupati|Warangal|Bhilai|Durgapur|Asansol|Siliguri|Imphal|Shillong|Aizawl|Itanagar|Kohima|Agartala|Gangtok|Panaji|Silvassa|Daman|Wardha|Yavatmal|Chandrapur|Bhandara|Gondia|Akola|Amravati)\b/i;
+    const cityM = text.match(CITIES);
+    if (cityM) city = cityM[1];
+  }
+
+  return { idType, idNumber, name, dob, age, gender, address, city, pincode: pinM ? pinM[1] : '', rawText };
 }

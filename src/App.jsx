@@ -10,6 +10,7 @@ import ExpressCheckInView from './components/ExpressCheckInView';
 import NewCheckInView from './components/NewCheckInView';
 import AdminDashboard from './components/AdminDashboard';
 import PolicePortalView from './components/PolicePortalView';
+import GuestDatabaseView from './components/GuestDatabaseView';
 import AuthPage from './components/AuthPage';
 
 import ExpressCheckInModal from './components/ExpressCheckInModal';
@@ -181,6 +182,10 @@ export default function App() {
               vacantRooms={vacantRooms}
               onCheckInComplete={handleCheckInComplete}
             />
+          )}
+
+          {activeTab === 'database' && (
+            <GuestDatabaseView />
           )}
 
           {activeTab === 'ledger' && (

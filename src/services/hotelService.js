@@ -190,11 +190,61 @@ export const hotelService = {
   },
 
   // Perform Express or New Check-In
-  checkInGuest: (stayData) => {
+  checkInGuest: async (stayData) => {
     const activeStays = hotelService.getActiveStays();
     const newStayId = `STAY-${1000 + activeStays.length + 1}`;
+
+    // 1. Persist sequentially to SQLite Backend Database
+    let dbRecord = null;
+    try {
+      const payload = {
+        roomNumber: String(stayData.roomNumber),
+        stayType: stayData.stayType || '24 Hours Full Stay',
+        roomRate: Number(stayData.roomRate) || 1800,
+        advancePaid: Number(stayData.advancePaid) || Number(stayData.roomRate) || 1800,
+        paymentMode: stayData.paymentMode || 'Cash',
+        comingFrom: stayData.comingFrom || 'Local / Direct',
+        goingTo: stayData.goingTo || 'Local / Direct',
+        purpose: stayData.purpose || 'Personal Stay',
+        vehicleNo: stayData.vehicleNo || 'N/A',
+        primaryGuest: stayData.primaryGuest,
+        accompanyingGuest: stayData.accompanyingGuest || null,
+        documentFront: stayData.documentFront || null,
+        documentBack: stayData.documentBack || null,
+        signature: stayData.signature || null,
+      };
+
+      let res = null;
+      try {
+        res = await fetch('/api/guests/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        res = await fetch('http://127.0.0.1:8000/api/guests/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json.success && json.record) {
+          dbRecord = json.record;
+        }
+      }
+    } catch (dbErr) {
+      console.warn('Backend database check-in warning:', dbErr);
+    }
+
+    const regNo = dbRecord?.reg_no || `REG-${String(activeStays.length + 1).padStart(4, '0')}`;
+
     const newStayRecord = {
       id: newStayId,
+      regNo: regNo,
+      dbId: dbRecord?.id || null,
       roomNumber: stayData.roomNumber,
       checkInTime: new Date().toISOString(),
       expectedCheckOut: stayData.expectedCheckOut || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
@@ -208,6 +258,9 @@ export const hotelService = {
       roomRate: Number(stayData.roomRate) || 1800,
       advancePaid: Number(stayData.advancePaid) || Number(stayData.roomRate) || 1800,
       paymentMode: stayData.paymentMode || 'Cash',
+      documentFront: stayData.documentFront || null,
+      documentBack: stayData.documentBack || null,
+      signature: stayData.signature || null,
       policeSubmitted: true,
       policeSubmittedAt: new Date().toISOString(),
     };
@@ -234,6 +287,13 @@ export const hotelService = {
 
     if (!stayToCheckout) return null;
 
+    // Notify backend SQLite database
+    try {
+      fetch(`/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {
+        fetch(`http://127.0.0.1:8000/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {});
+      });
+    } catch {}
+
     const updatedActiveStays = activeStays.filter(s => s.id !== stayId && s.roomNumber !== stayId);
     localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedActiveStays));
 
@@ -244,6 +304,24 @@ export const hotelService = {
     hotelService.updatePoliceLogCheckOut(stayToCheckout.roomNumber, stayToCheckout.primaryGuest.name);
 
     return stayToCheckout;
+  },
+
+  // Fetch sequential records from SQLite backend
+  getDatabaseRecords: async (search = '') => {
+    try {
+      const url = search ? `/api/guests/records?search=${encodeURIComponent(search)}` : '/api/guests/records';
+      let res = await fetch(url);
+      if (!res.ok) {
+        res = await fetch(`http://127.0.0.1:8000${url}`);
+      }
+      if (res.ok) {
+        const json = await res.json();
+        return json.records || [];
+      }
+    } catch (e) {
+      console.warn('Failed to fetch from backend database:', e);
+    }
+    return [];
   },
 
   // Police Historical Logs

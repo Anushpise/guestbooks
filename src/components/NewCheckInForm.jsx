@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { User, Users, Building2, Camera, Check, X, UserPlus, CreditCard, ShieldCheck } from 'lucide-react';
+import { User, Users, Building2, Camera, Check, X, UserPlus, CreditCard, ShieldCheck, PenTool } from 'lucide-react';
 import { IDProofType } from '../types';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import DocumentScannerZone from './DocumentScannerZone';
+import SignatureModal from './SignatureModal';
 
 export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckInComplete }) {
   const [selectedRoomNumber, setSelectedRoomNumber] = useState(vacantRooms[0]?.number || '');
@@ -12,6 +13,11 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
   const [roomRate, setRoomRate] = useState(vacantRooms[0]?.rate.toString() || '1800');
   const [advancePaid, setAdvancePaid] = useState(vacantRooms[0]?.rate.toString() || '1800');
   const [paymentMode, setPaymentMode] = useState('UPI / GPay');
+
+  // Digital Signature & Uploaded Documents
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+  const [signatureData, setSignatureData] = useState(null);
+  const [uploadedDocs, setUploadedDocs] = useState({ front: null, back: null });
 
   // Primary Guest
   const [primaryName, setPrimaryName] = useState('');
@@ -87,6 +93,9 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
       goingTo: goingTo || 'Direct Check-in',
       purpose,
       vehicleNo: vehicleNo || 'N/A',
+      documentFront: uploadedDocs.front,
+      documentBack: uploadedDocs.back,
+      signature: signatureData,
       primaryGuest: {
         name: primaryName,
         age: Number(primaryAge) || 25,
@@ -155,6 +164,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
               targetGuestName="Primary Guest"
               accentColor="indigo"
               onApplyExtractedData={handlePrimaryOcrExtract}
+              onDocumentsChange={(docs) => setUploadedDocs(docs)}
             />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -460,17 +470,90 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
             </div>
           </div>
 
+          {/* Section 4: Digital Signature */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                <PenTool className="h-4 w-4 text-indigo-600" /> Guest Digital Signature (Sign-on-Screen)
+              </h3>
+              {signatureData ? (
+                <Badge className="bg-emerald-600 text-white font-bold text-xs gap-1.5 px-3 py-1">
+                  <Check className="h-3.5 w-3.5" /> Signature Recorded
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-slate-500 font-semibold text-xs">
+                  Pending Signature
+                </Badge>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-5 bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
+              {signatureData ? (
+                <div className="relative group border-2 border-emerald-300 rounded-xl p-3 bg-emerald-50/20 shadow-xs">
+                  <img
+                    src={signatureData}
+                    alt="Guest Signature"
+                    className="h-24 max-w-[240px] object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="h-24 w-56 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 text-xs bg-slate-50/60">
+                  <PenTool className="h-6 w-6 mb-1.5 opacity-40 text-slate-500" />
+                  <span className="font-medium">No signature captured</span>
+                </div>
+              )}
+
+              <div className="space-y-2 text-center sm:text-left flex-1">
+                <p className="text-sm font-bold text-slate-800">
+                  {signatureData ? 'Digital signature is successfully recorded and linked' : 'Tap below to open signature window for guest'}
+                </p>
+                <p className="text-xs text-slate-500">
+                  The guest can sign using touch on mobile/tablet or mouse on computer. The digital signature is stored directly with their ID proof in the sequential hotel database.
+                </p>
+                <div className="flex gap-2.5 pt-1 justify-center sm:justify-start">
+                  <Button
+                    type="button"
+                    onClick={() => setIsSignatureModalOpen(true)}
+                    variant="outline"
+                    className="gap-2 border-indigo-300 text-indigo-700 hover:bg-indigo-50 font-bold px-4 py-2"
+                  >
+                    <PenTool className="h-4 w-4" />
+                    {signatureData ? '✍️ Re-sign / Modify Signature' : '✍️ Open Signature Window'}
+                  </Button>
+                  {signatureData && (
+                    <Button
+                      type="button"
+                      onClick={() => setSignatureData(null)}
+                      variant="ghost"
+                      className="text-xs text-rose-600 hover:bg-rose-50"
+                    >
+                      Clear Signature
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Action Row */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" variant="emerald" size="lg" className="px-6 font-extrabold">
+            <Button type="submit" variant="emerald" size="lg" className="px-6 font-extrabold shadow-sm">
               <Check className="h-4 w-4" /> Save Registration & Check In
             </Button>
           </div>
         </form>
       </div>
+
+      {/* Interactive Digital Signature Modal Window */}
+      <SignatureModal
+        isOpen={isSignatureModalOpen}
+        onClose={() => setIsSignatureModalOpen(false)}
+        onSave={(sig) => setSignatureData(sig)}
+        existingSignature={signatureData}
+      />
     </div>
   );
 }

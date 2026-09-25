@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Zap, UserPlus, ShieldAlert, Users, Receipt,
   FileCheck, Building2, ChevronDown, ChevronRight, SlidersHorizontal,
-  Lock, BedDouble, TrendingUp, Menu
+  Lock, BedDouble, TrendingUp, Menu, Database
 } from 'lucide-react';
 
 export default function Sidebar({
@@ -133,8 +133,9 @@ export default function Sidebar({
               <SectionHeader icon={Users} label="Records & Ledger" open={openRecords} onToggle={() => setOpenRecords(!openRecords)} color="text-emerald-400" />
               {openRecords && (
                 <div className="space-y-0.5 pl-1">
-                  <NavItem tab="ledger"  icon={Users}   label="Frequent Guest Ledger" accent="emerald" />
-                  <NavItem tab="billing" icon={Receipt}  label="Billing & Receipts"    accent="emerald" />
+                  <NavItem tab="database" icon={Database} label="Sequential Database" badge="SQLite" accent="emerald" />
+                  <NavItem tab="ledger"   icon={Users}    label="Frequent Guest Ledger" accent="emerald" />
+                  <NavItem tab="billing"  icon={Receipt}  label="Billing & Receipts"    accent="emerald" />
                 </div>
               )}
             </div>

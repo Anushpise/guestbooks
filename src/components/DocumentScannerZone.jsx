@@ -6,6 +6,7 @@ export default function DocumentScannerZone({
   label = "Guest Document",
   targetGuestName = "Primary Guest",
   onApplyExtractedData,
+  onDocumentsChange,
   accentColor = "indigo"
 }) {
   const [images, setImages] = useState([]); // Array of { file, preview }
@@ -22,12 +23,32 @@ export default function DocumentScannerZone({
     ? { ring: 'ring-indigo-400', border: 'border-indigo-500', bg: 'bg-indigo-600', text: 'text-indigo-700', light: 'bg-indigo-50', lightBorder: 'border-indigo-200' }
     : { ring: 'ring-emerald-400', border: 'border-emerald-500', bg: 'bg-emerald-600', text: 'text-emerald-700', light: 'bg-emerald-50', lightBorder: 'border-emerald-200' };
 
-  // Auto-run OCR whenever images change
+  // Auto-run OCR and emit document base64 images whenever images change
   useEffect(() => {
     if (images.length > 0) {
       runOCR(images);
+      if (onDocumentsChange) {
+        Promise.all(
+          images.map((img) =>
+            new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.readAsDataURL(img.file);
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => resolve('');
+            })
+          )
+        ).then((base64s) => {
+          onDocumentsChange({
+            front: base64s[0] || null,
+            back: base64s[1] || null,
+          });
+        });
+      }
     } else {
       setExtractedResult(null);
+      if (onDocumentsChange) {
+        onDocumentsChange({ front: null, back: null });
+      }
     }
   }, [images]); // eslint-disable-line react-hooks/exhaustive-deps
 
