@@ -393,7 +393,7 @@ def parse_indian_id_text(text: str) -> dict:
         pincode = pin_m.group(1)
 
     addr_start_rx = re.compile(
-        r'\b(?:Address|पत्ता|पता|आत्मज|पत्नी|मुलगा|मुलगी|पुत्र|पुत्री|'
+        r'\b(?:Address|Adress|Addr|पत्ता|पता|आत्मज|पत्नी|मुलगा|मुलगी|पुत्र|पुत्री|'
         r'S\/O|W\/O|D\/O|C\/O|S\/o|W\/o|D\/o|C\/o|Care of|Son of|Daughter of|Wife of|'
         r'House|H\.?No\.?|H-No|Flat|Plot|Door|Bldg|Apartment|Room|Survey|Gat|'
         r'Village|Vill\.|Post|P\.O\.|मु\.पो|मु\. पो|मुकाम|पोस्ट|तहसील|तालुका|जिल्हा|'
@@ -407,23 +407,49 @@ def parse_indian_id_text(text: str) -> dict:
         re.I
     )
 
+    header_rx = re.compile(
+        r'\b(?:AADHAAR|GOVERNMENT OF INDIA|ELECTION COMMISSION|INCOME TAX|UNIQUE IDENTIFICATION|BHARAT SARKAR|भारत सरकार)\b',
+        re.I
+    )
+
     addr_lines = []
     in_addr = False
 
     for line in all_lines:
         if len(line) < 3:
             continue
+        # Strip document section separators like '--- BACK DOCUMENT ---'
+        if re.search(r'---\s*(?:BACK|FRONT|DOCUMENT|SCAN)', line, re.I):
+            continue
+        if header_rx.search(line):
+            continue
+
         if not in_addr and addr_start_rx.search(line):
             in_addr = True
+
         if not in_addr:
             continue
         if addr_stop_rx.search(line):
             break
 
-        cl = re.sub(r'^(?:Address|पत्ता|पता)\s*[:\-]\s*', '', line, flags=re.I)
+        # If line contains 'Address:' or 'Adress:' or 'पत्ता:', strip everything before the label!
+        lbl_m = re.search(r'\b(?:Address|Adress|Addr|पत्ता|पता)\s*[:\-]\s*', line, re.I)
+        cl = line[lbl_m.end():] if lbl_m else line
+
         cl = re.sub(r'\|', ' ', cl).strip()
+
+        # Remove 12-digit Aadhaar / ID numbers from address line
+        cl = re.sub(r'\b[2-9][0-9]{3}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}\b', '', cl)
+        cl = re.sub(r'\b\d{4}\s+\d{4,5}[\s,]*\d{3,5}\b', '', cl)
+        if id_number:
+            cl = cl.replace(id_number, '').replace(id_number.replace(' ', ''), '')
+
+        cl = re.sub(r'\s+', ' ', cl).strip(' ,-.')
+
         if cl and len(cl) >= 3 and not re.match(r'^\d{1,4}$', cl):
-            addr_lines.append(cl)
+            # Check if line is pure noise
+            if not re.search(r'^[a-zA-Z]{1,2}\s*$', cl):
+                addr_lines.append(cl)
 
         if pincode and pincode in line:
             break
@@ -443,23 +469,66 @@ def parse_indian_id_text(text: str) -> dict:
                 l = all_lines[i].strip()
                 if not l or len(l) < 3:
                     continue
+                if re.search(r'---\s*(?:BACK|FRONT|DOCUMENT|SCAN)', l, re.I):
+                    continue
+                if header_rx.search(l) or addr_stop_rx.search(l):
+                    continue
                 # Skip pure number lines / IDs / noise
                 if re.match(r'^\d{4}\s*\d{4}\s*\d{4}$', l) or re.match(r'^\d{1,4}$', l):
                     continue
-                if addr_stop_rx.search(l):
-                    continue
                 if any(k in l.lower() for k in ['unique identification', 'authority of india', 'help@', '1947', 'government of india', 'भारत सरकार']):
                     continue
-                cl = re.sub(r'^(?:Address|पत्ता|पता)\s*[:\-]\s*', '', l, flags=re.I)
+
+                lbl_m = re.search(r'\b(?:Address|Adress|Addr|पत्ता|पता)\s*[:\-]\s*', l, re.I)
+                cl = l[lbl_m.end():] if lbl_m else l
                 cl = re.sub(r'\|', ' ', cl).strip()
-                if cl and len(cl) >= 3:
+
+                # Remove 12-digit Aadhaar / ID numbers
+                cl = re.sub(r'\b[2-9][0-9]{3}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}\b', '', cl)
+                cl = re.sub(r'\b\d{4}\s+\d{4,5}[\s,]*\d{3,5}\b', '', cl)
+
+                cl = re.sub(r'\s+', ' ', cl).strip(' ,-.')
+
+                if cl and len(cl) >= 3 and not re.search(r'^[a-zA-Z]{1,2}\s*$', cl):
                     collected.append(cl)
             if collected:
                 addr_lines = collected
 
     if addr_lines:
-        address = ', '.join(addr_lines)
-        address = re.sub(r',\s*,', ',', address).strip(', ').strip()
+        raw_addr = ', '.join(addr_lines)
+        # Final clean up pass: strip section delimiters, Address label prefix, Aadhaar numbers, and noise
+        raw_addr = re.sub(r'---\s*(?:BACK|FRONT|DOCUMENT|SCAN)[^-\n]*---', '', raw_addr, flags=re.I)
+        lbl_m = re.search(r'\b(?:Address|Adress|Addr|पत्ता|पता)\s*[:\-]\s*', raw_addr, re.I)
+        if lbl_m:
+            raw_addr = raw_addr[lbl_m.end():]
+
+        # Strip Aadhaar & ID numbers
+        raw_addr = re.sub(r'\b[2-9][0-9]{3}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}\b', '', raw_addr)
+        raw_addr = re.sub(r'\b\d{1,4}\s+\d{4,5}[\s,]*\d{3,5}\b', '', raw_addr)
+        if id_number:
+            raw_addr = raw_addr.replace(id_number, '').replace(id_number.replace(' ', ''), '')
+
+        # Strip leading noise like "6 8845, 5670 800 ., yas St areas, Gs,"
+        raw_addr = re.sub(r'^(?:[a-zA-Z]{1,3}\s+)*[a-zA-Z]{1,2}\s*,\s*', '', raw_addr)
+        raw_addr = re.sub(r',\s*,', ',', raw_addr)
+        raw_addr = re.sub(r'\s+', ' ', raw_addr).strip(', .-')
+
+        # Capitalize address words nicely
+        words = raw_addr.split(' ')
+        cleaned_words = []
+        for w in words:
+            if not w:
+                continue
+            if w.upper() in ('PO', 'SO', 'DO', 'CO', 'HO', 'PIN', 'NO', 'HN', 'FLAT'):
+                cleaned_words.append(w.upper())
+            elif re.match(r'^\d+[a-zA-Z]?$', w):
+                cleaned_words.append(w)
+            else:
+                cleaned_words.append(w.capitalize())
+
+        address = ' '.join(cleaned_words)
+        address = re.sub(r'\s*,\s*', ', ', address)
+        address = re.sub(r'(,\s*){2,}', ', ', address).strip(' ,-.')
     elif pincode:
         address = f"PIN Code: {pincode}"
 

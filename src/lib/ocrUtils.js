@@ -563,7 +563,7 @@ export function parseIndianIDText(rawText) {
   const pinRx = /\b([1-9][0-9]{5})\b/;
   const pinM  = text.match(pinRx);
 
-  const addrStartRx = /\b(?:Address|पत्ता|पता|आत्मज|पत्नी|मुलगा|मुलगी|पुत्र|पुत्री|S\/O|W\/O|D\/O|C\/O|S\/o|W\/o|D\/o|C\/o|Care of|Son of|Daughter of|Wife of|House|H\.?No\.?|H-No|Flat|Plot|Door|Bldg|Apartment|Room|Survey|Gat|Village|Vill\.|Post|P\.O\.|मु\.पो|मु\. पो|मुकाम|पोस्ट|तहसील|तालुका|जिल्हा|Dist|District|Ward|Block|Sector|Floor|Near|Beside|Opposite|Behind|Adjacent|Gali|Mohalla|Chowk|Street|Road|Lane|Nagar|Colony|Park|Marg|Layout|Vihar|Enclave)\b/i;
+  const addrStartRx = /\b(?:Address|Adress|Addr|पत्ता|पता|आत्मज|पत्नी|मुलगा|मुलगी|पुत्र|पुत्री|S\/O|W\/O|D\/O|C\/O|S\/o|W\/o|D\/o|C\/o|Care of|Son of|Daughter of|Wife of|House|H\.?No\.?|H-No|Flat|Plot|Door|Bldg|Apartment|Room|Survey|Gat|Village|Vill\.|Post|P\.O\.|मु\.पो|मु\. पो|मुकाम|पोस्ट|तहसील|तालुका|जिल्हा|Dist|District|Ward|Block|Sector|Floor|Near|Beside|Opposite|Behind|Adjacent|Gali|Mohalla|Chowk|Street|Road|Lane|Nagar|Colony|Park|Marg|Layout|Vihar|Enclave)\b/i;
   const addrStopRx  = /\b(?:Date of Issue|Valid Upto|Signature|UIDAI Help|Toll Free|Email|www\.|http|Mobile|Phone|Tel|1947|help@|uidai\.gov)\b/i;
   const headerRx    = /\b(?:AADHAAR|GOVERNMENT OF INDIA|ELECTION COMMISSION|INCOME TAX DEPT|UNIQUE IDENTIFICATION|REPUBLIC OF INDIA|भारत सरकार)\b/i;
 
@@ -572,14 +572,20 @@ export function parseIndianIDText(rawText) {
 
   for (const line of allLines) {
     if (!line || line.length < 3) continue;
+    if (/---\s*(?:BACK|FRONT|DOCUMENT|SCAN)/i.test(line)) continue;
+    if (headerRx.test(line)) continue;
+
     if (!inAddr && addrStartRx.test(line)) inAddr = true;
     if (!inAddr) continue;
     if (addrStopRx.test(line)) break;
-    if (headerRx.test(line)) continue;
 
-    let cl = line
-      .replace(/^(?:Address|पत्ता|पता)\s*[:\-]\s*/i, '')
+    // Strip everything before Address: / Adress: label
+    const lblM = line.match(/\b(?:Address|Adress|Addr|पत्ता|पता)\s*[:\-]\s*/i);
+    let cl = lblM ? line.slice(lblM.index + lblM[0].length) : line;
+
+    cl = cl
       .replace(/\|/g, ' ')
+      .replace(/\b[2-9][0-9]{3}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}\b/g, '')
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -592,11 +598,19 @@ export function parseIndianIDText(rawText) {
   }
 
   if (addrLines.length >= 2) {
-    address = addrLines.join(', ')
+    let rawAddr = addrLines.join(', ');
+    rawAddr = rawAddr.replace(/---\s*(?:BACK|FRONT|DOCUMENT|SCAN)[^-\n]*---/gi, '');
+    const lblM = rawAddr.match(/\b(?:Address|Adress|Addr|पत्ता|पता)\s*[:\-]\s*/i);
+    if (lblM) rawAddr = rawAddr.slice(lblM.index + lblM[0].length);
+
+    rawAddr = rawAddr
+      .replace(/\b[2-9][0-9]{3}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}\b/g, '')
+      .replace(/^(?:[a-zA-Z]{1,3}\s+)*[a-zA-Z]{1,2}\s*,\s*/g, '')
       .replace(/,\s*,/g, ',')
-      .replace(/,\s*$/, '')
       .replace(/\s+/g, ' ')
       .trim();
+
+    address = titleCase(rawAddr).replace(/\s*,\s*/g, ', ').replace(/(,\s*){2,}/g, ', ').replace(/[\s,\.\-]+$/, '');
   } else if (pinM) {
     // Grab up to 5 lines before pincode
     const pi = allLines.findIndex((l) => l.includes(pinM[1]));
@@ -604,14 +618,23 @@ export function parseIndianIDText(rawText) {
       const candidates = [];
       for (let i = Math.max(0, pi - 4); i <= pi; i++) {
         const l = allLines[i];
-        if (!l || l.length < 3 || headerRx.test(l) || addrStopRx.test(l)) continue;
-        const cl = l.replace(/^(?:Address|पत्ता|पता)\s*[:\-]\s*/i, '').replace(/\|/g, ' ').trim();
+        if (!l || l.length < 3 || /---\s*(?:BACK|FRONT|DOCUMENT|SCAN)/i.test(l) || headerRx.test(l) || addrStopRx.test(l)) continue;
+
+        const lblM = l.match(/\b(?:Address|Adress|Addr|पत्ता|पता)\s*[:\-]\s*/i);
+        let cl = lblM ? l.slice(lblM.index + lblM[0].length) : l;
+        cl = cl.replace(/\|/g, ' ').replace(/\b[2-9][0-9]{3}[\s\-]?[0-9]{4}[\s\-]?[0-9]{4}\b/g, '').trim();
+
         if (cl.length >= 3 && !/^\d{4}\s*\d{4}\s*\d{4}$/.test(cl)) {
           candidates.push(cl);
         }
       }
       if (candidates.length > 0) {
-        address = candidates.join(', ').replace(/,\s*,/g, ',').replace(/\s+/g, ' ').trim();
+        let rawAddr = candidates.join(', ')
+          .replace(/^(?:[a-zA-Z]{1,3}\s+)*[a-zA-Z]{1,2}\s*,\s*/g, '')
+          .replace(/,\s*,/g, ',')
+          .replace(/\s+/g, ' ')
+          .trim();
+        address = titleCase(rawAddr).replace(/\s*,\s*/g, ', ').replace(/(,\s*){2,}/g, ', ').replace(/[\s,\.\-]+$/, '');
       }
     }
   }
