@@ -222,7 +222,7 @@ export const hotelService = {
           body: JSON.stringify(payload)
         });
       } catch {
-        res = await fetch('http://127.0.0.1:8000/api/guests/checkin', {
+        res = await fetch('http://127.0.0.1:8008/api/guests/checkin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -290,7 +290,7 @@ export const hotelService = {
     // Notify backend SQLite database
     try {
       fetch(`/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {
-        fetch(`http://127.0.0.1:8000/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {});
+        fetch(`http://127.0.0.1:8008/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {});
       });
     } catch {}
 
@@ -312,7 +312,7 @@ export const hotelService = {
       const url = search ? `/api/guests/records?search=${encodeURIComponent(search)}` : '/api/guests/records';
       let res = await fetch(url);
       if (!res.ok) {
-        res = await fetch(`http://127.0.0.1:8000${url}`);
+        res = await fetch(`http://127.0.0.1:8008${url}`);
       }
       if (res.ok) {
         const json = await res.json();

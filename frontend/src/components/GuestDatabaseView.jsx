@@ -35,7 +35,7 @@ export default function GuestDatabaseView() {
     try {
       let res = await fetch(`/api/guests/records/${recordId}`);
       if (!res.ok) {
-        res = await fetch(`http://127.0.0.1:8000/api/guests/records/${recordId}`);
+        res = await fetch(`http://127.0.0.1:8008/api/guests/records/${recordId}`);
       }
       if (res.ok) {
         const json = await res.json();
