@@ -55,29 +55,69 @@ export default function DocumentScannerZone({
     });
   }, []);
 
+  const [activeEngine, setActiveEngine] = useState('');
+
   const runOCR = async (imgs) => {
     if (!imgs || imgs.length === 0) return;
     setIsScanning(true);
-    setScanStatus('Processing document...');
+    setScanStatus('Enhancing image (OpenCV / AI deblur)...');
+    setActiveEngine('');
 
     try {
-      let combinedText = '';
-      for (let i = 0; i < imgs.length; i++) {
-        setScanStatus(`Reading ${i === 0 ? 'Front' : 'Back'} document...`);
-        const text = await scanDocumentWithOCR(imgs[i].file);
-        combinedText += `\n--- ${i === 0 ? 'FRONT' : 'BACK'} ---\n` + text;
+      let parsed = null;
+      let engineName = '';
+
+      // 1. Try Python Multi-Engine Backend (OpenCV, NumPy, Pillow, scikit-image, EasyOCR/PaddleOCR)
+      try {
+        const formData = new FormData();
+        formData.append('front_image', imgs[0].file);
+        if (imgs[1]) {
+          formData.append('back_image', imgs[1].file);
+        }
+
+        // Try relative URL (/api/ocr/scan via Vite proxy) first, then direct port 8000
+        let res = null;
+        try {
+          res = await fetch('/api/ocr/scan', { method: 'POST', body: formData });
+        } catch {
+          // fallback to direct backend port 8000
+          res = await fetch('http://127.0.0.1:8000/api/ocr/scan', { method: 'POST', body: formData });
+        }
+
+        if (res && res.ok) {
+          const result = await res.json();
+          if (result.success && result.data && (result.data.name || result.data.idNumber)) {
+            parsed = result.data;
+            engineName = 'Python OpenCV + scikit-image AI';
+          }
+        }
+      } catch (backendErr) {
+        console.warn('Python OCR backend unavailable or error, falling back to local OCR:', backendErr);
       }
 
-      setScanStatus('Extracting details...');
-      const parsed = parseIndianIDText(combinedText);
+      // 2. Client-side fallback if backend did not return usable data
+      if (!parsed || (!parsed.name && !parsed.idNumber)) {
+        setScanStatus('Running local high-contrast OCR scan...');
+        let combinedText = '';
+        for (let i = 0; i < imgs.length; i++) {
+          setScanStatus(`Scanning ${i === 0 ? 'Front' : 'Back'} document photo...`);
+          const text = await scanDocumentWithOCR(imgs[i].file);
+          combinedText += `\n--- ${i === 0 ? 'FRONT' : 'BACK'} ---\n` + text;
+        }
+
+        setScanStatus('Extracting details...');
+        parsed = parseIndianIDText(combinedText);
+        engineName = 'In-Browser Local Scanner';
+      }
+
       setExtractedResult(parsed);
+      setActiveEngine(engineName);
 
       if (onApplyExtractedData) {
         onApplyExtractedData(parsed);
       }
     } catch (err) {
       console.error('OCR Error:', err);
-      setScanStatus('');
     } finally {
       setIsScanning(false);
       setScanStatus('');
@@ -268,9 +308,16 @@ export default function DocumentScannerZone({
       {/* Extracted Result */}
       {!isScanning && extractedResult && (
         <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 space-y-2">
-          <div className="flex items-center gap-1.5">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-            <span className="text-xs font-extrabold text-emerald-800">Auto-filled from document</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+              <span className="text-xs font-extrabold text-emerald-800">Auto-filled from document</span>
+            </div>
+            {activeEngine && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-800 border border-emerald-300">
+                ⚡ {activeEngine}
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] bg-white rounded-lg border border-emerald-200 p-2.5">

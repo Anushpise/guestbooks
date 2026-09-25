@@ -1,92 +1,353 @@
 /**
  * ocrUtils.js
  *
- * Uses Tesseract.js v7 with eng+hin (Hindi+English) language pack.
- * No AI API used. Pure browser-based OCR with smart Indian ID parsing.
+ * Advanced multi-variant image preprocessing + Tesseract.js OCR.
+ * Handles blurry, dark, low-contrast, and noisy Indian ID document images.
  *
- * Hindi language support is KEY — without it, Hindi characters on Aadhaar
- * get misread as random ASCII garbage (like "a at El IN").
- * With hin+eng, Tesseract correctly segments Hindi vs English text.
+ * Preprocessing variants tried:
+ *  1. Grayscale + aggressive contrast boost + sharpening (best for most)
+ *  2. Adaptive-threshold simulation (good for uneven lighting)
+ *  3. Extreme sharpening (good for mild blur)
+ *  4. Original upscaled (fallback — in case preprocessing hurts)
+ *
+ * Hindi support: eng+hin bilingual so Devanagari on Aadhaar/Voter ID
+ * is recognized cleanly instead of being misread as ASCII garbage.
  */
 
 import { createWorker } from 'tesseract.js';
 
-// ─── Image pre-processing ─────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Score an OCR text result — higher = more useful content. */
+function scoreText(text) {
+  if (!text) return 0;
+  let score = (text.match(/[A-Za-z0-9]/g) || []).length;
+  if (/[2-9]\d{3}[\s-]?\d{4}[\s-]?\d{4}/.test(text)) score += 50; // Aadhaar
+  if (/[A-Z]{5}[0-9]{4}[A-Z]/.test(text))              score += 50; // PAN
+  if (/[A-Z]{3}[0-9]{7}/.test(text))                    score += 40; // Voter ID
+  if (/\d{2}[\/\.\-]\d{2}[\/\.\-]\d{4}/.test(text))    score += 30; // DOB
+  return score;
+}
+
+/** Compute Laplacian variance of grayscale pixel data (blur detection). */
+function computeBlurScore(pixels, width, height) {
+  let sum = 0, count = 0;
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * 4;
+      const center = pixels[idx];
+      const top    = pixels[((y - 1) * width + x) * 4];
+      const bottom = pixels[((y + 1) * width + x) * 4];
+      const left   = pixels[(y * width + x - 1) * 4];
+      const right  = pixels[(y * width + x + 1) * 4];
+      const lap = Math.abs(4 * center - top - bottom - left - right);
+      sum += lap * lap;
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : 0;
+}
+
+// ─── Image Preprocessing Variants ────────────────────────────────────────────
 
 /**
- * Sharpens + contrast-boosts an image before feeding to Tesseract.
- * Returns a data URL (PNG) with upscaled resolution for better OCR.
+ * Variant 1: Grayscale + Contrast Boost + Unsharp Mask
+ * Best for: normal to mildly blurry images, uneven brightness.
+ */
+function preprocessVariant1(img) {
+  const scale = Math.max(1, 1600 / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(img.width  * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d  = id.data;
+
+  // Convert to grayscale + boost contrast
+  const mean = (() => {
+    let s = 0;
+    for (let i = 0; i < d.length; i += 4)
+      s += 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    return s / (d.length / 4);
+  })();
+
+  // Auto-adjust contrast factor based on image brightness
+  const brightnessFactor = mean < 80 ? 2.2 : mean > 200 ? 1.3 : 1.9;
+
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    const boosted = Math.min(255, Math.max(0, brightnessFactor * (g - mean) + mean));
+    d[i] = d[i+1] = d[i+2] = boosted;
+  }
+  ctx.putImageData(id, 0, 0);
+
+  // Unsharp mask pass
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width  = canvas.width;
+  blurCanvas.height = canvas.height;
+  const blurCtx = blurCanvas.getContext('2d');
+  blurCtx.filter = 'blur(2px)';
+  blurCtx.drawImage(canvas, 0, 0);
+
+  const orig = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const blurred = blurCtx.getImageData(0, 0, canvas.width, canvas.height);
+  const sharpened = ctx.createImageData(canvas.width, canvas.height);
+  for (let i = 0; i < orig.data.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const idx = i + c;
+      sharpened.data[idx] = Math.min(255, Math.max(0,
+        1.8 * orig.data[idx] - 0.8 * blurred.data[idx]
+      ));
+    }
+    sharpened.data[i + 3] = 255;
+  }
+  ctx.putImageData(sharpened, 0, 0);
+
+  return canvas.toDataURL('image/png', 1.0);
+}
+
+/**
+ * Variant 2: Adaptive-threshold simulation
+ * Best for: uneven lighting, shadows on document, phone camera photos.
+ */
+function preprocessVariant2(img) {
+  const scale = Math.max(1, 1600 / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(img.width  * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d  = id.data;
+  const W  = canvas.width;
+  const H  = canvas.height;
+
+  // Convert to grayscale
+  const gray = new Uint8Array(W * H);
+  for (let i = 0; i < d.length; i += 4) {
+    gray[i / 4] = Math.round(0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]);
+  }
+
+  // Local mean using integral image (box filter, blockSize=25)
+  const block = 25;
+  const half  = Math.floor(block / 2);
+  const C     = 12; // constant subtracted from mean
+
+  const result = new Uint8Array(W * H);
+  // Simple local mean (approximate for speed)
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let sum = 0, cnt = 0;
+      for (let dy = -half; dy <= half; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= H) continue;
+        for (let dx = -half; dx <= half; dx++) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= W) continue;
+          sum += gray[ny * W + nx];
+          cnt++;
+        }
+      }
+      const localMean = sum / cnt;
+      result[y * W + x] = gray[y * W + x] > localMean - C ? 255 : 0;
+    }
+  }
+
+  for (let i = 0; i < result.length; i++) {
+    const idx = i * 4;
+    d[idx] = d[idx+1] = d[idx+2] = result[i];
+    d[idx+3] = 255;
+  }
+  ctx.putImageData(id, 0, 0);
+  return canvas.toDataURL('image/png', 1.0);
+}
+
+/**
+ * Variant 3: Extreme sharpening (good for blurry camera shots)
+ */
+function preprocessVariant3(img) {
+  const scale = Math.max(1.5, 2000 / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(img.width  * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+
+  // Draw with image smoothing disabled (preserves edges)
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d  = id.data;
+
+  // Grayscale
+  for (let i = 0; i < d.length; i += 4) {
+    const g = Math.round(0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]);
+    d[i] = d[i+1] = d[i+2] = g;
+  }
+  ctx.putImageData(id, 0, 0);
+
+  // Multiple blur+sharpen passes for deblurring effect
+  for (let pass = 0; pass < 3; pass++) {
+    const blurC = document.createElement('canvas');
+    blurC.width = canvas.width; blurC.height = canvas.height;
+    const bCtx  = blurC.getContext('2d');
+    bCtx.filter = 'blur(1.5px)';
+    bCtx.drawImage(canvas, 0, 0);
+
+    const orig    = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const blur    = bCtx.getImageData(0, 0, canvas.width, canvas.height);
+    const sharp   = ctx.createImageData(canvas.width, canvas.height);
+    const amount  = 1.6 + pass * 0.2;
+
+    for (let i = 0; i < orig.data.length; i += 4) {
+      for (let c = 0; c < 3; c++) {
+        sharp.data[i+c] = Math.min(255, Math.max(0,
+          amount * orig.data[i+c] - (amount - 1) * blur.data[i+c]
+        ));
+      }
+      sharp.data[i+3] = 255;
+    }
+    ctx.putImageData(sharp, 0, 0);
+  }
+
+  return canvas.toDataURL('image/png', 1.0);
+}
+
+/**
+ * Variant 4: Original image upscaled only (safe fallback)
+ */
+function preprocessVariant4(img) {
+  const scale = Math.max(1, 1400 / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(img.width  * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/png', 1.0);
+}
+
+/** Detect if image is blurry using Laplacian variance on canvas. */
+function detectBlur(img) {
+  const maxDim = 400; // small size is fine for blur detection
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(img.width  * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  // Quick grayscale pass
+  const d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+    d[i] = d[i+1] = d[i+2] = g;
+  }
+  return computeBlurScore(d, canvas.width, canvas.height);
+}
+
+// ─── Main preprocessing entry ─────────────────────────────────────────────────
+
+/**
+ * Generate multiple preprocessed variants of an image for OCR.
+ * Returns an array of data URLs, ordered by expected usefulness.
+ *
+ * @param {File|Blob|string} imageFile
+ * @returns {Promise<string[]>} array of data URLs
  */
 export async function preprocessImageForOCR(imageFile) {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    const url =
-      typeof imageFile === 'string' ? imageFile : URL.createObjectURL(imageFile);
-    img.src = url;
+    img.src = typeof imageFile === 'string' ? imageFile : URL.createObjectURL(imageFile);
 
     img.onload = () => {
-      // Scale up to at least 1800px on the larger dimension
-      const scale = Math.max(1, 1800 / Math.max(img.width, img.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
+      const blurScore = detectBlur(img);
+      const isBlurry  = blurScore < 80;
 
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const variants = [];
 
-      // Pass 1: grayscale + strong contrast
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const d = imageData.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-        const boosted = Math.min(255, Math.max(0, 1.8 * (g - 128) + 128));
-        d[i] = d[i + 1] = d[i + 2] = boosted;
+      // Always include Variant 1 and 2
+      variants.push(preprocessVariant1(img));
+      variants.push(preprocessVariant2(img));
+
+      // Add Variant 3 (aggressive deblur) if blurry
+      if (isBlurry) {
+        variants.push(preprocessVariant3(img));
       }
-      ctx.putImageData(imageData, 0, 0);
 
-      // Pass 2: unsharp-mask style sharpening via a second draw
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(canvas, 0, 0);
-      ctx.globalAlpha = 1.0;
+      // Always add original as safe fallback
+      variants.push(preprocessVariant4(img));
 
-      resolve(canvas.toDataURL('image/png', 1.0));
+      resolve(variants);
     };
 
-    img.onerror = () => resolve(imageFile); // fallback: use original
+    img.onerror = () => {
+      // If image can't be loaded, return a single fallback
+      resolve([typeof imageFile === 'string' ? imageFile : URL.createObjectURL(imageFile)]);
+    };
   });
 }
 
-// ─── OCR runner ───────────────────────────────────────────────────────────────
+// ─── OCR Runner ───────────────────────────────────────────────────────────────
 
 /**
- * Run Tesseract OCR on one image file/blob.
- * Uses eng+hin so Hindi characters on Aadhaar/Voter ID are properly
- * recognized and separated from English text — eliminates garbage like
- * "a at El IN" that happens with eng-only mode.
- *
- * @param {File|Blob|string} imageFile
- * @returns {Promise<string>} raw extracted text
+ * Run Tesseract OCR on one preprocessed image URL.
+ * @param {string} dataUrl - preprocessed image data URL
+ * @param {string} psm - Tesseract PSM mode
+ * @returns {Promise<{text: string, score: number}>}
  */
-export async function scanDocumentWithOCR(imageFile) {
-  const processedUrl = await preprocessImageForOCR(imageFile);
-
-  // eng+hin: English + Hindi bilingual mode
-  // This downloads ~4MB of traineddata on first use (cached automatically)
+async function runTesseractOnUrl(dataUrl, psm = '3') {
   const worker = await createWorker(['eng', 'hin']);
-
-  // PSM 3 = auto segmentation (best for mixed-layout cards)
-  // OEM 1 = LSTM neural net only (better than legacy)
   await worker.setParameters({
-    tessedit_pageseg_mode: '3',
+    tessedit_pageseg_mode: psm,
     tessedit_ocr_engine_mode: '1',
   });
-
-  const { data } = await worker.recognize(processedUrl);
+  const { data } = await worker.recognize(dataUrl);
   await worker.terminate();
-
-  return data.text || '';
+  const text = data.text || '';
+  return { text, score: scoreText(text) };
 }
+
+/**
+ * Scan a document image with OCR — tries multiple preprocessing variants
+ * and Tesseract PSM modes, returns the highest-scoring text result.
+ *
+ * @param {File|Blob|string} imageFile
+ * @returns {Promise<string>} best extracted text
+ */
+export async function scanDocumentWithOCR(imageFile) {
+  // Get multiple preprocessing variants
+  const variants = await preprocessImageForOCR(imageFile);
+
+  let bestText  = '';
+  let bestScore = 0;
+
+  // PSM modes to try: 3=auto, 6=single block, 4=single column
+  const psmModes = ['3', '6'];
+
+  for (let vi = 0; vi < variants.length; vi++) {
+    for (const psm of psmModes) {
+      try {
+        const { text, score } = await runTesseractOnUrl(variants[vi], psm);
+        if (score > bestScore) {
+          bestScore = score;
+          bestText  = text;
+        }
+        // Early exit if we got a great result
+        if (bestScore >= 150) break;
+      } catch (err) {
+        console.warn(`OCR variant ${vi+1} PSM=${psm} failed:`, err);
+      }
+    }
+    if (bestScore >= 150) break;
+  }
+
+  return bestText;
+}
+
 
 // ─── Text cleaner ─────────────────────────────────────────────────────────────
 

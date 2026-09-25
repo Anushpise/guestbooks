@@ -1,11 +1,16 @@
 fastapi>=0.110.0
 uvicorn[standard]>=0.28.0
 python-multipart>=0.0.9
+# Core image processing
 opencv-python-headless>=4.9.0
 numpy>=1.24.0
 pillow>=10.2.0
-pydantic>=2.6.0
+scikit-image>=0.22.0
+pywavelets>=1.5.0
+# OCR engines (multiple fallbacks)
 easyocr>=1.7.0
 pytesseract>=0.3.10
 paddleocr>=2.7.0; python_version < "3.13"
 paddlepaddle>=2.6.0; python_version < "3.13"
+# Backend
+pydantic>=2.6.0
