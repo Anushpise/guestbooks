@@ -15,7 +15,7 @@ export default function Header({
   const ROLE_CONFIG = {
     ADMIN:  { label: 'Super Admin',      bg: 'bg-amber-500',   dot: 'bg-amber-400' },
     POLICE: { label: 'Police Inspector', bg: 'bg-indigo-600',  dot: 'bg-indigo-400' },
-    HOTEL:  { label: 'Hotel Manager',    bg: 'bg-emerald-600', dot: 'bg-emerald-400' },
+    HOTEL:  { label: 'Guestbooks Manager', bg: 'bg-emerald-600', dot: 'bg-emerald-400' },
   };
 
   const TAB_TITLES = {
@@ -26,7 +26,7 @@ export default function Header({
     'police-log':      'Police Inspection Log',
     'billing':         'Billing & Receipts',
     'room-mgmt':       'Room Status & Tariffs',
-    'admin-approvals': 'Hotel Document Approvals',
+    'admin-approvals': 'Guestbooks Document Approvals',
     'police-portal':   'Police Station Portal',
   };
 

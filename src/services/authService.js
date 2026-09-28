@@ -28,7 +28,7 @@ const initialUsers = [
     id: 'USR-HOTEL-1',
     email: 'hotel@staylog.com',
     password: 'hotel123',
-    name: 'StayLog Boutique Hotel & Lodge',
+    name: 'StayLog Guestbooks & Lodge',
     role: 'HOTEL',
     hotelId: 'HTL-101',
   },
@@ -37,7 +37,7 @@ const initialUsers = [
 const initialHotels = [
   {
     id: 'HTL-101',
-    name: 'StayLog Boutique Hotel & Lodge',
+    name: 'StayLog Guestbooks & Lodge',
     ownerName: 'NexOpps Hospitality',
     email: 'hotel@staylog.com',
     phone: '9876543210',

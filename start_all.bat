@@ -1,7 +1,7 @@
 @echo off
-title Guestbooks Hotel PMS - All In One Launcher
+title Guestbooks PMS - All In One Launcher
 echo ========================================================
-echo   Starting Guestbooks Hotel PMS & Python OCR Backend
+echo   Starting Guestbooks PMS & Python OCR Backend
 echo ========================================================
 echo.
 

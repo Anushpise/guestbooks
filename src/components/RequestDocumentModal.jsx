@@ -82,7 +82,7 @@ export default function RequestDocumentModal({ isOpen, onClose, guestLog, office
                   Requisition Guest Identity Documents
                 </h3>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  Formal Document Access Request to Hotel Management
+                  Formal Document Access Request to Guestbooks Management
                 </p>
               </div>
             </div>
@@ -106,7 +106,7 @@ export default function RequestDocumentModal({ isOpen, onClose, guestLog, office
               Document Requisition Transmitted!
             </h4>
             <p className="text-xs text-slate-600 max-w-sm mx-auto">
-              The official request for <strong>{guestLog.guestName}</strong> (RM-{guestLog.roomNumber}) has been submitted to StayLog Hotel Management. Status is now <strong>PENDING HOTEL APPROVAL</strong>.
+              The official request for <strong>{guestLog.guestName}</strong> (RM-{guestLog.roomNumber}) has been submitted to StayLog Guestbooks Management. Status is now <strong>PENDING GUESTBOOKS APPROVAL</strong>.
             </p>
           </div>
         ) : (
@@ -134,7 +134,7 @@ export default function RequestDocumentModal({ isOpen, onClose, guestLog, office
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900 flex items-start gap-2.5 leading-relaxed">
               <Lock className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
-                <strong>Legal Privacy Safeguard:</strong> Hotel cannot disclose physical identity document copies (Aadhaar / Passport scans) without an official police requisition reason and case reference.
+                <strong>Legal Privacy Safeguard:</strong> Guestbooks management cannot disclose physical identity document copies (Aadhaar / Passport scans) without an official police requisition reason and case reference.
               </div>
             </div>
 

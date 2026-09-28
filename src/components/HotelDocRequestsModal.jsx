@@ -28,7 +28,7 @@ export default function HotelDocRequestsModal({ isOpen, onClose, onViewDocument 
   };
 
   const handleApprove = (requestId, guestName) => {
-    hotelService.approveDocumentRequest(requestId, 'StayLog Hotel Manager (Authorized)');
+    hotelService.approveDocumentRequest(requestId, 'StayLog Guestbooks Manager (Authorized)');
     refreshRequests();
     setStatusFeedback(`✓ Documents released successfully for ${guestName} to Police Department!`);
     setTimeout(() => setStatusFeedback(''), 3000);
@@ -95,7 +95,7 @@ export default function HotelDocRequestsModal({ isOpen, onClose, onViewDocument 
         <div className="bg-amber-50 border-b border-amber-200 p-4 text-xs text-amber-900 flex items-start gap-3">
           <Lock className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="leading-relaxed">
-            <strong>Guest Data Protection & Privacy Rule:</strong> Under data protection standards, hotels do not automatically share physical ID card photos with police. Documents can only be released upon a verified officer requisition with an active Case / GD reference.
+            <strong>Guest Data Protection & Privacy Rule:</strong> Under data protection standards, guestbooks management does not automatically share physical ID card photos with police. Documents can only be released upon a verified officer requisition with an active Case / GD reference.
           </div>
         </div>
 

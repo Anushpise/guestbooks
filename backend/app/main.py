@@ -6,15 +6,15 @@ from app.db.database import init_db
 import logging
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("hotel_ocr_backend")
+logger = logging.getLogger("guestbooks_ocr_backend")
 
 app = FastAPI(
-    title="Hotel PMS - Document Extraction & Guest Database API",
+    title="Guestbooks - Document Extraction & Guest Database API",
     version="1.0.0",
-    description="Python FastAPI backend powered by OpenCV/scikit-image/Tesseract/EasyOCR with sequential SQLite guest database and signature storage."
+    description="Python FastAPI backend powered by OpenCV/scikit-image/Tesseract/EasyOCR with sequential guest database and signature storage."
 )
 
-# Initialize sequential SQLite database on startup
+# Initialize database on startup
 @app.on_event("startup")
 def on_startup():
     init_db()
@@ -35,7 +35,7 @@ app.include_router(guest_router)
 def health_check():
     return {
         "status": "online",
-        "service": "PaddleOCR Hotel Guest ID Scanner",
+        "service": "PaddleOCR Guestbooks Guest ID Scanner",
         "engine": "PaddlePaddle / EasyOCR Multi-Engine",
         "version": "1.0.0"
     }

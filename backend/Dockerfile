@@ -6,11 +6,12 @@ ENV PYTHONUNBUFFERED=1
 # Install OpenCV and C++ runtime dependencies required by PaddlePaddle
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libgomp1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
 
 WORKDIR /app
 

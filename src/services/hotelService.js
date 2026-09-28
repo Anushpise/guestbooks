@@ -458,7 +458,7 @@ export const hotelService = {
         roomNumber: '101',
         idTypeNo: 'Aadhaar: 4532 8910 2241',
         hotelId: 'HTL-101',
-        hotelName: 'StayLog Boutique Hotel & Lodge',
+        hotelName: 'StayLog Guestbooks & Lodge',
         officerName: 'Inspector V. K. Sharma',
         stationName: 'Central City Police Station',
         badgeNo: 'POL-INSP-8891',
@@ -498,7 +498,7 @@ export const hotelService = {
         roomNumber: '102',
         idTypeNo: 'Aadhaar: 3344 5566 7788',
         hotelId: 'HTL-101',
-        hotelName: 'StayLog Boutique Hotel & Lodge',
+        hotelName: 'StayLog Guestbooks & Lodge',
         officerName: 'Sub-Inspector M. R. Deshmukh',
         stationName: 'Central City Police Station',
         badgeNo: 'POL-SI-4412',
@@ -507,7 +507,7 @@ export const hotelService = {
         status: 'APPROVED',
         requestedAt: new Date(Date.now() - 3600 * 24 * 1000).toISOString(),
         reviewedAt: new Date(Date.now() - 3600 * 20 * 1000).toISOString(),
-        reviewedBy: 'Hotel Manager (Authorized)',
+        reviewedBy: 'Guestbooks Manager (Authorized)',
         notes: 'Released under official Police FIR requisition order.',
         documents: [
           {
@@ -580,7 +580,7 @@ export const hotelService = {
       roomNumber: reqData.roomNumber,
       idTypeNo: reqData.idTypeNo,
       hotelId: reqData.hotelId || 'HTL-101',
-      hotelName: reqData.hotelName || 'StayLog Boutique Hotel & Lodge',
+      hotelName: reqData.hotelName || 'StayLog Guestbooks & Lodge',
       officerName: reqData.officerName || 'Inspector In-Charge',
       stationName: reqData.stationName || 'State Police Station',
       badgeNo: reqData.badgeNo || 'POL-INSP-8891',
@@ -599,7 +599,7 @@ export const hotelService = {
     return newRequest;
   },
 
-  approveDocumentRequest: (requestId, reviewer = 'StayLog Hotel Manager', notes = '') => {
+  approveDocumentRequest: (requestId, reviewer = 'StayLog Guestbooks Manager', notes = '') => {
     const DOC_REQUESTS_KEY = 'staylog_police_doc_requests_v1';
     const requests = hotelService.getDocumentRequests();
     const updated = requests.map(r => {

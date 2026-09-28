@@ -107,13 +107,13 @@ export default function AdminDashboard() {
             </Badge>
           </div>
           <p className="text-xs text-amber-800 mt-1 font-medium">
-            Verify & approve hotel self-registrations, inspect uploaded trade licenses, generate Police credentials, and track ₹499 hostel subscription revenues.
+            Verify & approve guestbooks self-registrations, inspect uploaded trade licenses, generate Police credentials, and track ₹499 subscription revenues.
           </p>
         </div>
 
         <div className="flex items-center gap-4 bg-white border border-amber-200 rounded-xl px-4 py-2.5 shadow-2xs">
           <div>
-            <div className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">Active Hotels</div>
+            <div className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">Active Guestbooks</div>
             <div className="text-xl font-extrabold text-slate-900 font-mono">{approvedHotels.length}</div>
           </div>
           <div className="h-8 w-px bg-slate-200"></div>
@@ -132,7 +132,7 @@ export default function AdminDashboard() {
           }`}
           onClick={() => setActiveTab('HOTEL_APPROVALS')}
         >
-          Hotel Verification Queue ({pendingHotels.length})
+          Guestbooks Verification Queue ({pendingHotels.length})
         </button>
         <button
           className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
@@ -152,14 +152,14 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      {/* TAB 1: HOTEL APPROVALS & DOCUMENT INSPECTION */}
+      {/* TAB 1: GUESTBOOKS APPROVALS & DOCUMENT INSPECTION */}
       {activeTab === 'HOTEL_APPROVALS' && (
         <div className="space-y-4">
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-2xs">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/80 text-slate-500 uppercase tracking-wider font-extrabold border-b border-slate-200">
                 <tr>
-                  <th className="px-5 py-4">HOTEL / HOSTEL NAME</th>
+                  <th className="px-5 py-4">GUESTBOOKS / PROPERTY NAME</th>
                   <th className="px-5 py-4">OWNER & CONTACT</th>
                   <th className="px-5 py-4">PLAN & RATE</th>
                   <th className="px-5 py-4">VERIFICATION DOCUMENTS</th>

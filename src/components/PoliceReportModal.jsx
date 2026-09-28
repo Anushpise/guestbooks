@@ -60,9 +60,9 @@ export default function PoliceReportModal({ isOpen, onClose }) {
         {/* Official Printable Header */}
         <div className="official-print-header printable-only">
           <div className="official-hotel-header">
-            <h1>HOTEL GUEST REGISTRATION LOG & POLICE VERIFICATION REGISTER</h1>
+            <h1>GUESTBOOKS REGISTRATION LOG & POLICE VERIFICATION REGISTER</h1>
             <p className="hotel-details-text">
-              <strong>STAYLOG BOUTIQUE HOTEL & LODGE</strong> • Govt Reg. No: <strong>HTL-MH-2026-9041</strong>
+              <strong>STAYLOG BOUTIQUE GUESTBOOKS & LODGE</strong> • Govt Reg. No: <strong>GB-MH-2026-9041</strong>
             </p>
             <p className="police-jurisdiction-text">
               Jurisdiction: <strong>LOCAL POLICE STATION / E-FRRO COMPLIANCE REGISTER</strong>
@@ -156,7 +156,7 @@ export default function PoliceReportModal({ isOpen, onClose }) {
           <div className="official-print-footer printable-only">
             <div className="signature-box-container">
               <div className="sig-box">
-                <p>Hotel Manager Signature & Stamp</p>
+                <p>Guestbooks Manager Signature & Stamp</p>
                 <div className="sig-line"></div>
               </div>
               <div className="sig-box">

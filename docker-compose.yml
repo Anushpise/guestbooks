@@ -1,31 +1,42 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database Service
+  postgres_db:
+    image: postgres:15-alpine
+    container_name: guestbooks_postgres_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: guestbooks_pms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d guestbooks_pms"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # Python PaddleOCR FastAPI Backend Service
   paddle_ocr_backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: hotel_paddle_ocr_backend
+    container_name: guestbooks_paddle_ocr_backend
     ports:
       - "8000:8000"
     environment:
       - PORT=8000
-    restart: always
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # React / Vite Hotel PMS Frontend App
-  hotel_frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: hotel_pms_frontend
-    ports:
-      - "5173:80"
+      - DATABASE_URL=postgresql://postgres:postgrespassword@postgres_db:5432/guestbooks_pms
     depends_on:
-      - paddle_ocr_backend
+      postgres_db:
+        condition: service_healthy
     restart: always
+
+volumes:
+  postgres_data:
+
+

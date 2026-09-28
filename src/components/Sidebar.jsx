@@ -111,7 +111,7 @@ export default function Sidebar({
       {/* Nav items */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-4">
 
-        {/* HOTEL MANAGER */}
+        {/* GUESTBOOKS MANAGER */}
         {role === 'HOTEL' && (
           <>
             {/* Guest Workflow */}
@@ -133,7 +133,7 @@ export default function Sidebar({
               <SectionHeader icon={Users} label="Records & Ledger" open={openRecords} onToggle={() => setOpenRecords(!openRecords)} color="text-emerald-400" />
               {openRecords && (
                 <div className="space-y-0.5 pl-1">
-                  <NavItem tab="database" icon={Database} label="Sequential Database" badge="SQLite" accent="emerald" />
+                  <NavItem tab="database" icon={Database} label="Sequential Database" badge="PostgreSQL" accent="emerald" />
                   <NavItem tab="ledger"   icon={Users}    label="Frequent Guest Ledger" accent="emerald" />
                   <NavItem tab="billing"  icon={Receipt}  label="Billing & Receipts"    accent="emerald" />
                 </div>
@@ -162,7 +162,7 @@ export default function Sidebar({
               <ShieldAlert className="h-3.5 w-3.5" />
               Police Inspection Portal
             </div>
-            <NavItem tab="police-portal" icon={Building2} label="Area Hotels & Occupancy" accent="indigo" />
+            <NavItem tab="police-portal" icon={Building2} label="Area Guestbooks & Occupancy" accent="indigo" />
           </div>
         )}
 
@@ -173,7 +173,7 @@ export default function Sidebar({
               <Lock className="h-3.5 w-3.5" />
               Super Admin Controls
             </div>
-            <NavItem tab="admin-approvals" icon={Lock} label="Hotel Approvals & Police" accent="amber" />
+            <NavItem tab="admin-approvals" icon={Lock} label="Guestbooks Approvals & Police" accent="amber" />
           </div>
         )}
       </div>
@@ -185,9 +185,9 @@ export default function Sidebar({
             <Building2 className="h-4 w-4 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-xs font-bold text-white leading-none">{user?.name || 'StayLog HMS'}</p>
+            <p className="truncate text-xs font-bold text-white leading-none">{user?.name || 'Guestbooks HMS'}</p>
             <p className="text-[10px] text-slate-500 font-semibold capitalize mt-0.5">
-              {role === 'HOTEL' ? 'Hotel Manager' : role === 'POLICE' ? 'Police Inspector' : 'Super Admin'}
+              {role === 'HOTEL' ? 'Guestbooks Manager' : role === 'POLICE' ? 'Police Inspector' : 'Super Admin'}
             </p>
           </div>
           <div className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />

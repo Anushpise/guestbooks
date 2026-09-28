@@ -140,7 +140,7 @@ export default function AuthPage({ onLoginSuccess }) {
               className="flex items-center justify-center gap-2 rounded-xl bg-emerald-950/80 border border-emerald-800/80 px-3 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-900 transition-all shadow-xs"
             >
               <Building2 className="h-4 w-4 text-emerald-400" />
-              <span>Hotel Manager</span>
+              <span>Guestbooks Manager</span>
             </button>
 
             <button
@@ -174,7 +174,7 @@ export default function AuthPage({ onLoginSuccess }) {
               }`}
               onClick={() => setAuthMode('HOTEL_LOGIN')}
             >
-              <Building2 className="h-3.5 w-3.5" /> Hotel / Hostel
+              <Building2 className="h-3.5 w-3.5" /> Guestbooks / Property
             </button>
             <button
               className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
@@ -207,17 +207,17 @@ export default function AuthPage({ onLoginSuccess }) {
             </div>
           )}
 
-          {/* MODE 1: HOTEL LOGIN */}
+          {/* MODE 1: GUESTBOOKS LOGIN */}
           {authMode === 'HOTEL_LOGIN' && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">Hotel Email Address</label>
+                <label className="text-xs font-semibold text-slate-300">Guestbooks Email Address</label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                   <Input
                     type="email"
                     className="pl-9 h-10 text-xs bg-slate-950 border-slate-800 text-white focus:border-emerald-500"
-                    placeholder="e.g. hotel@staylog.com"
+                    placeholder="e.g. guestbooks@staylog.com"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                   />
@@ -239,11 +239,11 @@ export default function AuthPage({ onLoginSuccess }) {
               </div>
 
               <Button type="submit" variant="emerald" size="lg" className="w-full h-11 font-bold text-sm mt-2">
-                Sign In to Hotel Dashboard <ArrowRight className="h-4 w-4" />
+                Sign In to Guestbooks Dashboard <ArrowRight className="h-4 w-4" />
               </Button>
 
               <div className="pt-4 text-center border-t border-slate-800">
-                <span className="text-xs text-slate-400">New Hotel or Hostel owner? </span>
+                <span className="text-xs text-slate-400">New Guestbooks property owner? </span>
                 <button
                   type="button"
                   onClick={() => setAuthMode('HOTEL_REGISTER')}

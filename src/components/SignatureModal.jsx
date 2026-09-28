@@ -175,7 +175,7 @@ export default function SignatureModal({ isOpen, onClose, onSave, existingSignat
             </div>
           </div>
           <div className="flex items-center justify-between w-full mt-3 text-xs text-slate-500">
-            <span>Legally binding guest declaration under Hotel Registration Act.</span>
+            <span>Legally binding guest declaration under Guestbooks Registration Act.</span>
             <Button
               type="button"
               variant="outline"

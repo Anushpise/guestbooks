@@ -12,5 +12,7 @@ easyocr>=1.7.0
 pytesseract>=0.3.10
 paddleocr>=2.7.0; python_version < "3.13"
 paddlepaddle>=2.6.0; python_version < "3.13"
-# Backend
+# Backend & Database
 pydantic>=2.6.0
+psycopg2-binary>=2.9.9
+

@@ -61,7 +61,7 @@ export default function PolicePortalView({ user }) {
                 </Badge>
               </div>
               <h2 className="font-heading text-2xl font-black text-white tracking-tight mt-1">
-                {user?.stationName || 'Central City Police Station'} — Hotel Occupancy Surveillance
+                {user?.stationName || 'Central City Police Station'} — Guestbooks Occupancy Surveillance
               </h2>
               <p className="text-xs text-indigo-200 font-medium mt-0.5">
                 Officer In-Charge: <strong>{user?.name || 'Inspector V. K. Sharma'}</strong> | Badge: <strong>{user?.badgeNo || 'POL-INSP-8891'}</strong>
@@ -93,7 +93,7 @@ export default function PolicePortalView({ user }) {
             <div>
               <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Jurisdiction Area Selection</span>
               <h3 className="font-heading text-xl font-black text-slate-900">
-                Live Hotel Occupancy by Area
+                Live Guestbooks Occupancy by Area
               </h3>
             </div>
           </div>
@@ -116,10 +116,10 @@ export default function PolicePortalView({ user }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           
           <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-2xs">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Hotels in Area</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Guestbooks in Area</span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-heading text-3xl font-black text-slate-900">{totalAreaHotels}</span>
-              <span className="text-xs font-bold text-slate-500">Hotels</span>
+              <span className="text-xs font-bold text-slate-500">Properties</span>
             </div>
             <p className="text-[11px] text-slate-400 mt-1 font-medium">Under this police station sector</p>
           </div>
@@ -130,7 +130,7 @@ export default function PolicePortalView({ user }) {
               <span className="font-heading text-3xl font-black text-slate-900">{totalAreaCapacity}</span>
               <span className="text-xs font-bold text-slate-500">Total Rooms</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">Combined rooms across all hotels</p>
+            <p className="text-[11px] text-slate-400 mt-1 font-medium">Combined rooms across all properties</p>
           </div>
 
           <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 to-white p-5 shadow-2xs">
