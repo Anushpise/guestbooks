@@ -102,7 +102,7 @@ export default function DocumentScannerZone({
           res = await fetch('/api/ocr/scan', { method: 'POST', body: formData });
         } catch {
           // fallback to direct backend port 8000
-          res = await fetch('http://127.0.0.1:8000/api/ocr/scan', { method: 'POST', body: formData });
+          res = await fetch('http://127.0.0.1:8008/api/ocr/scan', { method: 'POST', body: formData });
         }
 
         if (res && res.ok) {

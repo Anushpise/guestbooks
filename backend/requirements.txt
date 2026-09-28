@@ -7,12 +7,11 @@ numpy>=1.24.0
 pillow>=10.2.0
 scikit-image>=0.22.0
 pywavelets>=1.5.0
-# OCR engines (multiple fallbacks)
+# High performance CPU OCR engines
 easyocr>=1.7.0
 pytesseract>=0.3.10
 paddleocr>=2.7.0; python_version < "3.13"
 paddlepaddle>=2.6.0; python_version < "3.13"
-# Backend & Database
+# Backend models & Database
 pydantic>=2.6.0
 psycopg2-binary>=2.9.9
-

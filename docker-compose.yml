@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database Service
   postgres_db:
@@ -20,14 +18,17 @@ services:
       timeout: 5s
       retries: 5
 
-  # Python PaddleOCR FastAPI Backend Service
-  paddle_ocr_backend:
+  # Python FastAPI AI OCR & Sequential Database Backend Service
+  backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: guestbooks_paddle_ocr_backend
+    container_name: hotel_backend
     ports:
-      - "8000:8000"
+      - "8008:8000"
+    volumes:
+      # Persistent Volume for SQLite Database & Uploaded Images
+      - ./backend/data:/app/data
     environment:
       - PORT=8000
       - DATABASE_URL=postgresql://postgres:postgrespassword@postgres_db:5432/guestbooks_pms
@@ -35,8 +36,26 @@ services:
       postgres_db:
         condition: service_healthy
     restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # React / Vite Hotel PMS Frontend Web App with Production Nginx Proxy
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hotel_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: always
 
 volumes:
   postgres_data:
+
 
 
