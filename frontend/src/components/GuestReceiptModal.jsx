@@ -28,7 +28,8 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 font-mono text-xs text-slate-900 printable-receipt-area">
           <div className="text-center space-y-1 pb-3 border-b border-dashed border-slate-300">
-            <h3 className="font-extrabold text-sm text-slate-900">STAYLOG BOUTIQUE HOTEL & LODGE</h3>
+            <img src="/logo.png" alt="Guestbooks Logo" className="h-8 w-auto mx-auto object-contain mb-1" />
+            <h3 className="font-extrabold text-sm text-slate-900">GUESTBOOKS HOTEL & LODGE</h3>
             <p className="text-[11px] text-slate-600">124, Station Road, Main Market</p>
             <p className="text-[10px] text-slate-500">Phone: +91 98765 00000 | GSTIN: 27AAAAA0000A1Z5</p>
             <h4 className="font-bold text-xs pt-2 text-slate-900 tracking-wider">GUEST CHECK-IN SLIP</h4>

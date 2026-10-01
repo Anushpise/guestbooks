@@ -41,7 +41,7 @@ export default function RequestDocumentModal({ isOpen, onClose, guestLog, office
       roomNumber: guestLog.roomNumber,
       idTypeNo: guestLog.idTypeNo,
       hotelId: guestLog.hotelId || 'HTL-101',
-      hotelName: guestLog.hotelName || 'StayLog Boutique Hotel & Lodge',
+      hotelName: guestLog.hotelName || 'Guestbooks Hotel Management & Lodge',
       officerName: officerUser?.name || 'Inspector V. K. Sharma',
       stationName: officerUser?.stationName || 'Central City Police Station',
       badgeNo: officerUser?.badgeNo || 'POL-INSP-8891',

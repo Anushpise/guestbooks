@@ -5,8 +5,8 @@ echo   Starting Guestbooks PMS & Python OCR Backend
 echo ========================================================
 echo.
 
-echo [1/2] Starting Python AI OCR Backend (Port 8000)...
-start "Guestbooks - Python OCR Backend (Port 8000)" cmd /k "cd /d %~dp0backend && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+echo [1/2] Starting Python AI OCR Backend (Port 8008)...
+start "Guestbooks - Python OCR Backend (Port 8008)" cmd /k "cd /d %~dp0backend && .\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8008"
 
 timeout /t 2 /nobreak >nul
 
@@ -17,6 +17,6 @@ echo.
 echo ========================================================
 echo   Servers launched successfully!
 echo   - Frontend: http://localhost:5173
-echo   - Backend:  http://localhost:8000
+echo   - Backend:  http://localhost:8008
 echo ========================================================
 timeout /t 5 >nul

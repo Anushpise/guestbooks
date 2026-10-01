@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import LandingPage from './components/LandingPage';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
@@ -22,7 +23,9 @@ import { authService } from './services/authService';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
+  const [authView, setAuthView] = useState('LANDING'); // 'LANDING', 'LOGIN', 'REGISTER'
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [showPoliceOption, setShowPoliceOption] = useState(false);
 
   // Core Data States
   const [rooms, setRooms] = useState([]);
@@ -37,29 +40,155 @@ export default function App() {
   const [preSelectedRoom, setPreSelectedRoom] = useState(null);
   const [selectedStayForReceipt, setSelectedStayForReceipt] = useState(null);
 
-  // Load session on mount
-  useEffect(() => {
-    const user = authService.getCurrentUser();
-    if (user) {
-      handleUserSessionInit(user);
+  // Sync state from current URL pathname
+  const syncRouteWithState = () => {
+    const rawPath = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
+    const params = new URLSearchParams(window.location.search);
+    const policeLogParam = params.get('police-log') || '';
+
+    if (policeLogParam === 'true' || rawPath === '/police-log' || rawPath === '/police') {
+      setShowPoliceOption(true);
     }
-    refreshData();
+
+    const user = authService.getCurrentUser();
+
+    if (rawPath === '/login') {
+      setAuthView('LOGIN');
+      setCurrentUser(null);
+      return;
+    }
+    if (rawPath === '/register') {
+      setAuthView('REGISTER');
+      setCurrentUser(null);
+      return;
+    }
+    if (rawPath === '/police') {
+      if (user && user.role === 'POLICE') {
+        setCurrentUser(user);
+        setActiveTab('police-portal');
+        refreshData();
+      } else {
+        setAuthView('LOGIN');
+        setCurrentUser(null);
+      }
+      return;
+    }
+    if (rawPath === '/admin') {
+      if (user && user.role === 'ADMIN') {
+        setCurrentUser(user);
+        setActiveTab('admin-approvals');
+        refreshData();
+      } else {
+        setAuthView('LOGIN');
+        setCurrentUser(null);
+      }
+      return;
+    }
+
+    const routeToTabMap = {
+      '/dashboard': 'dashboard',
+      '/express-checkin': 'express-checkin',
+      '/new-checkin': 'new-checkin',
+      '/database': 'database',
+      '/ledger': 'ledger',
+      '/police-log': 'police-log',
+      '/billing': 'billing',
+      '/room-mgmt': 'room-mgmt',
+      '/admin-approvals': 'admin-approvals',
+      '/police-portal': 'police-portal',
+    };
+
+    if (routeToTabMap[rawPath]) {
+      if (user) {
+        setCurrentUser(user);
+        setActiveTab(routeToTabMap[rawPath]);
+        refreshData();
+      } else {
+        setAuthView('LOGIN');
+        setCurrentUser(null);
+      }
+      return;
+    }
+
+    // Default root `/` or `/landing`
+    if (user) {
+      setCurrentUser(user);
+      setActiveTab('dashboard');
+      refreshData();
+    } else {
+      setAuthView('LANDING');
+      setCurrentUser(null);
+    }
+  };
+
+  // Sync route on mount and listen to browser popstate (back/forward)
+  useEffect(() => {
+    syncRouteWithState();
+
+    const handlePopState = () => {
+      syncRouteWithState();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  // Navigation Handlers with URL state pushing
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    const tabToPathMap = {
+      'dashboard': '/dashboard',
+      'express-checkin': '/express-checkin',
+      'new-checkin': '/new-checkin',
+      'database': '/database',
+      'ledger': '/ledger',
+      'police-log': '/police-log',
+      'billing': '/billing',
+      'room-mgmt': '/room-mgmt',
+      'admin-approvals': '/admin',
+      'police-portal': '/police',
+    };
+    const targetPath = tabToPathMap[tab] || '/dashboard';
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
+
+  const handleAuthViewChange = (view) => {
+    setAuthView(view);
+    const targetPath = view === 'REGISTER' ? '/register' : view === 'LOGIN' ? '/login' : '/';
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  };
 
   const handleUserSessionInit = (user) => {
     setCurrentUser(user);
+    let targetTab = 'dashboard';
+    let targetPath = '/dashboard';
+
     if (user.role === 'ADMIN') {
-      setActiveTab('admin-approvals');
+      targetTab = 'admin-approvals';
+      targetPath = '/admin';
     } else if (user.role === 'POLICE') {
-      setActiveTab('police-portal');
-    } else {
-      setActiveTab('dashboard');
+      targetTab = 'police-portal';
+      targetPath = '/police';
     }
+
+    setActiveTab(targetTab);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+    refreshData();
   };
 
   const handleLogout = () => {
     authService.logout();
     setCurrentUser(null);
+    setAuthView('LANDING');
+    if (window.location.pathname !== '/') {
+      window.history.pushState({}, '', '/');
+    }
   };
 
   const refreshData = () => {
@@ -113,9 +242,40 @@ export default function App() {
     refreshData();
   };
 
-  // Render Login/Registration screen if user is unauthenticated
+  const handleAddRoom = (roomData) => {
+    const result = hotelService.addRoom(roomData);
+    if (result.success) {
+      refreshData();
+    }
+    return result;
+  };
+
+  const handleDeleteRoom = (roomId) => {
+    const result = hotelService.deleteRoom(roomId);
+    if (result.success) {
+      refreshData();
+    }
+    return result;
+  };
+
+  // Render Landing Page or Auth Page if unauthenticated
   if (!currentUser) {
-    return <AuthPage onLoginSuccess={handleUserSessionInit} />;
+    if (authView === 'LANDING') {
+      return (
+        <LandingPage 
+          onOpenLogin={(mode = 'HOTEL_LOGIN') => handleAuthViewChange('LOGIN')}
+          onOpenRegister={() => handleAuthViewChange('REGISTER')}
+        />
+      );
+    }
+
+    return (
+      <AuthPage 
+        onLoginSuccess={handleUserSessionInit}
+        onBackToLanding={() => handleAuthViewChange('LANDING')}
+        initialMode={authView === 'REGISTER' ? 'HOTEL_REGISTER' : 'HOTEL_LOGIN'}
+      />
+    );
   }
 
   return (
@@ -124,12 +284,13 @@ export default function App() {
       <Sidebar 
         user={currentUser}
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={handleTabChange}
         openExpressModal={() => handleOpenExpressModal()}
         openNewCheckInModal={handleOpenNewCheckInModal}
         openPoliceModal={handleOpenPoliceModal}
         occupiedCount={occupiedCount}
         totalRooms={rooms.length || 15}
+        showPoliceOption={showPoliceOption}
       />
 
       {/* Main Right Layout */}
@@ -138,10 +299,11 @@ export default function App() {
           user={currentUser}
           onLogout={handleLogout}
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={handleTabChange}
           openExpressModal={() => handleOpenExpressModal()}
           openNewCheckInModal={handleOpenNewCheckInModal}
           openPoliceModal={handleOpenPoliceModal}
+          showPoliceOption={showPoliceOption}
         />
 
         <main className="flex-1 p-8 max-w-7xl mx-auto w-full">
@@ -173,7 +335,7 @@ export default function App() {
             <ExpressCheckInView
               vacantRooms={vacantRooms}
               onCheckInComplete={handleCheckInComplete}
-              switchToNewGuest={() => setActiveTab('new-checkin')}
+              switchToNewGuest={() => handleTabChange('new-checkin')}
             />
           )}
 
@@ -209,6 +371,8 @@ export default function App() {
               rooms={rooms}
               onRoomStatusChange={handleRoomStatusChange}
               onRoomTariffChange={handleRoomTariffChange}
+              onAddRoom={handleAddRoom}
+              onDeleteRoom={handleDeleteRoom}
               refreshData={refreshData}
             />
           )}
@@ -245,3 +409,4 @@ export default function App() {
     </div>
   );
 }
+

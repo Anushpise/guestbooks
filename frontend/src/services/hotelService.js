@@ -5,7 +5,10 @@ const GUESTS_STORAGE_KEY = 'staylog_guests_v1';
 const ACTIVE_STAYS_STORAGE_KEY = 'staylog_active_stays_v1';
 const POLICE_LOGS_STORAGE_KEY = 'staylog_police_logs_v1';
 
-// Helper to initialize LocalStorage if empty
+// ── Unique ID Generator (timestamp + random, no collisions) ──────────────────
+const generateId = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+// ── Initialize LocalStorage if empty ─────────────────────────────────────────
 const initStorage = () => {
   if (!localStorage.getItem(ROOMS_STORAGE_KEY)) {
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(initialRooms));
@@ -23,8 +26,35 @@ const initStorage = () => {
 
 initStorage();
 
+// ── Sync hotel occupancy stats to hotels storage (for Police Portal) ─────────
+const syncHotelOccupancyStats = (rooms) => {
+  try {
+    const hotels = JSON.parse(localStorage.getItem('staylog_hotels_v2')) || [];
+    const occCount = rooms.filter(r => r.status === 'OCCUPIED').length;
+    const updatedHotels = hotels.map(h => {
+      if (h.id === 'HTL-101') {
+        return {
+          ...h,
+          totalRooms: rooms.length,
+          occupiedRooms: occCount,
+          vacantRooms: rooms.filter(r => r.status === 'VACANT').length,
+          occupancyRate: rooms.length > 0 ? Math.round((occCount / rooms.length) * 100) : 0
+        };
+      }
+      return h;
+    });
+    localStorage.setItem('staylog_hotels_v2', JSON.stringify(updatedHotels));
+  } catch (e) {
+    console.warn('Failed to sync hotel occupancy stats:', e);
+  }
+};
+
 export const hotelService = {
-  // Rooms API
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ROOMS CRUD API
+  // ══════════════════════════════════════════════════════════════════════════
+
   getRooms: () => {
     try {
       return JSON.parse(localStorage.getItem(ROOMS_STORAGE_KEY)) || initialRooms;
@@ -33,104 +63,158 @@ export const hotelService = {
     }
   },
 
-  updateRoomStatus: (roomId, status) => {
+  /**
+   * Add a new room to the inventory.
+   * @param {{ number: string, type: string, floor: string, rate: number }} roomData
+   * @returns {{ success: boolean, message: string, rooms: Array }}
+   */
+  addRoom: (roomData) => {
     const rooms = hotelService.getRooms();
-    const targetRoom = rooms.find(r => r.id === roomId || r.number === roomId);
+
+    // Validate: room number must be unique
+    const exists = rooms.find(r => String(r.number) === String(roomData.number));
+    if (exists) {
+      return { success: false, message: `Room ${roomData.number} already exists.`, rooms };
+    }
+
+    const newRoom = {
+      id: String(roomData.number), // use room number as ID for consistency
+      number: String(roomData.number),
+      type: roomData.type || 'Standard Suite',
+      floor: roomData.floor || '1st Floor',
+      rate: Number(roomData.rate) || 1500,
+      status: 'VACANT',
+    };
+
+    rooms.push(newRoom);
+    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
+    syncHotelOccupancyStats(rooms);
+
+    return { success: true, message: `Room ${newRoom.number} added successfully.`, rooms };
+  },
+
+  /**
+   * Delete a room from inventory. Only VACANT rooms can be deleted.
+   * @param {string} roomId - Room ID or number
+   * @returns {{ success: boolean, message: string, rooms: Array }}
+   */
+  deleteRoom: (roomId) => {
+    const rooms = hotelService.getRooms();
+    const room = rooms.find(r => r.id === roomId || String(r.number) === String(roomId));
+
+    if (!room) {
+      return { success: false, message: 'Room not found.', rooms };
+    }
+    if (room.status === 'OCCUPIED') {
+      return { success: false, message: `Room ${room.number} is currently OCCUPIED. Check out the guest first.`, rooms };
+    }
+
+    const updatedRooms = rooms.filter(r => r.id !== room.id);
+    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(updatedRooms));
+    syncHotelOccupancyStats(updatedRooms);
+
+    return { success: true, message: `Room ${room.number} deleted.`, rooms: updatedRooms };
+  },
+
+  /**
+   * Update room status (VACANT, OCCUPIED, CLEANING, MAINTENANCE).
+   * IMPORTANT: When called with `_skipStaySync = true`, it will NOT auto-create
+   * or remove active stays. This prevents circular loops when called from checkInGuest/checkOutGuest.
+   */
+  updateRoomStatus: (roomId, status, _skipStaySync = false) => {
+    const rooms = hotelService.getRooms();
+    const targetRoom = rooms.find(r => r.id === roomId || String(r.number) === String(roomId));
     if (!targetRoom) return rooms;
 
     const previousStatus = targetRoom.status;
-    const updatedRooms = rooms.map(r => r.id === roomId || r.number === roomId ? { ...r, status } : r);
+    if (previousStatus === status) return rooms; // no-op
+
+    const updatedRooms = rooms.map(r =>
+      (r.id === roomId || String(r.number) === String(roomId)) ? { ...r, status } : r
+    );
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(updatedRooms));
 
-    // Keep active stays synchronized
-    const activeStays = hotelService.getActiveStays();
-    const roomNo = String(targetRoom.number);
+    // Only sync active stays when called from RoomManagement UI (not from checkIn/checkOut)
+    if (!_skipStaySync) {
+      const activeStays = hotelService.getActiveStays();
+      const roomNo = String(targetRoom.number);
 
-    if (status === 'OCCUPIED' && previousStatus !== 'OCCUPIED') {
-      // If marked OCCUPIED, ensure active stay exists
-      const existingStay = activeStays.find(s => String(s.roomNumber) === roomNo);
-      if (!existingStay) {
-        const newStay = {
-          id: `STAY-${1000 + activeStays.length + 1}`,
-          roomNumber: roomNo,
-          checkInTime: new Date().toISOString(),
-          expectedCheckOut: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-          stayType: '24 Hours Full Stay',
-          primaryGuest: {
-            name: `Guest in Room ${roomNo}`,
-            phone: '9876543210',
-            idType: 'Aadhaar Card',
-            idNumber: '4000 1234 5678',
-            address: 'Allocated Stay',
-            city: 'Metro City'
-          },
-          accompanyingGuest: null,
-          comingFrom: 'Direct',
-          goingTo: 'Direct',
-          purpose: 'Personal Stay',
-          vehicleNo: 'N/A',
-          roomRate: Number(targetRoom.rate) || 1800,
-          advancePaid: Number(targetRoom.rate) || 1800,
-          paymentMode: 'Cash',
-          policeSubmitted: true,
-          policeSubmittedAt: new Date().toISOString(),
-        };
-        activeStays.unshift(newStay);
-        localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(activeStays));
-        hotelService.addPoliceLogEntry(newStay);
-      }
-    } else if (status !== 'OCCUPIED' && previousStatus === 'OCCUPIED') {
-      // If moved away from OCCUPIED, remove from active stays
-      const updatedStays = activeStays.filter(s => String(s.roomNumber) !== roomNo);
-      localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedStays));
-      
-      const existingStay = activeStays.find(s => String(s.roomNumber) === roomNo);
-      if (existingStay) {
-        hotelService.updatePoliceLogCheckOut(roomNo, existingStay.primaryGuest?.name);
+      if (status === 'OCCUPIED' && previousStatus !== 'OCCUPIED') {
+        // If manually marked OCCUPIED from Room Management, create a placeholder stay
+        const existingStay = activeStays.find(s => String(s.roomNumber) === roomNo);
+        if (!existingStay) {
+          const newStay = {
+            id: generateId('STAY'),
+            roomNumber: roomNo,
+            checkInTime: new Date().toISOString(),
+            expectedCheckOut: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+            stayType: '24 Hours Full Stay',
+            primaryGuest: {
+              name: `Walk-in Guest (Room ${roomNo})`,
+              phone: 'N/A',
+              idType: 'N/A',
+              idNumber: 'N/A',
+              address: 'Manual Room Allocation',
+              city: 'N/A'
+            },
+            accompanyingGuest: null,
+            comingFrom: 'Direct',
+            goingTo: 'Direct',
+            purpose: 'Personal Stay',
+            vehicleNo: 'N/A',
+            roomRate: Number(targetRoom.rate) || 1800,
+            advancePaid: Number(targetRoom.rate) || 1800,
+            paymentMode: 'Cash',
+            policeSubmitted: false,
+            policeSubmittedAt: null,
+          };
+          activeStays.unshift(newStay);
+          localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(activeStays));
+          hotelService.addPoliceLogEntry(newStay);
+        }
+      } else if (status !== 'OCCUPIED' && previousStatus === 'OCCUPIED') {
+        // If moved away from OCCUPIED, remove from active stays
+        const stayToRemove = activeStays.find(s => String(s.roomNumber) === roomNo);
+        const updatedStays = activeStays.filter(s => String(s.roomNumber) !== roomNo);
+        localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedStays));
+
+        if (stayToRemove) {
+          hotelService.updatePoliceLogCheckOut(roomNo, stayToRemove.primaryGuest?.name);
+        }
       }
     }
 
-    // Synchronize HTL-101 in hotels storage for Police Portal live sync
-    try {
-      const hotels = JSON.parse(localStorage.getItem('staylog_hotels_v2')) || [];
-      const occCount = updatedRooms.filter(r => r.status === 'OCCUPIED').length;
-      const updatedHotels = hotels.map(h => {
-        if (h.id === 'HTL-101') {
-          return {
-            ...h,
-            totalRooms: updatedRooms.length,
-            occupiedRooms: occCount,
-            vacantRooms: updatedRooms.filter(r => r.status === 'VACANT').length,
-            occupancyRate: Math.round((occCount / updatedRooms.length) * 100)
-          };
-        }
-        return h;
-      });
-      localStorage.setItem('staylog_hotels_v2', JSON.stringify(updatedHotels));
-    } catch (e) {}
-
+    syncHotelOccupancyStats(updatedRooms);
     return updatedRooms;
   },
 
   updateRoomTariff: (roomId, newRate) => {
     const rooms = hotelService.getRooms();
-    const updated = rooms.map(r => 
-      r.id === roomId || r.number === roomId ? { ...r, rate: Number(newRate) || r.rate } : r
+    const updated = rooms.map(r =>
+      (r.id === roomId || String(r.number) === String(roomId))
+        ? { ...r, rate: Number(newRate) || r.rate }
+        : r
     );
     localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(updated));
     return updated;
   },
 
-  // Active Stays API
+  // ══════════════════════════════════════════════════════════════════════════
+  // ACTIVE STAYS API
+  // ══════════════════════════════════════════════════════════════════════════
+
   getActiveStays: () => {
     try {
-      return JSON.parse(localStorage.getItem(ACTIVE_STAYS_STORAGE_KEY)) || initialActiveStays;
+      return JSON.parse(localStorage.getItem(ACTIVE_STAYS_STORAGE_KEY)) || [];
     } catch (e) {
-      return initialActiveStays;
+      return [];
     }
   },
 
-  // Guest Database Lookup for Express Auto-Fill
+  // ══════════════════════════════════════════════════════════════════════════
+  // GUEST DATABASE (Frequent Guest Ledger)
+  // ══════════════════════════════════════════════════════════════════════════
+
   lookupGuestByPhoneOrAadhaar: (query) => {
     if (!query || query.trim().length < 3) return null;
     const cleanQuery = query.trim().replace(/\s+/g, '');
@@ -156,8 +240,8 @@ export const hotelService = {
 
   saveOrUpdateGuestHistory: (primaryGuest, accompanyingGuest) => {
     const guests = hotelService.getAllGuests();
-    const existingIndex = guests.findIndex(g => 
-      (g.phone && g.phone === primaryGuest.phone) || 
+    const existingIndex = guests.findIndex(g =>
+      (g.phone && g.phone === primaryGuest.phone) ||
       (g.aadhaar && g.aadhaar === primaryGuest.idNumber)
     );
 
@@ -189,16 +273,36 @@ export const hotelService = {
     localStorage.setItem(GUESTS_STORAGE_KEY, JSON.stringify(guests));
   },
 
-  // Perform Express or New Check-In
-  checkInGuest: async (stayData) => {
-    const activeStays = hotelService.getActiveStays();
-    const newStayId = `STAY-${1000 + activeStays.length + 1}`;
+  // ══════════════════════════════════════════════════════════════════════════
+  // CHECK-IN (Express or New Guest)
+  // ══════════════════════════════════════════════════════════════════════════
 
-    // 1. Persist sequentially to SQLite Backend Database
-    let dbRecord = null;
+  /**
+   * Performs guest check-in. This is the SINGLE source of truth for check-in flow:
+   * 1. Save to backend SQLite DB (async, fire-and-forget on failure)
+   * 2. Create active stay record in localStorage
+   * 3. Mark room as OCCUPIED (with _skipStaySync to prevent circular loop)
+   * 4. Update frequent guest ledger
+   * 5. Add police log entry
+   */
+  checkInGuest: (stayData) => {
+    const activeStays = hotelService.getActiveStays();
+    const roomNo = String(stayData.roomNumber);
+
+    // Prevent double check-in to same room
+    const alreadyOccupied = activeStays.find(s => String(s.roomNumber) === roomNo);
+    if (alreadyOccupied) {
+      console.warn(`Room ${roomNo} already has an active stay. Skipping duplicate check-in.`);
+      return alreadyOccupied;
+    }
+
+    const newStayId = generateId('STAY');
+    const regNo = `REG-${String(activeStays.length + 1).padStart(4, '0')}`;
+
+    // Fire backend DB save async (non-blocking)
     try {
       const payload = {
-        roomNumber: String(stayData.roomNumber),
+        roomNumber: roomNo,
         stayType: stayData.stayType || '24 Hours Full Stay',
         roomRate: Number(stayData.roomRate) || 1800,
         advancePaid: Number(stayData.advancePaid) || Number(stayData.roomRate) || 1800,
@@ -214,38 +318,27 @@ export const hotelService = {
         signature: stayData.signature || null,
       };
 
-      let res = null;
-      try {
-        res = await fetch('/api/guests/checkin', {
+      fetch('/api/guests/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(() => {
+        fetch('http://127.0.0.1:8008/api/guests/checkin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
-        });
-      } catch {
-        res = await fetch('http://127.0.0.1:8008/api/guests/checkin', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      }
-
-      if (res && res.ok) {
-        const json = await res.json();
-        if (json.success && json.record) {
-          dbRecord = json.record;
-        }
-      }
+        }).catch(err => console.warn('Backend DB check-in failed (non-critical):', err));
+      });
     } catch (dbErr) {
       console.warn('Backend database check-in warning:', dbErr);
     }
 
-    const regNo = dbRecord?.reg_no || `REG-${String(activeStays.length + 1).padStart(4, '0')}`;
-
+    // Create the stay record
     const newStayRecord = {
       id: newStayId,
       regNo: regNo,
-      dbId: dbRecord?.id || null,
-      roomNumber: stayData.roomNumber,
+      dbId: null,
+      roomNumber: roomNo,
       checkInTime: new Date().toISOString(),
       expectedCheckOut: stayData.expectedCheckOut || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
       stayType: stayData.stayType || '24 Hours Full Stay',
@@ -265,56 +358,85 @@ export const hotelService = {
       policeSubmittedAt: new Date().toISOString(),
     };
 
+    // 1. Add to active stays
     activeStays.unshift(newStayRecord);
     localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(activeStays));
 
-    // Mark room as OCCUPIED
-    hotelService.updateRoomStatus(stayData.roomNumber, 'OCCUPIED');
+    // 2. Mark room as OCCUPIED (_skipStaySync = true to prevent circular loop!)
+    hotelService.updateRoomStatus(roomNo, 'OCCUPIED', true);
 
-    // Update frequent guest ledger database
+    // 3. Update frequent guest ledger
     hotelService.saveOrUpdateGuestHistory(stayData.primaryGuest, stayData.accompanyingGuest);
 
-    // Add entry to police historical logs
+    // 4. Add police log entry
     hotelService.addPoliceLogEntry(newStayRecord);
 
     return newStayRecord;
   },
 
-  // Check-Out Guest
-  checkOutGuest: (stayId) => {
+  // ══════════════════════════════════════════════════════════════════════════
+  // CHECK-OUT
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Checks out a guest. Accepts either a stay ID or room number.
+   * 1. Find the stay by ID first, then by room number
+   * 2. Remove from active stays
+   * 3. Mark room as CLEANING (_skipStaySync to prevent circular loop)
+   * 4. Update police log checkout time
+   * 5. Notify backend DB (fire-and-forget)
+   */
+  checkOutGuest: (stayIdOrRoom) => {
     const activeStays = hotelService.getActiveStays();
-    const stayToCheckout = activeStays.find(s => s.id === stayId || s.roomNumber === stayId);
 
-    if (!stayToCheckout) return null;
+    // Find the stay: try by ID first, then by room number
+    let stayToCheckout = activeStays.find(s => s.id === stayIdOrRoom);
+    if (!stayToCheckout) {
+      stayToCheckout = activeStays.find(s => String(s.roomNumber) === String(stayIdOrRoom));
+    }
 
-    // Notify backend SQLite database
+    if (!stayToCheckout) {
+      console.warn(`No active stay found for: ${stayIdOrRoom}`);
+      return null;
+    }
+
+    // Notify backend SQLite database (fire-and-forget)
     try {
       fetch(`/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {
         fetch(`http://127.0.0.1:8008/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {});
       });
     } catch {}
 
-    const updatedActiveStays = activeStays.filter(s => s.id !== stayId && s.roomNumber !== stayId);
+    // Remove this specific stay from active stays (by ID, not room number to be precise)
+    const updatedActiveStays = activeStays.filter(s => s.id !== stayToCheckout.id);
     localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedActiveStays));
 
-    // Update room status to CLEANING
-    hotelService.updateRoomStatus(stayToCheckout.roomNumber, 'CLEANING');
+    // Update room status to CLEANING (_skipStaySync = true!)
+    hotelService.updateRoomStatus(stayToCheckout.roomNumber, 'CLEANING', true);
 
     // Update check-out timestamp in Police log
-    hotelService.updatePoliceLogCheckOut(stayToCheckout.roomNumber, stayToCheckout.primaryGuest.name);
+    hotelService.updatePoliceLogCheckOut(stayToCheckout.roomNumber, stayToCheckout.primaryGuest?.name);
+
+    // Add checkout time to the returned record for receipt
+    stayToCheckout.checkOutTime = new Date().toISOString();
 
     return stayToCheckout;
   },
 
-  // Fetch sequential records from SQLite backend
+  // ══════════════════════════════════════════════════════════════════════════
+  // BACKEND DATABASE RECORDS (SQLite / PostgreSQL)
+  // ══════════════════════════════════════════════════════════════════════════
+
   getDatabaseRecords: async (search = '') => {
     try {
       const url = search ? `/api/guests/records?search=${encodeURIComponent(search)}` : '/api/guests/records';
-      let res = await fetch(url);
-      if (!res.ok) {
+      let res = null;
+      try {
+        res = await fetch(url);
+      } catch {
         res = await fetch(`http://127.0.0.1:8008${url}`);
       }
-      if (res.ok) {
+      if (res && res.ok) {
         const json = await res.json();
         return json.records || [];
       }
@@ -324,7 +446,10 @@ export const hotelService = {
     return [];
   },
 
-  // Police Historical Logs
+  // ══════════════════════════════════════════════════════════════════════════
+  // POLICE LOGS
+  // ══════════════════════════════════════════════════════════════════════════
+
   getPoliceLogs: () => {
     try {
       return JSON.parse(localStorage.getItem(POLICE_LOGS_STORAGE_KEY)) || initialHistoricalPoliceLogs;
@@ -340,18 +465,18 @@ export const hotelService = {
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const newLog = {
-      id: `LOG-${Math.floor(100 + Math.random() * 900)}`,
+      id: generateId('LOG'),
       date: dateStr,
       checkInTime: `${dateStr} ${timeStr}`,
       checkOutTime: 'Active Stay',
       roomNumber: stayRecord.roomNumber,
-      guestName: stayRecord.primaryGuest.name,
-      ageGender: `${stayRecord.primaryGuest.age || 'N/A'} / ${stayRecord.primaryGuest.gender || 'N/A'}`,
-      mobile: stayRecord.primaryGuest.phone || 'N/A',
-      address: `${stayRecord.primaryGuest.address || ''}, ${stayRecord.primaryGuest.city || ''}`,
-      idTypeNo: `${stayRecord.primaryGuest.idType}: ${stayRecord.primaryGuest.idNumber}`,
-      accompanying: stayRecord.accompanyingGuest ? 
-        `${stayRecord.accompanyingGuest.name} (${stayRecord.accompanyingGuest.age || ''}/${stayRecord.accompanyingGuest.gender ? stayRecord.accompanyingGuest.gender[0] : ''}, ${stayRecord.accompanyingGuest.idType}: ${stayRecord.accompanyingGuest.idNumber})` 
+      guestName: stayRecord.primaryGuest?.name || 'Unknown',
+      ageGender: `${stayRecord.primaryGuest?.age || 'N/A'} / ${stayRecord.primaryGuest?.gender || 'N/A'}`,
+      mobile: stayRecord.primaryGuest?.phone || 'N/A',
+      address: `${stayRecord.primaryGuest?.address || ''}, ${stayRecord.primaryGuest?.city || ''}`,
+      idTypeNo: `${stayRecord.primaryGuest?.idType || 'N/A'}: ${stayRecord.primaryGuest?.idNumber || 'N/A'}`,
+      accompanying: stayRecord.accompanyingGuest
+        ? `${stayRecord.accompanyingGuest.name} (${stayRecord.accompanyingGuest.age || ''}/${stayRecord.accompanyingGuest.gender ? stayRecord.accompanyingGuest.gender[0] : ''}, ${stayRecord.accompanyingGuest.idType}: ${stayRecord.accompanyingGuest.idNumber})`
         : 'Single Guest',
       purpose: stayRecord.purpose || 'Personal',
       policeSubmitted: true,
@@ -363,7 +488,11 @@ export const hotelService = {
 
   updatePoliceLogCheckOut: (roomNumber, guestName) => {
     const logs = hotelService.getPoliceLogs();
-    const logIndex = logs.findIndex(l => l.roomNumber === roomNumber && l.guestName === guestName && l.checkOutTime === 'Active Stay');
+    const logIndex = logs.findIndex(l =>
+      String(l.roomNumber) === String(roomNumber) &&
+      l.guestName === guestName &&
+      l.checkOutTime === 'Active Stay'
+    );
 
     if (logIndex >= 0) {
       const now = new Date();
@@ -386,7 +515,10 @@ export const hotelService = {
     return updated;
   },
 
-  // ── Area & Multi-Hotel Occupancy APIs ──────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // AREA & MULTI-HOTEL OCCUPANCY (Police Portal)
+  // ══════════════════════════════════════════════════════════════════════════
+
   getAreasList: () => {
     return [
       { id: 'ALL', name: 'All Jurisdictions / Areas' },
@@ -406,11 +538,11 @@ export const hotelService = {
       hotels = [];
     }
 
-    // Synchronize live rooms & occupancy for StayLog Hotel (HTL-101)
+    // Synchronize live rooms & occupancy for HTL-101
     const liveRooms = hotelService.getRooms();
     const liveOccupied = liveRooms.filter(r => r.status === 'OCCUPIED').length;
     const liveVacant = liveRooms.filter(r => r.status === 'VACANT').length;
-    const liveTotal = liveRooms.length || 15;
+    const liveTotal = liveRooms.length;
 
     const hotelsWithLiveStats = hotels.map(hotel => {
       if (hotel.id === 'HTL-101') {
@@ -419,7 +551,7 @@ export const hotelService = {
           totalRooms: liveTotal,
           occupiedRooms: liveOccupied,
           vacantRooms: liveVacant,
-          occupancyRate: Math.round((liveOccupied / liveTotal) * 100),
+          occupancyRate: liveTotal > 0 ? Math.round((liveOccupied / liveTotal) * 100) : 0,
           isLiveSync: true,
         };
       }
@@ -442,7 +574,10 @@ export const hotelService = {
     return hotelsWithLiveStats.filter(h => h.area === selectedArea);
   },
 
-  // ── Police Document Requisition System ─────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // POLICE DOCUMENT REQUISITION SYSTEM
+  // ══════════════════════════════════════════════════════════════════════════
+
   getDocumentRequests: () => {
     const DOC_REQUESTS_KEY = 'staylog_police_doc_requests_v1';
     try {
@@ -458,7 +593,7 @@ export const hotelService = {
         roomNumber: '101',
         idTypeNo: 'Aadhaar: 4532 8910 2241',
         hotelId: 'HTL-101',
-        hotelName: 'StayLog Guestbooks & Lodge',
+        hotelName: 'Guestbooks Hotel & Lodge',
         officerName: 'Inspector V. K. Sharma',
         stationName: 'Central City Police Station',
         badgeNo: 'POL-INSP-8891',
@@ -498,7 +633,7 @@ export const hotelService = {
         roomNumber: '102',
         idTypeNo: 'Aadhaar: 3344 5566 7788',
         hotelId: 'HTL-101',
-        hotelName: 'StayLog Guestbooks & Lodge',
+        hotelName: 'Guestbooks Hotel & Lodge',
         officerName: 'Sub-Inspector M. R. Deshmukh',
         stationName: 'Central City Police Station',
         badgeNo: 'POL-SI-4412',
@@ -541,10 +676,9 @@ export const hotelService = {
   createDocumentRequest: (reqData) => {
     const DOC_REQUESTS_KEY = 'staylog_police_doc_requests_v1';
     const requests = hotelService.getDocumentRequests();
-    
-    // Check if guest already has an active stay or frequent guest entry for realistic ID mock
+
     const allGuests = hotelService.getAllGuests();
-    const matchGuest = allGuests.find(g => 
+    const matchGuest = allGuests.find(g =>
       g.primaryGuest?.name?.toLowerCase() === reqData.guestName?.toLowerCase()
     );
 
@@ -575,12 +709,12 @@ export const hotelService = {
     }
 
     const newRequest = {
-      id: `REQ-DOC-${Math.floor(100 + Math.random() * 900)}`,
+      id: generateId('REQ-DOC'),
       guestName: reqData.guestName,
       roomNumber: reqData.roomNumber,
       idTypeNo: reqData.idTypeNo,
       hotelId: reqData.hotelId || 'HTL-101',
-      hotelName: reqData.hotelName || 'StayLog Guestbooks & Lodge',
+      hotelName: reqData.hotelName || 'Guestbooks Hotel & Lodge',
       officerName: reqData.officerName || 'Inspector In-Charge',
       stationName: reqData.stationName || 'State Police Station',
       badgeNo: reqData.badgeNo || 'POL-INSP-8891',
@@ -599,7 +733,7 @@ export const hotelService = {
     return newRequest;
   },
 
-  approveDocumentRequest: (requestId, reviewer = 'StayLog Guestbooks Manager', notes = '') => {
+  approveDocumentRequest: (requestId, reviewer = 'Guestbooks Manager', notes = '') => {
     const DOC_REQUESTS_KEY = 'staylog_police_doc_requests_v1';
     const requests = hotelService.getDocumentRequests();
     const updated = requests.map(r => {
@@ -627,7 +761,7 @@ export const hotelService = {
           ...r,
           status: 'REJECTED',
           reviewedAt: new Date().toISOString(),
-          reviewedBy: 'StayLog Hotel Manager',
+          reviewedBy: 'Guestbooks Hotel Manager',
           rejectReason: rejectReason,
         };
       }
@@ -639,7 +773,7 @@ export const hotelService = {
 
   getRequestByGuestAndRoom: (guestName, roomNumber) => {
     const requests = hotelService.getDocumentRequests();
-    return requests.find(r => 
+    return requests.find(r =>
       r.guestName?.toLowerCase() === guestName?.toLowerCase() &&
       String(r.roomNumber) === String(roomNumber)
     ) || null;

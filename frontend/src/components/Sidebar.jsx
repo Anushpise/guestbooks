@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import {
   LayoutDashboard, Zap, UserPlus, ShieldAlert, Users, Receipt,
   FileCheck, Building2, ChevronDown, ChevronRight, SlidersHorizontal,
-  Lock, BedDouble, TrendingUp, Menu, Database
+  Lock, BedDouble, TrendingUp, Menu, Database, Settings
 } from 'lucide-react';
+import logoImg from '../assets/logo.png';
 
 export default function Sidebar({
   user,
@@ -13,7 +14,8 @@ export default function Sidebar({
   openNewCheckInModal,
   openPoliceModal,
   occupiedCount = 0,
-  totalRooms = 15
+  totalRooms = 15,
+  showPoliceOption = false
 }) {
   const role = user?.role || 'HOTEL';
   const [openWorkflow,   setOpenWorkflow]   = useState(true);
@@ -78,6 +80,23 @@ export default function Sidebar({
       borderRight: '1px solid rgba(99,102,241,0.12)'
     }}>
 
+      {/* Brand Header with Logo */}
+      <div className="flex items-center gap-3 px-4 pt-3 pb-3 border-b border-white/5 bg-white/[0.02]">
+        <img 
+          src={logoImg} 
+          alt="Guestbooks Logo" 
+          className="h-9 w-auto object-contain bg-white p-1 rounded-xl shadow-md"
+        />
+        <div>
+          <span className="text-sm font-black tracking-tight text-white block leading-none font-heading">
+            GUESTBOOKS
+          </span>
+          <span className="text-[9px] font-bold text-teal-400 uppercase tracking-widest mt-1 block">
+            Stay & Guest Registry
+          </span>
+        </div>
+      </div>
+
       {/* Occupancy pill at top */}
       <div className="px-4 pt-4 pb-2">
         <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
@@ -111,7 +130,7 @@ export default function Sidebar({
       {/* Nav items */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-4">
 
-        {/* GUESTBOOKS MANAGER */}
+        {/* PROPERTY OWNER */}
         {role === 'HOTEL' && (
           <>
             {/* Guest Workflow */}
@@ -133,7 +152,7 @@ export default function Sidebar({
               <SectionHeader icon={Users} label="Records & Ledger" open={openRecords} onToggle={() => setOpenRecords(!openRecords)} color="text-emerald-400" />
               {openRecords && (
                 <div className="space-y-0.5 pl-1">
-                  <NavItem tab="database" icon={Database} label="Sequential Database" badge="PostgreSQL" accent="emerald" />
+                  <NavItem tab="database" icon={Database} label="Guest Database" badge="SQL" accent="emerald" />
                   <NavItem tab="ledger"   icon={Users}    label="Frequent Guest Ledger" accent="emerald" />
                   <NavItem tab="billing"  icon={Receipt}  label="Billing & Receipts"    accent="emerald" />
                 </div>
@@ -142,13 +161,15 @@ export default function Sidebar({
 
             <div className="h-px bg-white/5 mx-2" />
 
-            {/* Compliance */}
+            {/* Controls */}
             <div className="space-y-0.5">
-              <SectionHeader icon={ShieldAlert} label="Compliance & Admin" open={openCompliance} onToggle={() => setOpenCompliance(!openCompliance)} color="text-rose-400" />
+              <SectionHeader icon={Settings} label="Room & System Controls" open={openCompliance} onToggle={() => setOpenCompliance(!openCompliance)} color="text-amber-400" />
               {openCompliance && (
                 <div className="space-y-0.5 pl-1">
-                  <NavItem tab="police-log" icon={FileCheck}        label="Police Inspection Log" badge="C-Form" accent="indigo" />
                   <NavItem tab="room-mgmt"  icon={SlidersHorizontal} label="Room Status & Tariffs" accent="indigo" />
+                  {showPoliceOption && (
+                    <NavItem tab="police-log" icon={FileCheck} label="Police Log (Secret)" accent="indigo" />
+                  )}
                 </div>
               )}
             </div>
@@ -173,7 +194,7 @@ export default function Sidebar({
               <Lock className="h-3.5 w-3.5" />
               Super Admin Controls
             </div>
-            <NavItem tab="admin-approvals" icon={Lock} label="Guestbooks Approvals & Police" accent="amber" />
+            <NavItem tab="admin-approvals" icon={Lock} label="Guestbooks Approvals" accent="amber" />
           </div>
         )}
       </div>
@@ -181,13 +202,13 @@ export default function Sidebar({
       {/* Footer */}
       <div className="px-3 pb-4 pt-2 border-t border-white/5">
         <div className="flex items-center gap-2.5 rounded-xl bg-white/[0.04] border border-white/5 px-3 py-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 shadow-lg">
             <Building2 className="h-4 w-4 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-xs font-bold text-white leading-none">{user?.name || 'Guestbooks HMS'}</p>
+            <p className="truncate text-xs font-bold text-white leading-none">{user?.name || 'Guestbooks'}</p>
             <p className="text-[10px] text-slate-500 font-semibold capitalize mt-0.5">
-              {role === 'HOTEL' ? 'Guestbooks Manager' : role === 'POLICE' ? 'Police Inspector' : 'Super Admin'}
+              {role === 'HOTEL' ? 'Property Owner' : role === 'POLICE' ? 'Police Inspector' : 'Super Admin'}
             </p>
           </div>
           <div className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
@@ -196,3 +217,4 @@ export default function Sidebar({
     </aside>
   );
 }
+

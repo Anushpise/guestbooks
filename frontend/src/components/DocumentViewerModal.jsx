@@ -78,7 +78,7 @@ export default function DocumentViewerModal({ isOpen, onClose, request }) {
             </div>
             <div>
               <span className="text-slate-400">Authorized by:</span>{' '}
-              <strong className="text-emerald-300">{request.reviewedBy || 'Hotel StayLog Authority'}</strong>
+              <strong className="text-emerald-300">{request.reviewedBy || 'Hotel Guestbooks Authority'}</strong>
             </div>
             <div>
               <span className="text-slate-400">Released on:</span>{' '}
@@ -110,7 +110,7 @@ export default function DocumentViewerModal({ isOpen, onClose, request }) {
                 {/* Diagonal Watermark */}
                 <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-[0.04] rotate-[-20deg]">
                   <p className="text-6xl font-black uppercase text-slate-900 tracking-widest text-center">
-                    POLICE VERIFIED<br />STAYLOG HMS
+                    POLICE VERIFIED<br />GUESTBOOKS HMS
                   </p>
                 </div>
 

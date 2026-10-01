@@ -1,5 +1,6 @@
 import React from 'react';
 import { LogOut, Zap, UserPlus, ShieldCheck, ChevronRight } from 'lucide-react';
+import logoImg from '../assets/logo.png';
 
 export default function Header({
   user,
@@ -8,14 +9,15 @@ export default function Header({
   setActiveTab,
   openExpressModal,
   openNewCheckInModal,
-  openPoliceModal
+  openPoliceModal,
+  showPoliceOption = false
 }) {
   const role = user?.role || 'HOTEL';
 
   const ROLE_CONFIG = {
-    ADMIN:  { label: 'Super Admin',      bg: 'bg-amber-500',   dot: 'bg-amber-400' },
-    POLICE: { label: 'Police Inspector', bg: 'bg-indigo-600',  dot: 'bg-indigo-400' },
-    HOTEL:  { label: 'Guestbooks Manager', bg: 'bg-emerald-600', dot: 'bg-emerald-400' },
+    ADMIN:  { label: 'Super Admin',         bg: 'bg-amber-500',   dot: 'bg-amber-400' },
+    POLICE: { label: 'Police Inspector',    bg: 'bg-indigo-600',  dot: 'bg-indigo-400' },
+    HOTEL:  { label: 'Property Owner',      bg: 'bg-emerald-600', dot: 'bg-emerald-400' },
   };
 
   const TAB_TITLES = {
@@ -23,7 +25,7 @@ export default function Header({
     'express-checkin': 'Express Check-In',
     'new-checkin':     'New Guest Registration',
     'ledger':          'Frequent Guest Ledger',
-    'police-log':      'Police Inspection Log',
+    'police-log':      'Police Log',
     'billing':         'Billing & Receipts',
     'room-mgmt':       'Room Status & Tariffs',
     'admin-approvals': 'Guestbooks Document Approvals',
@@ -47,19 +49,18 @@ export default function Header({
       {/* Brand + Breadcrumb */}
       <div className="flex items-center gap-3">
         {/* Logo mark */}
-        <div
-          className="flex h-8 w-8 items-center justify-center rounded-xl font-black text-white text-xs shadow-md"
-          style={{ background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)' }}
-        >
-          SL
-        </div>
+        <img 
+          src={logoImg} 
+          alt="Guestbooks Logo" 
+          className="h-8 w-auto object-contain bg-white rounded-lg p-0.5 border border-slate-200"
+        />
 
         <div className="flex items-center gap-2">
           <h1
-            className="text-base font-black tracking-tight text-slate-900"
+            className="text-base font-black tracking-tight text-teal-900"
             style={{ fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.04em' }}
           >
-            STAYLOG
+            GUESTBOOKS
           </h1>
           {/* Role pill */}
           <span className={`${roleBg} text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1`}>
@@ -92,12 +93,14 @@ export default function Header({
             >
               <UserPlus className="h-3.5 w-3.5" /> New Guest
             </button>
-            <button
-              onClick={openPoliceModal}
-              className="hidden lg:flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-700 transition-all"
-            >
-              <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" /> Police Log
-            </button>
+            {showPoliceOption && (
+              <button
+                onClick={openPoliceModal}
+                className="hidden lg:flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-700 transition-all"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" /> Police Log
+              </button>
+            )}
             <div className="mx-1 h-5 w-px bg-slate-200" />
           </>
         )}
@@ -106,7 +109,7 @@ export default function Header({
         <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white pl-1 pr-3 py-1 shadow-xs">
           <div
             className="flex h-7 w-7 items-center justify-center rounded-full font-black text-white text-[11px]"
-            style={{ background: 'linear-gradient(135deg, #4f46e5, #7c3aed)' }}
+            style={{ background: 'linear-gradient(135deg, #0d9488, #059669)' }}
           >
             {initials}
           </div>
@@ -126,3 +129,4 @@ export default function Header({
     </header>
   );
 }
+

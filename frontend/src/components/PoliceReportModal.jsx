@@ -62,7 +62,7 @@ export default function PoliceReportModal({ isOpen, onClose }) {
           <div className="official-hotel-header">
             <h1>GUESTBOOKS REGISTRATION LOG & POLICE VERIFICATION REGISTER</h1>
             <p className="hotel-details-text">
-              <strong>STAYLOG BOUTIQUE GUESTBOOKS & LODGE</strong> • Govt Reg. No: <strong>GB-MH-2026-9041</strong>
+              <strong>GUESTBOOKS HOTEL & LODGE</strong> • Govt Reg. No: <strong>GB-MH-2026-9041</strong>
             </p>
             <p className="police-jurisdiction-text">
               Jurisdiction: <strong>LOCAL POLICE STATION / E-FRRO COMPLIANCE REGISTER</strong>

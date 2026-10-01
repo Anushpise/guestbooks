@@ -48,7 +48,7 @@ docker compose up --build -d
 ```
 
 - **Frontend App**: [http://localhost:5173](http://localhost:5173)
-- **Backend API**: [http://localhost:8000](http://localhost:8000)
+- **Backend API**: [http://localhost:8008](http://localhost:8008)
 - **Database Storage**: Mounts `./backend/data` to `/app/data` inside container so all guest records, document photos, and signatures remain 100% persistent.
 
 To stop the containers:

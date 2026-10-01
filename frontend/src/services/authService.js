@@ -9,7 +9,7 @@ const SESSION_STORAGE_KEY = 'staylog_session_v2';
 const initialUsers = [
   {
     id: 'USR-ADMIN-1',
-    email: 'admin@staylog.com',
+    email: 'admin@guestbooks.com',
     password: 'admin123',
     name: 'Super System Administrator',
     role: 'ADMIN',
@@ -26,9 +26,9 @@ const initialUsers = [
   },
   {
     id: 'USR-HOTEL-1',
-    email: 'hotel@staylog.com',
+    email: 'hotel@guestbooks.com',
     password: 'hotel123',
-    name: 'StayLog Guestbooks & Lodge',
+    name: 'Guestbooks Hotel Management & Lodge',
     role: 'HOTEL',
     hotelId: 'HTL-101',
   },
@@ -37,9 +37,9 @@ const initialUsers = [
 const initialHotels = [
   {
     id: 'HTL-101',
-    name: 'StayLog Guestbooks & Lodge',
+    name: 'Guestbooks Hotel Management & Lodge',
     ownerName: 'NexOpps Hospitality',
-    email: 'hotel@staylog.com',
+    email: 'hotel@guestbooks.com',
     phone: '9876543210',
     area: 'Metro Division Sector 4',
     address: '102 MG Road, Sector 14, Metro City',
@@ -242,11 +242,6 @@ const initAuthStorage = () => {
   }
   if (!localStorage.getItem(POLICE_STORAGE_KEY)) {
     localStorage.setItem(POLICE_STORAGE_KEY, JSON.stringify(initialPoliceAccounts));
-  }
-  if (!localStorage.getItem(SESSION_STORAGE_KEY)) {
-    // Default logged in as Hotel Manager for smooth demo experience
-    const defaultUser = initialUsers.find(u => u.role === 'HOTEL');
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(defaultUser));
   }
 };
 

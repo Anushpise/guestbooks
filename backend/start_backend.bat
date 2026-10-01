@@ -1,7 +1,7 @@
 @echo off
-title Python PaddleOCR Backend Server
+title Guestbooks Hotel Management - Python AI OCR Backend
 echo ===================================================
-echo   Starting Python PaddleOCR Backend (Port 8000)
+echo   Starting Guestbooks AI OCR Backend (Port 8008)
 echo ===================================================
 cd /d "%~dp0"
 
@@ -18,7 +18,7 @@ pip install -r requirements.txt
 
 echo.
 echo ===================================================
-echo   FastAPI Server live at http://localhost:8000
+echo   Guestbooks Backend Server live at http://localhost:8008
 echo ===================================================
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8008 --reload
 pause
