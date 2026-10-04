@@ -106,11 +106,14 @@ const initAuthStorage = () => {
     savedHotels = [];
   }
 
-  if (!savedHotels || savedHotels.length < 5 || !savedHotels[0]?.area) {
+  if (!savedHotels || savedHotels.length === 0) {
     localStorage.setItem(HOTELS_STORAGE_KEY, JSON.stringify(initialHotels));
   } else {
+    // Preserve all registered and pending hotels, ensure initial hotel is present
     initialHotels.forEach((seedHotel) => {
-      const exists = savedHotels.some((h) => h.id === seedHotel.id || h.email === seedHotel.email);
+      const exists = savedHotels.some(
+        (h) => h.id === seedHotel.id || (h.email && h.email.toLowerCase() === seedHotel.email.toLowerCase())
+      );
       if (!exists) {
         savedHotels.push(seedHotel);
       }
@@ -166,7 +169,7 @@ export const authService = {
     // If user is a Hotel Manager, check hotel approval status
     if (user.role === 'HOTEL') {
       const hotels = JSON.parse(localStorage.getItem(HOTELS_STORAGE_KEY)) || initialHotels;
-      const hotel = hotels.find((h) => h.id === user.hotelId || h.email.toLowerCase() === cleanCred);
+      const hotel = hotels.find((h) => h.id === user.hotelId || (h.email && h.email.toLowerCase() === cleanCred));
 
       if (hotel && hotel.status === 'PENDING') {
         return {
@@ -189,39 +192,44 @@ export const authService = {
 
   // Hotel Self-Registration
   registerHotel: (hotelData) => {
+    initAuthStorage();
     const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY)) || initialUsers;
     const hotels = JSON.parse(localStorage.getItem(HOTELS_STORAGE_KEY)) || initialHotels;
 
-    const existingUser = users.find((u) => u.email.toLowerCase() === hotelData.email.trim().toLowerCase());
+    const cleanEmail = hotelData.email.trim().toLowerCase();
+    const existingUser = users.find((u) => u.email && u.email.toLowerCase() === cleanEmail);
     if (existingUser) {
       return { success: false, message: 'An account with this email address already exists.' };
     }
 
-    const hotelId = `HTL-${Math.floor(100 + Math.random() * 900)}`;
+    const hotelId = `HTL-${Math.floor(1000 + Math.random() * 9000)}`;
     const userId = `USR-HTL-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newHotelRecord = {
       id: hotelId,
       name: hotelData.hotelName,
       ownerName: hotelData.ownerName,
-      email: hotelData.email.trim(),
+      email: cleanEmail,
       phone: hotelData.phone,
-      address: hotelData.address,
-      propertyType: hotelData.propertyType || 'Hostel / Budget Stay',
-      subscriptionPlan: hotelData.subscriptionPlan || 'Hostel Standard (₹499/month)',
+      address: hotelData.address || 'Address provided during registration',
+      area: hotelData.area || 'Metro Division Sector 4',
+      propertyType: hotelData.propertyType || 'Hotel / Lodge Stay',
+      subscriptionPlan: hotelData.subscriptionPlan || 'Guestbooks Standard Plan (₹499/month)',
       subscriptionAmount: hotelData.subscriptionAmount || 499,
       status: 'PENDING',
       regNumber: `REG-${Date.now().toString().slice(-6)}`,
-      documents: hotelData.documents || [
-        { name: 'Hotel_Trade_License.pdf', size: '1.4 MB', type: 'PDF' },
-        { name: 'Owner_Government_ID.pdf', size: '920 KB', type: 'PDF' },
+      totalRooms: Number(hotelData.totalRooms) || 15,
+      occupiedRooms: 0,
+      documents: hotelData.documents && hotelData.documents.length > 0 ? hotelData.documents : [
+        { name: `${hotelData.hotelName.replace(/\s+/g, '_')}_Trade_License.pdf`, size: '1.4 MB', type: 'PDF' },
+        { name: 'Owner_Aadhaar_Verification.pdf', size: '920 KB', type: 'PDF' },
       ],
       registeredAt: new Date().toISOString(),
     };
 
     const newUserRecord = {
       id: userId,
-      email: hotelData.email.trim(),
+      email: cleanEmail,
       password: hotelData.password,
       name: hotelData.hotelName,
       role: 'HOTEL',
@@ -233,6 +241,10 @@ export const authService = {
 
     localStorage.setItem(HOTELS_STORAGE_KEY, JSON.stringify(hotels));
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+
+    try {
+      window.dispatchEvent(new CustomEvent('guestbooks_hotel_registered', { detail: newHotelRecord }));
+    } catch (e) {}
 
     return {
       success: true,
@@ -298,6 +310,9 @@ export const authService = {
       h.id === hotelId ? { ...h, status: 'APPROVED', approvedAt: new Date().toISOString() } : h
     );
     localStorage.setItem(HOTELS_STORAGE_KEY, JSON.stringify(updated));
+    try {
+      window.dispatchEvent(new CustomEvent('guestbooks_hotel_status_changed', { detail: { hotelId, status: 'APPROVED' } }));
+    } catch (e) {}
     return updated;
   },
 
@@ -307,6 +322,9 @@ export const authService = {
       h.id === hotelId ? { ...h, status: 'REJECTED', rejectedAt: new Date().toISOString() } : h
     );
     localStorage.setItem(HOTELS_STORAGE_KEY, JSON.stringify(updated));
+    try {
+      window.dispatchEvent(new CustomEvent('guestbooks_hotel_status_changed', { detail: { hotelId, status: 'REJECTED' } }));
+    } catch (e) {}
     return updated;
   },
 

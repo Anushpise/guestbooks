@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Users, Building2, Camera, Check, UserPlus, PenTool } from 'lucide-react';
+import { User, Users, Building2, Camera, Check, UserPlus, PenTool, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
@@ -7,10 +7,11 @@ import DocumentScannerZone from './DocumentScannerZone';
 import SignatureModal from './SignatureModal';
 
 export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
+  const [resetKey, setResetKey] = useState(Date.now());
   const [selectedRoomNumber, setSelectedRoomNumber] = useState(vacantRooms[0]?.number || '');
   const [stayType, setStayType] = useState('24 Hours Full Stay');
-  const [roomRate, setRoomRate] = useState(vacantRooms[0]?.rate.toString() || '1800');
-  const [advancePaid, setAdvancePaid] = useState(vacantRooms[0]?.rate.toString() || '1800');
+  const [roomRate, setRoomRate] = useState(vacantRooms[0]?.rate?.toString() || '1800');
+  const [advancePaid, setAdvancePaid] = useState(vacantRooms[0]?.rate?.toString() || '1800');
   const [paymentMode, setPaymentMode] = useState('UPI / GPay');
 
   // Digital Signature & Uploaded Documents
@@ -31,7 +32,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
   const [isLocal, setIsLocal] = useState(false);
 
   // Accompanying Guest / Partner
-  const [hasAccompanying, setHasAccompanying] = useState(true);
+  const [hasAccompanying, setHasAccompanying] = useState(false);
   const [partnerName, setPartnerName] = useState('');
   const [partnerAge, setPartnerAge] = useState('');
   const [partnerGender, setPartnerGender] = useState('Female');
@@ -45,6 +46,39 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
   const [purpose, setPurpose] = useState('Personal / Tourism');
   const [vehicleNo, setVehicleNo] = useState('');
   const [idScanUploaded, setIdScanUploaded] = useState(false);
+
+  const resetForm = () => {
+    setSelectedRoomNumber(vacantRooms[0]?.number || '');
+    setStayType('24 Hours Full Stay');
+    setRoomRate(vacantRooms[0]?.rate?.toString() || '1800');
+    setAdvancePaid(vacantRooms[0]?.rate?.toString() || '1800');
+    setPaymentMode('UPI / GPay');
+    setSignatureData(null);
+    setPrimaryDocs({ front: null, back: null });
+    setPartnerDocs({ front: null, back: null });
+    setPrimaryName('');
+    setPrimaryAge('');
+    setPrimaryGender('Male');
+    setPrimaryPhone('');
+    setPrimaryIdType('Aadhaar Card');
+    setPrimaryIdNumber('');
+    setPrimaryAddress('');
+    setPrimaryCity('');
+    setIsLocal(false);
+    setHasAccompanying(false);
+    setPartnerName('');
+    setPartnerAge('');
+    setPartnerGender('Female');
+    setPartnerRelation('Partner / Couple');
+    setPartnerIdType('Aadhaar Card');
+    setPartnerIdNumber('');
+    setComingFrom('');
+    setGoingTo('');
+    setPurpose('Personal / Tourism');
+    setVehicleNo('');
+    setIdScanUploaded(false);
+    setResetKey(Date.now());
+  };
 
   const handlePrimaryOcrExtract = (parsed) => {
     if (parsed.name) setPrimaryName(parsed.name);
@@ -123,6 +157,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
     };
 
     onCheckInComplete(checkInData);
+    resetForm();
     alert(`Guest registration submitted! Room ${selectedRoomNumber} is now OCCUPIED.`);
   };
 
@@ -156,6 +191,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
 
           {/* Document Photo Upload & OCR Scanner Zone (2 Photos: Front & Back) */}
           <DocumentScannerZone
+            key={`primary-${resetKey}`}
             label="Primary Guest Document — Auto Scan & Fill"
             targetGuestName="Primary Guest"
             accentColor="indigo"
@@ -306,6 +342,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
             <div className="space-y-4 pt-2">
               {/* Document Photo Upload & OCR Zone for Partner B */}
               <DocumentScannerZone
+                key={`partner-${resetKey}`}
                 label="Partner B Document — Auto Scan & Fill"
                 targetGuestName="Partner B"
                 accentColor="emerald"
@@ -505,7 +542,15 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+        <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+          <Button
+            type="button"
+            variant="outline"
+            className="text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 border-slate-300 gap-1.5"
+            onClick={resetForm}
+          >
+            <RotateCcw className="h-4 w-4" /> Clear / Reset Form
+          </Button>
           <Button type="submit" variant="emerald" size="lg" className="px-6 font-extrabold shadow-sm">
             <Check className="h-4 w-4" /> Save Registration & Check In
           </Button>

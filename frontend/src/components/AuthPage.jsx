@@ -391,22 +391,57 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
                   id="regDocUpload"
                   multiple
                   accept="image/*,application/pdf"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const files = Array.from(e.target.files || []);
                     if (files.length > 0) {
-                      setDocumentsUploaded(true);
-                      Promise.all(files.map(file => new Promise(resolve => {
-                        const reader = new FileReader();
-                        reader.readAsDataURL(file);
-                        reader.onload = () => resolve({
-                          name: file.name,
-                          size: `${(file.size / 1024).toFixed(0)} KB`,
-                          type: file.type.includes('pdf') ? 'PDF' : 'IMAGE',
-                          dataUrl: reader.result
+                      const processed = await Promise.all(files.map(file => {
+                        return new Promise((resolve) => {
+                          if (file.type.includes('pdf')) {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve({
+                              name: file.name,
+                              size: `${(file.size / 1024).toFixed(0)} KB`,
+                              type: 'PDF',
+                              dataUrl: reader.result
+                            });
+                            reader.readAsDataURL(file);
+                          } else {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              const img = new Image();
+                              img.onload = () => {
+                                const canvas = document.createElement('canvas');
+                                let { width, height } = img;
+                                const maxDim = 1200;
+                                if (width > maxDim || height > maxDim) {
+                                  if (width > height) {
+                                    height = Math.round((height * maxDim) / width);
+                                    width = maxDim;
+                                  } else {
+                                    width = Math.round((width * maxDim) / height);
+                                    height = maxDim;
+                                  }
+                                }
+                                canvas.width = width;
+                                canvas.height = height;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, width, height);
+                                const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+                                resolve({
+                                  name: file.name,
+                                  size: `${Math.round(dataUrl.length * 0.75 / 1024)} KB`,
+                                  type: 'IMAGE',
+                                  dataUrl
+                                });
+                              };
+                              img.src = ev.target.result;
+                            };
+                            reader.readAsDataURL(file);
+                          }
                         });
-                      }))).then(fileObjs => {
-                        setRegDocumentFiles(fileObjs);
-                      });
+                      }));
+                      setRegDocumentFiles(prev => [...prev, ...processed]);
+                      setDocumentsUploaded(true);
                     }
                   }}
                   className="hidden"
@@ -415,21 +450,39 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
                 <label
                   htmlFor="regDocUpload"
                   className={`w-full h-10 rounded-lg border text-xs font-bold cursor-pointer transition-all flex items-center justify-center gap-2 ${
-                    documentsUploaded
+                    regDocumentFiles.length > 0
                       ? 'border-emerald-500 bg-emerald-950/80 text-emerald-300'
                       : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-emerald-600 hover:bg-slate-800'
                   }`}
                 >
-                  {documentsUploaded ? (
-                    <>
-                      <Check className="h-4 w-4 text-emerald-400" /> {regDocumentFiles.length || 1} Document(s) Attached
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud className="h-4 w-4 text-emerald-400" /> Browse & Attach Documents (.PDF / .JPG)
-                    </>
-                  )}
+                  <UploadCloud className="h-4 w-4 text-emerald-400" />
+                  {regDocumentFiles.length > 0 ? '+ Add More Documents' : 'Browse & Attach Documents (.PDF / .JPG)'}
                 </label>
+
+                {regDocumentFiles.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    {regDocumentFiles.map((doc, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5">
+                        <div className="flex items-center gap-2 truncate text-slate-200">
+                          <FileText className="h-3.5 w-3.5 text-emerald-400 flex-shrink-0" />
+                          <span className="font-medium truncate max-w-[200px]">{doc.name}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">({doc.size})</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = regDocumentFiles.filter((_, i) => i !== idx);
+                            setRegDocumentFiles(updated);
+                            if (updated.length === 0) setDocumentsUploaded(false);
+                          }}
+                          className="text-red-400 hover:text-red-300 text-xs font-bold px-1"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <Button type="submit" variant="emerald" size="lg" className="w-full h-11 font-bold text-sm">

@@ -99,9 +99,14 @@ def init_db():
                 document_back TEXT,
                 signature TEXT,
                 status VARCHAR(50) DEFAULT 'CHECKED_IN',
-                checked_out_at VARCHAR(100)
+                checked_out_at VARCHAR(100),
+                hotel_id VARCHAR(100) DEFAULT 'HTL-101'
             )
         """)
+        try:
+            execute_query(conn, db_type, "ALTER TABLE guest_records ADD COLUMN hotel_id VARCHAR(100) DEFAULT 'HTL-101'")
+        except Exception:
+            pass
         conn.commit()
         conn.close()
         logger.info("PostgreSQL database initialized successfully.")
@@ -135,9 +140,14 @@ def init_db():
                 document_back TEXT,
                 signature TEXT,
                 status TEXT DEFAULT 'CHECKED_IN',
-                checked_out_at TEXT
+                checked_out_at TEXT,
+                hotel_id TEXT DEFAULT 'HTL-101'
             )
         """)
+        try:
+            cursor.execute("ALTER TABLE guest_records ADD COLUMN hotel_id TEXT DEFAULT 'HTL-101'")
+        except Exception:
+            pass
         conn.commit()
         conn.close()
         logger.info(f"SQLite database initialized successfully at {DB_PATH}")
@@ -159,6 +169,7 @@ def create_guest_record(data: dict) -> dict:
     primary = data.get("primaryGuest", {})
     accompanying = data.get("accompanyingGuest")
     accompanying_json = json.dumps(accompanying) if accompanying else None
+    hotel_id = str(data.get("hotelId") or data.get("hotel_id") or "HTL-101")
 
     query = """
         INSERT INTO guest_records (
@@ -167,14 +178,14 @@ def create_guest_record(data: dict) -> dict:
             phone, id_type, id_number, dob, age, gender,
             address, city, pincode, coming_from, going_to,
             purpose, vehicle_no, accompanying_guest_json,
-            document_front, document_back, signature, status
+            document_front, document_back, signature, status, hotel_id
         ) VALUES (
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?,
-            ?, ?, ?, 'CHECKED_IN'
+            ?, ?, ?, 'CHECKED_IN', ?
         )
     """
     params = (
@@ -203,7 +214,8 @@ def create_guest_record(data: dict) -> dict:
         accompanying_json,
         data.get("documentFront", ""),
         data.get("documentBack", ""),
-        data.get("signature", "")
+        data.get("signature", ""),
+        hotel_id
     )
 
     execute_query(conn, db_type, query, params)
@@ -215,41 +227,41 @@ def create_guest_record(data: dict) -> dict:
     conn.close()
     return record
 
-def get_all_guest_records(search=None, limit=100, offset=0) -> list:
-    """Returns all guest check-in records in sequence."""
+def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> list:
+    """Returns all guest check-in records in sequence, optionally filtered by hotel_id and search query."""
     conn, db_type = get_db_connection()
     like_op = "ILIKE" if db_type == "postgres" else "LIKE"
 
-    if search:
-        query = f"""
-            SELECT id, reg_no, created_at, room_number, stay_type, room_rate, advance_paid,
-                   payment_mode, guest_name, phone, id_type, id_number, address, city, pincode,
-                   status, checked_out_at,
-                   (CASE WHEN document_front IS NOT NULL AND document_front != '' THEN 1 ELSE 0 END) as has_doc_front,
-                   (CASE WHEN document_back IS NOT NULL AND document_back != '' THEN 1 ELSE 0 END) as has_doc_back,
-                   (CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END) as has_signature
-            FROM guest_records
-            WHERE guest_name {like_op} ? OR phone {like_op} ? OR id_number {like_op} ? OR reg_no {like_op} ? OR room_number {like_op} ?
-            ORDER BY id DESC
-            LIMIT ? OFFSET ?
-        """
-        q_param = f"%{search}%"
-        params = (q_param, q_param, q_param, q_param, q_param, limit, offset)
-    else:
-        query = """
-            SELECT id, reg_no, created_at, room_number, stay_type, room_rate, advance_paid,
-                   payment_mode, guest_name, phone, id_type, id_number, address, city, pincode,
-                   status, checked_out_at,
-                   (CASE WHEN document_front IS NOT NULL AND document_front != '' THEN 1 ELSE 0 END) as has_doc_front,
-                   (CASE WHEN document_back IS NOT NULL AND document_back != '' THEN 1 ELSE 0 END) as has_doc_back,
-                   (CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END) as has_signature
-            FROM guest_records
-            ORDER BY id DESC
-            LIMIT ? OFFSET ?
-        """
-        params = (limit, offset)
+    conditions = []
+    params = []
 
-    cursor = execute_query(conn, db_type, query, params)
+    if hotel_id and hotel_id != "ALL":
+        conditions.append("(hotel_id = ? OR hotel_id IS NULL)")
+        params.append(hotel_id)
+
+    if search:
+        q_param = f"%{search}%"
+        conditions.append(f"(guest_name {like_op} ? OR phone {like_op} ? OR id_number {like_op} ? OR reg_no {like_op} ? OR room_number {like_op} ?)")
+        params.extend([q_param, q_param, q_param, q_param, q_param])
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    query = f"""
+        SELECT id, reg_no, created_at, room_number, stay_type, room_rate, advance_paid,
+               payment_mode, guest_name, phone, id_type, id_number, address, city, pincode,
+               status, checked_out_at, hotel_id,
+               document_front, document_back, signature,
+               (CASE WHEN document_front IS NOT NULL AND document_front != '' THEN 1 ELSE 0 END) as has_doc_front,
+               (CASE WHEN document_back IS NOT NULL AND document_back != '' THEN 1 ELSE 0 END) as has_doc_back,
+               (CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END) as has_signature
+        FROM guest_records
+        {where_clause}
+        ORDER BY id DESC
+        LIMIT ? OFFSET ?
+    """
+    params.extend([limit, offset])
+
+    cursor = execute_query(conn, db_type, query, tuple(params))
     rows = cursor.fetchall()
     records = [dict(r) for r in rows]
     conn.close()

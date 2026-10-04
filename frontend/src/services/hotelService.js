@@ -1,8 +1,9 @@
-import { initialRooms, frequentGuestsDatabase, initialActiveStays, initialHistoricalPoliceLogs } from '../mockData';
+import { initialRooms, frequentGuestsDatabase, initialActiveStays, initialHistoricalPoliceLogs } from '../mockData.js';
 
 const ROOMS_STORAGE_KEY = 'staylog_rooms_v1';
 const GUESTS_STORAGE_KEY = 'staylog_guests_v1';
 const ACTIVE_STAYS_STORAGE_KEY = 'staylog_active_stays_v1';
+const ALL_STAYS_STORAGE_KEY = 'staylog_all_stays_master_v1';
 const POLICE_LOGS_STORAGE_KEY = 'staylog_police_logs_v1';
 
 // ── Unique ID Generator (timestamp + random, no collisions) ──────────────────
@@ -18,6 +19,9 @@ const initStorage = () => {
   }
   if (!localStorage.getItem(ACTIVE_STAYS_STORAGE_KEY)) {
     localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(initialActiveStays));
+  }
+  if (!localStorage.getItem(ALL_STAYS_STORAGE_KEY)) {
+    localStorage.setItem(ALL_STAYS_STORAGE_KEY, JSON.stringify([]));
   }
   if (!localStorage.getItem(POLICE_LOGS_STORAGE_KEY)) {
     localStorage.setItem(POLICE_LOGS_STORAGE_KEY, JSON.stringify(initialHistoricalPoliceLogs));
@@ -299,6 +303,15 @@ export const hotelService = {
     const newStayId = generateId('STAY');
     const regNo = `REG-${String(activeStays.length + 1).padStart(4, '0')}`;
 
+    // Get current user's hotel ID
+    let currentHotelId = 'HTL-101';
+    try {
+      const user = JSON.parse(localStorage.getItem('staylog_session_v2')) || {};
+      currentHotelId = stayData.hotelId || user.hotelId || 'HTL-101';
+    } catch (e) {
+      currentHotelId = stayData.hotelId || 'HTL-101';
+    }
+
     // Fire backend DB save async (non-blocking)
     try {
       const payload = {
@@ -316,6 +329,7 @@ export const hotelService = {
         documentFront: stayData.documentFront || null,
         documentBack: stayData.documentBack || null,
         signature: stayData.signature || null,
+        hotelId: currentHotelId,
       };
 
       fetch('/api/guests/checkin', {
@@ -338,6 +352,7 @@ export const hotelService = {
       id: newStayId,
       regNo: regNo,
       dbId: null,
+      hotelId: currentHotelId,
       roomNumber: roomNo,
       checkInTime: new Date().toISOString(),
       expectedCheckOut: stayData.expectedCheckOut || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
@@ -356,19 +371,29 @@ export const hotelService = {
       signature: stayData.signature || null,
       policeSubmitted: true,
       policeSubmittedAt: new Date().toISOString(),
+      status: 'CHECKED_IN',
     };
 
     // 1. Add to active stays
     activeStays.unshift(newStayRecord);
     localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(activeStays));
 
-    // 2. Mark room as OCCUPIED (_skipStaySync = true to prevent circular loop!)
+    // 2. Add to master all-stays log
+    try {
+      const allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
+      allStays.unshift(newStayRecord);
+      localStorage.setItem(ALL_STAYS_STORAGE_KEY, JSON.stringify(allStays));
+    } catch (e) {
+      console.warn('Failed to append to master stays log:', e);
+    }
+
+    // 3. Mark room as OCCUPIED (_skipStaySync = true to prevent circular loop!)
     hotelService.updateRoomStatus(roomNo, 'OCCUPIED', true);
 
-    // 3. Update frequent guest ledger
+    // 4. Update frequent guest ledger
     hotelService.saveOrUpdateGuestHistory(stayData.primaryGuest, stayData.accompanyingGuest);
 
-    // 4. Add police log entry
+    // 5. Add police log entry
     hotelService.addPoliceLogEntry(newStayRecord);
 
     return newStayRecord;
@@ -382,9 +407,10 @@ export const hotelService = {
    * Checks out a guest. Accepts either a stay ID or room number.
    * 1. Find the stay by ID first, then by room number
    * 2. Remove from active stays
-   * 3. Mark room as CLEANING (_skipStaySync to prevent circular loop)
-   * 4. Update police log checkout time
-   * 5. Notify backend DB (fire-and-forget)
+   * 3. Update master all-stays record status to CHECKED_OUT
+   * 4. Mark room as CLEANING (_skipStaySync to prevent circular loop)
+   * 5. Update police log checkout time
+   * 6. Notify backend DB (fire-and-forget)
    */
   checkOutGuest: (stayIdOrRoom) => {
     const activeStays = hotelService.getActiveStays();
@@ -407,9 +433,22 @@ export const hotelService = {
       });
     } catch {}
 
-    // Remove this specific stay from active stays (by ID, not room number to be precise)
+    // Remove this specific stay from active stays
     const updatedActiveStays = activeStays.filter(s => s.id !== stayToCheckout.id);
     localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedActiveStays));
+
+    // Update check-out timestamp in master all-stays log
+    const nowIso = new Date().toISOString();
+    try {
+      const allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
+      const updatedAllStays = allStays.map(s => {
+        if (s.id === stayToCheckout.id || (String(s.roomNumber) === String(stayToCheckout.roomNumber) && s.status === 'CHECKED_IN')) {
+          return { ...s, status: 'CHECKED_OUT', checkOutTime: nowIso };
+        }
+        return s;
+      });
+      localStorage.setItem(ALL_STAYS_STORAGE_KEY, JSON.stringify(updatedAllStays));
+    } catch (e) {}
 
     // Update room status to CLEANING (_skipStaySync = true!)
     hotelService.updateRoomStatus(stayToCheckout.roomNumber, 'CLEANING', true);
@@ -418,9 +457,145 @@ export const hotelService = {
     hotelService.updatePoliceLogCheckOut(stayToCheckout.roomNumber, stayToCheckout.primaryGuest?.name);
 
     // Add checkout time to the returned record for receipt
-    stayToCheckout.checkOutTime = new Date().toISOString();
+    stayToCheckout.checkOutTime = nowIso;
+    stayToCheckout.status = 'CHECKED_OUT';
 
     return stayToCheckout;
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // MASTER STAYS & HOTEL-WISE GUEST ENTRIES WITH ID PHOTOS (Admin Portal)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Retrieves all historical & active stays, optionally filtered by hotelId.
+   */
+  getAllStays: (hotelId = null) => {
+    let allStays = [];
+    try {
+      allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
+    } catch (e) {
+      allStays = [];
+    }
+
+    // Merge active stays if not already present
+    const activeStays = hotelService.getActiveStays();
+    activeStays.forEach(active => {
+      const exists = allStays.some(s => s.id === active.id);
+      if (!exists) {
+        allStays.unshift(active);
+      }
+    });
+
+    if (hotelId && hotelId !== 'ALL') {
+      return allStays.filter(s => s.hotelId === hotelId || (!s.hotelId && hotelId === 'HTL-101'));
+    }
+    return allStays;
+  },
+
+  /**
+   * Retrieves date-wise guest registrations for a specific hotel, merging
+   * both backend SQLite/PostgreSQL records and frontend master stays.
+   * Ensures front and back ID document images are always included.
+   */
+  getHotelGuestHistory: async (hotelId = null) => {
+    const localStays = hotelService.getAllStays(hotelId);
+    let backendRecords = [];
+
+    try {
+      const url = hotelId && hotelId !== 'ALL'
+        ? `/api/guests/records?hotel_id=${encodeURIComponent(hotelId)}`
+        : '/api/guests/records';
+
+      let res = null;
+      try {
+        res = await fetch(url);
+      } catch {
+        res = await fetch(`http://127.0.0.1:8008${url}`);
+      }
+
+      if (res && res.ok) {
+        const json = await res.json();
+        backendRecords = json.records || [];
+      }
+    } catch (e) {
+      console.warn('Backend fetch in getHotelGuestHistory failed:', e);
+    }
+
+    // Merge local and backend records by id/regNo
+    const combinedMap = new Map();
+
+    localStays.forEach(stay => {
+      combinedMap.set(stay.id || stay.regNo, {
+        id: stay.id,
+        regNo: stay.regNo || 'REG-0000',
+        hotelId: stay.hotelId || 'HTL-101',
+        roomNumber: stay.roomNumber,
+        checkInTime: stay.checkInTime,
+        checkOutTime: stay.checkOutTime || null,
+        stayType: stay.stayType || '24 Hours Full Stay',
+        roomRate: stay.roomRate || 0,
+        advancePaid: stay.advancePaid || 0,
+        paymentMode: stay.paymentMode || 'Cash',
+        status: stay.status || (stay.checkOutTime ? 'CHECKED_OUT' : 'CHECKED_IN'),
+        guestName: stay.primaryGuest?.name || 'Guest',
+        phone: stay.primaryGuest?.phone || 'N/A',
+        idType: stay.primaryGuest?.idType || 'Aadhaar Card',
+        idNumber: stay.primaryGuest?.idNumber || 'N/A',
+        age: stay.primaryGuest?.age || 'N/A',
+        gender: stay.primaryGuest?.gender || 'N/A',
+        address: stay.primaryGuest?.address || '',
+        city: stay.primaryGuest?.city || '',
+        purpose: stay.purpose || 'Personal Stay',
+        vehicleNo: stay.vehicleNo || 'N/A',
+        documentFront: stay.documentFront || null,
+        documentBack: stay.documentBack || null,
+        signature: stay.signature || null,
+        hasDocFront: !!stay.documentFront,
+        hasDocBack: !!stay.documentBack,
+        hasSignature: !!stay.signature,
+        source: 'local',
+      });
+    });
+
+    backendRecords.forEach(bRec => {
+      const key = `DB-${bRec.id}` || bRec.reg_no;
+      if (!combinedMap.has(key)) {
+        combinedMap.set(key, {
+          id: key,
+          regNo: bRec.reg_no,
+          hotelId: bRec.hotel_id || 'HTL-101',
+          roomNumber: bRec.room_number,
+          checkInTime: bRec.created_at,
+          checkOutTime: bRec.checked_out_at || null,
+          stayType: bRec.stay_type,
+          roomRate: bRec.room_rate,
+          advancePaid: bRec.advance_paid,
+          paymentMode: bRec.payment_mode,
+          status: bRec.status,
+          guestName: bRec.guest_name,
+          phone: bRec.phone,
+          idType: bRec.id_type,
+          idNumber: bRec.id_number,
+          address: bRec.address,
+          city: bRec.city,
+          purpose: bRec.purpose,
+          vehicleNo: bRec.vehicle_no,
+          documentFront: bRec.document_front || null,
+          documentBack: bRec.document_back || null,
+          signature: bRec.signature || null,
+          hasDocFront: bRec.has_doc_front === 1 || !!bRec.document_front,
+          hasDocBack: bRec.has_doc_back === 1 || !!bRec.document_back,
+          hasSignature: bRec.has_signature === 1 || !!bRec.signature,
+          source: 'backend',
+        });
+      }
+    });
+
+    const list = Array.from(combinedMap.values());
+    // Sort descending by checkInTime
+    list.sort((a, b) => new Date(b.checkInTime || 0) - new Date(a.checkInTime || 0));
+    return list;
   },
 
   // ══════════════════════════════════════════════════════════════════════════

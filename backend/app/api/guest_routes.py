@@ -32,6 +32,7 @@ class CheckInPayload(BaseModel):
     documentFront: Optional[str] = None
     documentBack: Optional[str] = None
     signature: Optional[str] = None
+    hotelId: Optional[str] = "HTL-101"
 
 @router.post("/checkin")
 def checkin_guest_endpoint(payload: CheckInPayload):
@@ -43,7 +44,7 @@ def checkin_guest_endpoint(payload: CheckInPayload):
     try:
         data = payload.dict()
         record = create_guest_record(data)
-        logger.info(f"Check-in successfully saved: Reg No {record.get('reg_no')} for Room {record.get('room_number')}")
+        logger.info(f"Check-in successfully saved: Reg No {record.get('reg_no')} for Room {record.get('room_number')} Hotel {record.get('hotel_id')}")
         return {
             "success": True,
             "message": f"Guest checked in successfully with registration #{record.get('reg_no')}",
@@ -56,12 +57,13 @@ def checkin_guest_endpoint(payload: CheckInPayload):
 @router.get("/records")
 def list_guest_records(
     search: Optional[str] = Query(None, description="Search by name, phone, reg_no, room"),
+    hotel_id: Optional[str] = Query(None, description="Filter by hotel ID"),
     limit: int = 100,
     offset: int = 0
 ):
     """Returns sequential list of all guest check-in records."""
     try:
-        records = get_all_guest_records(search=search, limit=limit, offset=offset)
+        records = get_all_guest_records(search=search, hotel_id=hotel_id, limit=limit, offset=offset)
         return {
             "success": True,
             "count": len(records),

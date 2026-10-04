@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Building2, 
   ShieldAlert, 
@@ -10,12 +10,28 @@ import {
   IndianRupee, 
   Eye, 
   Search, 
-  Lock,
-  Building,
-  BadgeAlert,
-  Download
+  Lock, 
+  Building, 
+  BadgeAlert, 
+  Download, 
+  Calendar, 
+  Image as ImageIcon, 
+  ArrowLeft, 
+  User, 
+  Phone, 
+  MapPin, 
+  CreditCard, 
+  ZoomIn, 
+  X, 
+  ExternalLink, 
+  ChevronRight, 
+  Filter,
+  Check,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 import { authService } from '../services/authService';
+import { hotelService } from '../services/hotelService';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
@@ -23,10 +39,25 @@ import { Input } from './ui/input';
 export default function AdminDashboard() {
   const [hotels, setHotels] = useState(authService.getAllHotels());
   const [policeAccounts, setPoliceAccounts] = useState(authService.getAllPoliceAccounts());
-  const [activeTab, setActiveTab] = useState('HOTEL_APPROVALS'); // 'HOTEL_APPROVALS', 'CREATE_POLICE', 'SUBSCRIPTIONS'
+  const [activeTab, setActiveTab] = useState('HOTEL_DIRECTORY'); // 'HOTEL_DIRECTORY', 'HOTEL_APPROVALS', 'CREATE_POLICE', 'SUBSCRIPTIONS'
 
-  // Modal / Selected doc inspection state
+  // Selected hotel for detailed guest records & ID photo inspection
+  const [selectedHotel, setSelectedHotel] = useState(null);
+  const [hotelGuests, setHotelGuests] = useState([]);
+  const [loadingGuests, setLoadingGuests] = useState(false);
+  const [guestSearchQuery, setGuestSearchQuery] = useState('');
+  const [guestDateFilter, setGuestDateFilter] = useState('');
+  const [guestStatusFilter, setGuestStatusFilter] = useState('ALL');
+
+  // Hotel search & filter in directory
+  const [hotelSearchQuery, setHotelSearchQuery] = useState('');
+  const [hotelStatusFilter, setHotelStatusFilter] = useState('ALL'); // 'ALL', 'APPROVED', 'PENDING'
+
+  // Modal / Selected registration doc inspection state
   const [selectedDocHotel, setSelectedDocHotel] = useState(null);
+
+  // Full-size Photo Lightbox Modal (for guest Aadhaar / Passport / ID cards)
+  const [lightboxPhoto, setLightboxPhoto] = useState(null); // { url, title, subTitle }
 
   // New Police Account Form state
   const [stationName, setStationName] = useState('');
@@ -38,8 +69,50 @@ export default function AdminDashboard() {
   const [formMessage, setFormMessage] = useState('');
 
   const refreshData = () => {
-    setHotels(authService.getAllHotels());
+    const allHotels = authService.getAllHotels();
+    setHotels(allHotels);
     setPoliceAccounts(authService.getAllPoliceAccounts());
+    if (selectedHotel) {
+      const refreshedSelected = allHotels.find(h => h.id === selectedHotel.id);
+      if (refreshedSelected) setSelectedHotel(refreshedSelected);
+    }
+  };
+
+  // Sync event listener for newly registered hotels or status changes
+  useEffect(() => {
+    const handleSync = () => {
+      refreshData();
+    };
+    window.addEventListener('guestbooks_hotel_registered', handleSync);
+    window.addEventListener('guestbooks_hotel_status_changed', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('guestbooks_hotel_registered', handleSync);
+      window.removeEventListener('guestbooks_hotel_status_changed', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [selectedHotel]);
+
+  // Load guest history when a hotel is selected
+  useEffect(() => {
+    if (selectedHotel) {
+      loadHotelGuests(selectedHotel.id);
+    } else {
+      setHotelGuests([]);
+    }
+  }, [selectedHotel]);
+
+  const loadHotelGuests = async (hotelId) => {
+    setLoadingGuests(true);
+    try {
+      const records = await hotelService.getHotelGuestHistory(hotelId);
+      setHotelGuests(records);
+    } catch (e) {
+      console.warn('Failed to load hotel guests:', e);
+      setHotelGuests([]);
+    } finally {
+      setLoadingGuests(false);
+    }
   };
 
   const handleApprove = (hotelId) => {
@@ -92,6 +165,42 @@ export default function AdminDashboard() {
     .filter((h) => h.status === 'APPROVED')
     .reduce((acc, h) => acc + (h.subscriptionAmount || 499), 0);
 
+  // Filtered hotels in directory
+  const filteredHotels = hotels.filter(h => {
+    const matchesSearch = 
+      (h.name && h.name.toLowerCase().includes(hotelSearchQuery.toLowerCase())) ||
+      (h.ownerName && h.ownerName.toLowerCase().includes(hotelSearchQuery.toLowerCase())) ||
+      (h.email && h.email.toLowerCase().includes(hotelSearchQuery.toLowerCase())) ||
+      (h.phone && h.phone.includes(hotelSearchQuery)) ||
+      (h.id && h.id.toLowerCase().includes(hotelSearchQuery.toLowerCase()));
+
+    const matchesStatus = 
+      hotelStatusFilter === 'ALL' ? true : h.status === hotelStatusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Filtered guests for selected hotel
+  const filteredGuests = hotelGuests.filter(g => {
+    const matchesSearch = !guestSearchQuery || (
+      (g.guestName && g.guestName.toLowerCase().includes(guestSearchQuery.toLowerCase())) ||
+      (g.phone && g.phone.includes(guestSearchQuery)) ||
+      (g.idNumber && g.idNumber.toLowerCase().includes(guestSearchQuery.toLowerCase())) ||
+      (g.roomNumber && String(g.roomNumber).includes(guestSearchQuery)) ||
+      (g.regNo && g.regNo.toLowerCase().includes(guestSearchQuery.toLowerCase()))
+    );
+
+    const matchesDate = !guestDateFilter || (
+      g.checkInTime && g.checkInTime.startsWith(guestDateFilter)
+    );
+
+    const matchesStatus = guestStatusFilter === 'ALL' || (
+      guestStatusFilter === 'CHECKED_IN' ? g.status === 'CHECKED_IN' : g.status === 'CHECKED_OUT'
+    );
+
+    return matchesSearch && matchesDate && matchesStatus;
+  });
+
   return (
     <div className="space-y-6">
       {/* Top Banner Header */}
@@ -107,52 +216,578 @@ export default function AdminDashboard() {
             </Badge>
           </div>
           <p className="text-xs text-amber-800 mt-1 font-medium">
-            Verify & approve guestbooks self-registrations, inspect uploaded trade licenses, generate Police credentials, and track ₹499 subscription revenues.
+            Verify & approve property registration requests, inspect submitted trade licenses, view date-wise guest registrations with ID photos, and manage police station credentials.
           </p>
         </div>
 
         <div className="flex items-center gap-4 bg-white border border-amber-200 rounded-xl px-4 py-2.5 shadow-2xs">
           <div>
-            <div className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">Active Guestbooks</div>
+            <div className="text-[10px] font-extrabold uppercase text-slate-500 tracking-wider">Active Properties</div>
             <div className="text-xl font-extrabold text-slate-900 font-mono">{approvedHotels.length}</div>
           </div>
           <div className="h-8 w-px bg-slate-200"></div>
           <div>
-            <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wider">Pending Approvals</div>
+            <div className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wider">Pending Queue</div>
             <div className="text-xl font-extrabold text-amber-700 font-mono">{pendingHotels.length}</div>
+          </div>
+          <div className="h-8 w-px bg-slate-200"></div>
+          <div>
+            <div className="text-[10px] font-extrabold uppercase text-emerald-800 tracking-wider">Total Stays</div>
+            <div className="text-xl font-extrabold text-emerald-700 font-mono">{hotelService.getAllStays().length}</div>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex rounded-xl bg-white p-1 border border-slate-200 shadow-2xs max-w-md">
+      {/* Main Tabs Navigation */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
         <button
-          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-            activeTab === 'HOTEL_APPROVALS' ? 'bg-amber-700 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
+            activeTab === 'HOTEL_DIRECTORY'
+              ? 'bg-amber-800 text-white shadow-amber-900/20'
+              : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
           }`}
-          onClick={() => setActiveTab('HOTEL_APPROVALS')}
+          onClick={() => {
+            setActiveTab('HOTEL_DIRECTORY');
+            setSelectedHotel(null);
+          }}
         >
-          Guestbooks Verification Queue ({pendingHotels.length})
+          <Building2 className="h-4 w-4" />
+          Hotels & Guest ID Logs
+          <Badge className={`ml-1 text-[10px] font-mono ${activeTab === 'HOTEL_DIRECTORY' ? 'bg-amber-950 text-white' : 'bg-slate-100 text-slate-700'}`}>
+            {hotels.length}
+          </Badge>
         </button>
+
         <button
-          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-            activeTab === 'CREATE_POLICE' ? 'bg-amber-700 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
+            activeTab === 'HOTEL_APPROVALS'
+              ? 'bg-amber-800 text-white shadow-amber-900/20'
+              : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
           }`}
-          onClick={() => setActiveTab('CREATE_POLICE')}
+          onClick={() => {
+            setActiveTab('HOTEL_APPROVALS');
+            setSelectedHotel(null);
+          }}
         >
-          Create Police Accounts ({policeAccounts.length})
+          <BadgeAlert className="h-4 w-4 text-amber-400" />
+          Verification Queue
+          {pendingHotels.length > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold bg-amber-500 text-white rounded-full animate-pulse">
+              {pendingHotels.length}
+            </span>
+          )}
         </button>
+
         <button
-          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
-            activeTab === 'SUBSCRIPTIONS' ? 'bg-amber-700 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
+            activeTab === 'CREATE_POLICE'
+              ? 'bg-amber-800 text-white shadow-amber-900/20'
+              : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
           }`}
-          onClick={() => setActiveTab('SUBSCRIPTIONS')}
+          onClick={() => {
+            setActiveTab('CREATE_POLICE');
+            setSelectedHotel(null);
+          }}
         >
+          <ShieldAlert className="h-4 w-4" />
+          Police Accounts ({policeAccounts.length})
+        </button>
+
+        <button
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
+            activeTab === 'SUBSCRIPTIONS'
+              ? 'bg-amber-800 text-white shadow-amber-900/20'
+              : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300'
+          }`}
+          onClick={() => {
+            setActiveTab('SUBSCRIPTIONS');
+            setSelectedHotel(null);
+          }}
+        >
+          <IndianRupee className="h-4 w-4" />
           Subscription Ledger
         </button>
       </div>
 
-      {/* TAB 1: GUESTBOOKS APPROVALS & DOCUMENT INSPECTION */}
+      {/* ========================================================================= */}
+      {/* TAB: HOTEL DIRECTORY & GUEST ID LOGS */}
+      {/* ========================================================================= */}
+      {activeTab === 'HOTEL_DIRECTORY' && (
+        <div className="space-y-6">
+          {/* VIEW A: Single Selected Hotel - Detailed Guest Registry & ID Photos */}
+          {selectedHotel ? (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Back button & Hotel Header */}
+              <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedHotel(null)}
+                    className="flex items-center gap-1.5 text-xs font-bold border-slate-300 text-slate-700 hover:bg-slate-100"
+                  >
+                    <ArrowLeft className="h-4 w-4" /> Back to All Hotels
+                  </Button>
+                  <div className="h-6 w-px bg-slate-200"></div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-slate-900 text-lg">{selectedHotel.name}</h3>
+                      <Badge className={selectedHotel.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'}>
+                        {selectedHotel.status}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-0.5">
+                      <span className="font-mono text-slate-600 font-bold">{selectedHotel.id}</span>
+                      <span>•</span>
+                      <span>Owner: <strong>{selectedHotel.ownerName}</strong></span>
+                      <span>•</span>
+                      <span>Phone: <strong>{selectedHotel.phone}</strong></span>
+                      <span>•</span>
+                      <span>Address: {selectedHotel.address}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedDocHotel(selectedHotel)}
+                    className="text-xs font-bold border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 flex items-center gap-1.5"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-amber-700" />
+                    Inspect Registration Proofs
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadHotelGuests(selectedHotel.id)}
+                    className="text-xs font-bold border-slate-200 text-slate-700 hover:bg-slate-100"
+                    title="Refresh data"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${loadingGuests ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Guest Entries Search, Date Filter & Statistics Bar */}
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                      <User className="h-4 w-4 text-emerald-600" />
+                      Date-Wise Guest Stay Registry & ID Photo Archive
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      All guest check-ins recorded by {selectedHotel.name} with scanned Aadhaar / ID proofs.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-medium">
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold font-mono">
+                      {hotelGuests.length} Total Records
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold font-mono">
+                      {hotelGuests.filter(g => g.hasDocFront || g.hasDocBack).length} With ID Photos
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
+                  {/* Search input */}
+                  <div className="relative sm:col-span-2">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search guest name, phone, Aadhaar / ID, room, reg no..."
+                      value={guestSearchQuery}
+                      onChange={(e) => setGuestSearchQuery(e.target.value)}
+                      className="pl-9 h-9 text-xs"
+                    />
+                  </div>
+
+                  {/* Date filter */}
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <Input
+                      type="date"
+                      value={guestDateFilter}
+                      onChange={(e) => setGuestDateFilter(e.target.value)}
+                      className="pl-9 h-9 text-xs"
+                      title="Filter by check-in date"
+                    />
+                  </div>
+
+                  {/* Status filter */}
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={guestStatusFilter}
+                      onChange={(e) => setGuestStatusFilter(e.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="ALL">All Stay Statuses</option>
+                      <option value="CHECKED_IN">Checked-In Only</option>
+                      <option value="CHECKED_OUT">Checked-Out Only</option>
+                    </select>
+
+                    {(guestSearchQuery || guestDateFilter || guestStatusFilter !== 'ALL') && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setGuestSearchQuery('');
+                          setGuestDateFilter('');
+                          setGuestStatusFilter('ALL');
+                        }}
+                        className="text-xs text-slate-500 hover:text-slate-800 px-2 h-9"
+                      >
+                        Reset
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Guest Entries Cards / Table */}
+              {loadingGuests ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                  <RefreshCw className="h-8 w-8 text-amber-600 animate-spin mx-auto mb-2" />
+                  <div className="text-xs font-bold text-slate-700">Loading guest registry and ID scans...</div>
+                </div>
+              ) : filteredGuests.length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 space-y-3">
+                  <div className="h-12 w-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto">
+                    <FileText className="h-6 w-6" />
+                  </div>
+                  <h4 className="font-extrabold text-slate-800 text-sm">No Guest Records Found for this Hotel</h4>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    {hotelGuests.length === 0
+                      ? 'No guest check-ins have been recorded yet by this property. When the property owner performs AI scanner check-ins, all guest records and Aadhaar photos will appear here automatically.'
+                      : 'No guest records match your current search or date filter. Try clearing your search parameters.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredGuests.map((guest, idx) => (
+                    <div
+                      key={guest.id || idx}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:shadow-md transition-shadow space-y-4"
+                    >
+                      {/* Top Info Bar */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-xs font-extrabold bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md border border-slate-200">
+                            {guest.regNo || `REG-${idx + 1}`}
+                          </span>
+                          <span className="font-extrabold text-slate-900 text-base">
+                            {guest.guestName}
+                          </span>
+                          <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+                            Room {guest.roomNumber}
+                          </Badge>
+                          <Badge className={guest.status === 'CHECKED_IN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]' : 'bg-slate-100 text-slate-600 text-[10px]'}>
+                            {guest.status === 'CHECKED_IN' ? '● Currently Checked-In' : 'Checked-Out'}
+                          </Badge>
+                        </div>
+
+                        <div className="text-right text-xs text-slate-500 font-mono">
+                          <span>Check-in: <strong>{guest.checkInTime ? new Date(guest.checkInTime).toLocaleString('en-IN') : 'N/A'}</strong></span>
+                        </div>
+                      </div>
+
+                      {/* Guest Metadata Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contact & Age</div>
+                          <div className="font-semibold text-slate-800 mt-0.5">{guest.phone || 'N/A'}</div>
+                          <div className="text-[11px] text-slate-500">{guest.age ? `${guest.age} yrs` : ''} {guest.gender ? `• ${guest.gender}` : ''}</div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Government ID Proof</div>
+                          <div className="font-bold text-indigo-900 mt-0.5">{guest.idType || 'Aadhaar Card'}</div>
+                          <div className="font-mono text-[11px] text-slate-600 font-semibold">{guest.idNumber || 'N/A'}</div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stay & Tariff</div>
+                          <div className="font-bold text-emerald-800 mt-0.5">₹{guest.roomRate || 1800} / stay</div>
+                          <div className="text-[11px] text-slate-500">{guest.stayType || '24h Stay'} • {guest.paymentMode || 'Cash'}</div>
+                        </div>
+
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Address & Origin</div>
+                          <div className="font-medium text-slate-700 truncate mt-0.5" title={guest.address || guest.city}>
+                            {guest.address || guest.city || 'Local Area'}
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate">Purpose: {guest.purpose || 'Personal'}</div>
+                        </div>
+                      </div>
+
+                      {/* ID Documents & Photo Gallery */}
+                      <div className="pt-2">
+                        <div className="text-xs font-extrabold text-slate-800 mb-2 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <ImageIcon className="h-4 w-4 text-emerald-600" />
+                            Archived ID Card Photos & Digital Verification:
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            Click any photo to view full size / zoom
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-4">
+                          {/* Front ID Photo */}
+                          {guest.documentFront ? (
+                            <div
+                              onClick={() => setLightboxPhoto({
+                                url: guest.documentFront,
+                                title: `${guest.idType || 'ID Document'} (Front Side)`,
+                                subTitle: `Guest: ${guest.guestName} • Reg #${guest.regNo || 'N/A'} • Room ${guest.roomNumber}`,
+                              })}
+                              className="group relative h-28 w-44 rounded-xl border-2 border-emerald-300 bg-slate-900 overflow-hidden cursor-pointer shadow-sm hover:shadow-md hover:border-emerald-500 transition-all flex-shrink-0"
+                            >
+                              <img
+                                src={guest.documentFront}
+                                alt="ID Front"
+                                className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-[11px] font-bold text-white flex items-center gap-1 bg-black/60 px-2 py-1 rounded-md backdrop-blur-xs">
+                                  <ZoomIn className="h-3.5 w-3.5" /> View Front
+                                </span>
+                              </div>
+                              <div className="absolute bottom-0 inset-x-0 bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold text-emerald-300 truncate">
+                                🪪 {guest.idType || 'ID'} Front
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="h-28 w-44 rounded-xl border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 text-[11px] p-2 text-center">
+                              <ImageIcon className="h-6 w-6 text-slate-300 mb-1" />
+                              <span>Front ID Scan Not Uploaded</span>
+                            </div>
+                          )}
+
+                          {/* Back ID Photo */}
+                          {guest.documentBack ? (
+                            <div
+                              onClick={() => setLightboxPhoto({
+                                url: guest.documentBack,
+                                title: `${guest.idType || 'ID Document'} (Back Side)`,
+                                subTitle: `Guest: ${guest.guestName} • Reg #${guest.regNo || 'N/A'} • Room ${guest.roomNumber}`,
+                              })}
+                              className="group relative h-28 w-44 rounded-xl border-2 border-emerald-300 bg-slate-900 overflow-hidden cursor-pointer shadow-sm hover:shadow-md hover:border-emerald-500 transition-all flex-shrink-0"
+                            >
+                              <img
+                                src={guest.documentBack}
+                                alt="ID Back"
+                                className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-[11px] font-bold text-white flex items-center gap-1 bg-black/60 px-2 py-1 rounded-md backdrop-blur-xs">
+                                  <ZoomIn className="h-3.5 w-3.5" /> View Back
+                                </span>
+                              </div>
+                              <div className="absolute bottom-0 inset-x-0 bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold text-emerald-300 truncate">
+                                🪪 {guest.idType || 'ID'} Back
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="h-28 w-44 rounded-xl border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 text-[11px] p-2 text-center">
+                              <ImageIcon className="h-6 w-6 text-slate-300 mb-1" />
+                              <span>Back ID Scan Not Uploaded</span>
+                            </div>
+                          )}
+
+                          {/* Guest Signature */}
+                          {guest.signature && (
+                            <div
+                              onClick={() => setLightboxPhoto({
+                                url: guest.signature,
+                                title: `Guest Digital Signature`,
+                                subTitle: `Signed by ${guest.guestName} at Check-in`,
+                              })}
+                              className="group relative h-28 w-36 rounded-xl border border-slate-200 bg-white overflow-hidden cursor-pointer shadow-sm hover:border-slate-400 transition-all flex-shrink-0"
+                            >
+                              <img
+                                src={guest.signature}
+                                alt="Signature"
+                                className="h-full w-full object-contain p-2 group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-[10px] font-bold text-white flex items-center gap-1 bg-black/60 px-2 py-0.5 rounded backdrop-blur-xs">
+                                  <ZoomIn className="h-3 w-3" /> View Sign
+                                </span>
+                              </div>
+                              <div className="absolute bottom-0 inset-x-0 bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-600 text-center">
+                                Digital Signature
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* VIEW B: List of All Registered Properties */
+            <div className="space-y-4">
+              {/* Filter and Search Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                <div className="relative flex-1 min-w-[240px]">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input
+                    type="text"
+                    placeholder="Search property by name, owner, city, phone, ID..."
+                    value={hotelSearchQuery}
+                    onChange={(e) => setHotelSearchQuery(e.target.value)}
+                    className="pl-9 h-9 text-xs"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant={hotelStatusFilter === 'ALL' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setHotelStatusFilter('ALL')}
+                    className={`text-xs font-bold ${hotelStatusFilter === 'ALL' ? 'bg-amber-800 hover:bg-amber-700 text-white' : ''}`}
+                  >
+                    All Properties ({hotels.length})
+                  </Button>
+                  <Button
+                    variant={hotelStatusFilter === 'APPROVED' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setHotelStatusFilter('APPROVED')}
+                    className={`text-xs font-bold ${hotelStatusFilter === 'APPROVED' ? 'bg-emerald-800 hover:bg-emerald-700 text-white' : ''}`}
+                  >
+                    Approved & Active ({approvedHotels.length})
+                  </Button>
+                  <Button
+                    variant={hotelStatusFilter === 'PENDING' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setHotelStatusFilter('PENDING')}
+                    className={`text-xs font-bold ${hotelStatusFilter === 'PENDING' ? 'bg-amber-600 hover:bg-amber-500 text-white' : ''}`}
+                  >
+                    Pending Approvals ({pendingHotels.length})
+                  </Button>
+                </div>
+              </div>
+
+              {/* Hotel Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredHotels.length === 0 ? (
+                  <div className="col-span-full p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-500">
+                    <Building className="h-10 w-10 mx-auto text-slate-300 mb-2" />
+                    <div className="font-extrabold text-slate-700 text-sm">No Properties Found</div>
+                    <div className="text-xs text-slate-400 mt-1">Try changing your search terms or filter.</div>
+                  </div>
+                ) : (
+                  filteredHotels.map((hotel) => {
+                    const hotelStays = hotelService.getAllStays(hotel.id);
+                    return (
+                      <div
+                        key={hotel.id}
+                        className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:shadow-md hover:border-amber-400 transition-all flex flex-col justify-between space-y-4"
+                      >
+                        <div className="space-y-3">
+                          {/* Card Header */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="font-extrabold text-slate-900 text-base leading-snug">
+                                {hotel.name}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                                  {hotel.id}
+                                </span>
+                                <span className="text-[11px] text-slate-400">
+                                  {hotel.propertyType || 'Hotel'}
+                                </span>
+                              </div>
+                            </div>
+                            <Badge className={
+                              hotel.status === 'APPROVED' 
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-extrabold'
+                                : hotel.status === 'PENDING'
+                                ? 'bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-extrabold'
+                                : 'bg-red-100 text-red-800 border-red-300 text-[10px] font-extrabold'
+                            }>
+                              {hotel.status}
+                            </Badge>
+                          </div>
+
+                          {/* Contact Info */}
+                          <div className="space-y-1 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                            <div><strong>Owner:</strong> {hotel.ownerName}</div>
+                            <div><strong>Email:</strong> {hotel.email}</div>
+                            <div><strong>Phone:</strong> {hotel.phone}</div>
+                            <div className="truncate text-slate-500" title={hotel.address}>
+                              <strong>Address:</strong> {hotel.address}
+                            </div>
+                          </div>
+
+                          {/* Stats Metrics */}
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-slate-100/80 rounded-lg p-2">
+                              <div className="text-[10px] uppercase font-bold text-slate-400">Rooms</div>
+                              <div className="text-sm font-extrabold text-slate-800 font-mono">{hotel.totalRooms || 15}</div>
+                            </div>
+                            <div className="bg-emerald-50 rounded-lg p-2 border border-emerald-100">
+                              <div className="text-[10px] uppercase font-bold text-emerald-700">Guest Stays</div>
+                              <div className="text-sm font-extrabold text-emerald-900 font-mono">{hotelStays.length}</div>
+                            </div>
+                            <div className="bg-indigo-50 rounded-lg p-2 border border-indigo-100">
+                              <div className="text-[10px] uppercase font-bold text-indigo-700">Plan</div>
+                              <div className="text-xs font-extrabold text-indigo-900 truncate">₹{hotel.subscriptionAmount || 499}/mo</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="space-y-2 pt-2 border-t border-slate-100">
+                          <Button
+                            variant="emerald"
+                            size="sm"
+                            className="w-full font-bold text-xs flex items-center justify-center gap-1.5"
+                            onClick={() => setSelectedHotel(hotel)}
+                          >
+                            <User className="h-3.5 w-3.5" />
+                            View Hotel Details & Guest Logs →
+                          </Button>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setSelectedDocHotel(hotel)}
+                              className="flex-1 py-1 text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200 transition-colors flex items-center justify-center gap-1"
+                            >
+                              <FileText className="h-3 w-3" /> Inspect Proofs
+                            </button>
+
+                            {hotel.status === 'PENDING' && (
+                              <button
+                                onClick={() => handleApprove(hotel.id)}
+                                className="flex-1 py-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors flex items-center justify-center gap-1"
+                              >
+                                <Check className="h-3 w-3" /> Quick Approve
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB: GUESTBOOKS VERIFICATION QUEUE (APPROVALS) */}
+      {/* ========================================================================= */}
       {activeTab === 'HOTEL_APPROVALS' && (
         <div className="space-y-4">
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-2xs">
@@ -173,84 +808,89 @@ export default function AdminDashboard() {
                     <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
                       <Building className="h-10 w-10 mx-auto text-slate-300 mb-2" />
                       <div className="font-extrabold text-slate-700 text-sm">No Property Registrations in Queue</div>
-                      <div className="text-xs text-slate-400 mt-1">When property owners register on /register, their uploaded documents and application requests will appear here for your verification and approval.</div>
+                      <div className="text-xs text-slate-400 mt-1">
+                        When property owners register on /register, their uploaded documents and application requests will appear here for your verification and approval.
+                      </div>
                     </td>
                   </tr>
                 ) : (
                   hotels.map((hotel) => (
-                  <tr key={hotel.id} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="px-5 py-4">
-                      <div className="font-extrabold text-slate-900 text-sm">{hotel.name}</div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">{hotel.id} • {hotel.propertyType}</div>
-                      <div className="text-[11px] text-slate-500 mt-1">{hotel.address}</div>
-                    </td>
+                    <tr key={hotel.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="font-extrabold text-slate-900 text-sm">{hotel.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{hotel.id} • {hotel.propertyType}</div>
+                        <div className="text-[11px] text-slate-500 mt-1">{hotel.address}</div>
+                      </td>
 
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-slate-800">{hotel.ownerName}</div>
-                      <div className="text-[11px] text-slate-500">{hotel.email}</div>
-                      <div className="text-[11px] text-slate-500">{hotel.phone}</div>
-                    </td>
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-slate-800">{hotel.ownerName}</div>
+                        <div className="text-[11px] text-slate-500">{hotel.email}</div>
+                        <div className="text-[11px] text-slate-500">{hotel.phone}</div>
+                      </td>
 
-                    <td className="px-5 py-4">
-                      <span className="font-mono text-xs font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded">
-                        {hotel.subscriptionPlan}
-                      </span>
-                    </td>
+                      <td className="px-5 py-4">
+                        <span className="font-mono text-xs font-extrabold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded">
+                          {hotel.subscriptionPlan || 'Standard Plan (₹499/mo)'}
+                        </span>
+                      </td>
 
-                    <td className="px-5 py-4">
-                      <div className="space-y-1">
-                        {hotel.documents && hotel.documents.map((doc, idx) => (
-                          <div key={idx} className="flex items-center gap-1.5 text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono">
-                            <FileText className="h-3 w-3 text-slate-500" />
-                            <span className="truncate max-w-[140px]">{doc.name}</span>
-                          </div>
-                        ))}
-                        <button
-                          onClick={() => setSelectedDocHotel(hotel)}
-                          className="text-[11px] font-bold text-amber-700 hover:underline flex items-center gap-1 pt-1"
-                        >
-                          <Eye className="h-3.5 w-3.5" /> Inspect Submitted Proofs
-                        </button>
-                      </div>
-                    </td>
+                      <td className="px-5 py-4">
+                        <div className="space-y-1">
+                          {hotel.documents && hotel.documents.map((doc, idx) => (
+                            <div key={idx} className="flex items-center gap-1.5 text-[11px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 font-mono">
+                              <FileText className="h-3 w-3 text-slate-500" />
+                              <span className="truncate max-w-[140px]">{doc.name}</span>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => setSelectedDocHotel(hotel)}
+                            className="text-[11px] font-bold text-amber-700 hover:underline flex items-center gap-1 pt-1"
+                          >
+                            <Eye className="h-3.5 w-3.5" /> Inspect Submitted Proofs ({hotel.documents?.length || 0})
+                          </button>
+                        </div>
+                      </td>
 
-                    <td className="px-5 py-4">
-                      {hotel.status === 'APPROVED' && (
-                        <Badge variant="success" className="font-extrabold text-[10px]">APPROVED & ACTIVE</Badge>
-                      )}
-                      {hotel.status === 'PENDING' && (
-                        <Badge variant="warning" className="font-extrabold text-[10px]">PENDING APPROVAL</Badge>
-                      )}
-                      {hotel.status === 'REJECTED' && (
-                        <Badge variant="destructive" className="font-extrabold text-[10px]">REJECTED</Badge>
-                      )}
-                    </td>
-
-                    <td className="px-5 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {hotel.status === 'PENDING' ? (
-                          <>
-                            <Button variant="emerald" size="sm" onClick={() => handleApprove(hotel.id)}>
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Approve Registration
-                            </Button>
-                            <Button variant="destructive" size="sm" onClick={() => handleReject(hotel.id)}>
-                              <XCircle className="h-3.5 w-3.5" /> Reject
-                            </Button>
-                          </>
-                        ) : (
-                          <span className="text-slate-400 text-xs italic">Decision Finalized</span>
+                      <td className="px-5 py-4">
+                        {hotel.status === 'APPROVED' && (
+                          <Badge variant="success" className="font-extrabold text-[10px]">APPROVED & ACTIVE</Badge>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                )))}
+                        {hotel.status === 'PENDING' && (
+                          <Badge variant="warning" className="font-extrabold text-[10px]">PENDING APPROVAL</Badge>
+                        )}
+                        {hotel.status === 'REJECTED' && (
+                          <Badge variant="destructive" className="font-extrabold text-[10px]">REJECTED</Badge>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {hotel.status === 'PENDING' ? (
+                            <>
+                              <Button variant="emerald" size="sm" onClick={() => handleApprove(hotel.id)}>
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Approve Registration
+                              </Button>
+                              <Button variant="destructive" size="sm" onClick={() => handleReject(hotel.id)}>
+                                <XCircle className="h-3.5 w-3.5" /> Reject
+                              </Button>
+                            </>
+                          ) : (
+                            <span className="text-slate-400 text-xs italic">Decision Finalized</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* TAB 2: CREATE POLICE ACCOUNTS */}
+      {/* ========================================================================= */}
+      {/* TAB: CREATE POLICE ACCOUNTS */}
+      {/* ========================================================================= */}
       {activeTab === 'CREATE_POLICE' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Creation Form */}
@@ -356,13 +996,15 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* TAB 3: SUBSCRIPTIONS LEDGER */}
+      {/* ========================================================================= */}
+      {/* TAB: SUBSCRIPTIONS MASTER LEDGER */}
+      {/* ========================================================================= */}
       {activeTab === 'SUBSCRIPTIONS' && (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs space-y-4">
           <div className="flex items-center justify-between border-b pb-4">
             <div>
               <h3 className="text-base font-extrabold text-slate-900">Hotel & Hostel Subscription Master Ledger</h3>
-              <p className="text-xs text-slate-500">₹499/month Hostel Plan & ₹999/month Deluxe Hotel Plan billing overview</p>
+              <p className="text-xs text-slate-500">₹499/month Standard Property Plan billing overview</p>
             </div>
             <div className="text-right bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-xl">
               <div className="text-[10px] uppercase font-bold text-emerald-800">Monthly Recurring Revenue (MRR)</div>
@@ -384,11 +1026,11 @@ export default function AdminDashboard() {
               {hotels.map((h) => (
                 <tr key={h.id}>
                   <td className="p-3 font-bold text-slate-900">{h.name}</td>
-                  <td className="p-3 font-semibold text-slate-700">{h.subscriptionPlan}</td>
+                  <td className="p-3 font-semibold text-slate-700">{h.subscriptionPlan || 'Standard Plan'}</td>
                   <td className="p-3 font-mono font-extrabold text-emerald-800">₹{h.subscriptionAmount || 499} / mo</td>
                   <td className="p-3">
-                    <span className="bg-emerald-50 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px] border border-emerald-200">
-                      ACTIVE SUBSCRIBER
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${h.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
+                      {h.status === 'APPROVED' ? 'ACTIVE SUBSCRIBER' : 'PENDING ACTIVATION'}
                     </span>
                   </td>
                   <td className="p-3 text-right text-slate-500">{new Date(h.registeredAt).toLocaleDateString()}</td>
@@ -399,60 +1041,169 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Document Inspection Dialog Modal */}
+      {/* ========================================================================= */}
+      {/* MODAL 1: Hotel Registration Document Inspection Dialog */}
+      {/* ========================================================================= */}
       {selectedDocHotel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-extrabold text-slate-900 text-base">
-                Inspect Submitted Verification Files - {selectedDocHotel.name}
-              </h3>
-              <button className="text-slate-400 hover:text-slate-700 font-bold text-xs" onClick={() => setSelectedDocHotel(null)}>
-                Close
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base">
+                  Inspect Registration Documents
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">{selectedDocHotel.name} ({selectedDocHotel.id})</p>
+              </div>
+              <button 
+                className="text-slate-400 hover:text-slate-700 font-bold text-xs p-1 rounded-lg hover:bg-slate-100" 
+                onClick={() => setSelectedDocHotel(null)}
+              >
+                ✕
               </button>
             </div>
 
-            <div className="space-y-3">
-              <div className="text-xs text-slate-600">
-                <strong>Owner:</strong> {selectedDocHotel.ownerName} | <strong>Email:</strong> {selectedDocHotel.email} | <strong>Phone:</strong> {selectedDocHotel.phone}
+            <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+              <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div><strong>Owner:</strong> {selectedDocHotel.ownerName} | <strong>Email:</strong> {selectedDocHotel.email}</div>
+                <div className="mt-0.5"><strong>Phone:</strong> {selectedDocHotel.phone} | <strong>Address:</strong> {selectedDocHotel.address}</div>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="text-xs font-bold text-slate-800">Attached Documents for Verification:</div>
-                {selectedDocHotel.documents.map((doc, idx) => (
-                  <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 text-xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 font-mono font-semibold text-slate-700">
-                        <FileText className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                        <span className="font-bold">{doc.name}</span> ({doc.size})
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-slate-800">Uploaded Verification Proofs:</div>
+                {selectedDocHotel.documents && selectedDocHotel.documents.length > 0 ? (
+                  selectedDocHotel.documents.map((doc, idx) => (
+                    <div key={idx} className="bg-white p-3.5 rounded-xl border border-slate-200 text-xs space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 font-mono font-semibold text-slate-800">
+                          <FileText className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                          <span className="font-bold">{doc.name}</span>
+                          <span className="text-slate-400 text-[10px]">({doc.size || 'Verification File'})</span>
+                        </div>
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold text-[10px]">
+                          {doc.type || 'DOCUMENT'}
+                        </Badge>
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                        VERIFIED ATTACHMENT
-                      </span>
-                    </div>
 
-                    {doc.dataUrl && doc.type === 'IMAGE' && (
-                      <div className="border rounded-lg overflow-hidden max-h-48 bg-slate-900">
-                        <img src={doc.dataUrl} alt={doc.name} className="h-full w-full object-contain" />
-                      </div>
-                    )}
-                    {doc.dataUrl && doc.type === 'PDF' && (
-                      <a href={doc.dataUrl} target="_blank" rel="noreferrer" className="inline-block text-[11px] font-bold text-indigo-600 hover:underline">
-                        📄 View PDF Document Attachment →
-                      </a>
-                    )}
+                      {doc.dataUrl && (doc.type === 'IMAGE' || doc.dataUrl.startsWith('data:image')) && (
+                        <div className="border border-slate-200 rounded-xl overflow-hidden max-h-64 bg-slate-950 flex items-center justify-center">
+                          <img
+                            src={doc.dataUrl}
+                            alt={doc.name}
+                            className="max-h-64 w-auto object-contain cursor-pointer"
+                            onClick={() => setLightboxPhoto({
+                              url: doc.dataUrl,
+                              title: `${selectedDocHotel.name} - ${doc.name}`,
+                              subTitle: `Property Verification Proof (${doc.size})`,
+                            })}
+                          />
+                        </div>
+                      )}
+
+                      {doc.dataUrl && doc.type === 'PDF' && (
+                        <div className="p-3 rounded-lg bg-indigo-50/70 border border-indigo-200 flex items-center justify-between">
+                          <span className="text-xs text-indigo-900 font-medium">Official PDF Document Attached</span>
+                          <a
+                            href={doc.dataUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-bold text-indigo-700 hover:text-indigo-900 hover:underline flex items-center gap-1"
+                          >
+                            Open PDF in New Window <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </div>
+                      )}
+
+                      {!doc.dataUrl && (
+                        <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-500 italic">
+                          Document reference stored on secure server storage.
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-slate-400 text-xs italic bg-slate-50 rounded-xl">
+                    No documents uploaded.
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t">
-              <Button variant="destructive" size="sm" onClick={() => handleReject(selectedDocHotel.id)}>
-                Reject Documents
+            <div className="flex items-center justify-between pt-3 border-t">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedDocHotel(null)}>
+                Close
               </Button>
-              <Button variant="emerald" size="sm" onClick={() => handleApprove(selectedDocHotel.id)}>
-                Approve & Activate Hotel
-              </Button>
+              <div className="flex items-center gap-2">
+                {selectedDocHotel.status === 'PENDING' && (
+                  <>
+                    <Button variant="destructive" size="sm" onClick={() => handleReject(selectedDocHotel.id)}>
+                      Reject Application
+                    </Button>
+                    <Button variant="emerald" size="sm" onClick={() => handleApprove(selectedDocHotel.id)}>
+                      Approve & Activate Property
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 2: Full-Size HD Lightbox Modal (For Guest Aadhaar / ID Photos) */}
+      {/* ========================================================================= */}
+      {lightboxPhoto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-150"
+          onClick={() => setLightboxPhoto(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Lightbox Header */}
+            <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-white font-extrabold text-base flex items-center gap-2">
+                  <ImageIcon className="h-5 w-5 text-emerald-400" />
+                  {lightboxPhoto.title}
+                </h3>
+                {lightboxPhoto.subTitle && (
+                  <p className="text-xs text-slate-400 mt-0.5">{lightboxPhoto.subTitle}</p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={lightboxPhoto.url}
+                  download="ID_Verification_Document.jpg"
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5"
+                  title="Download Image"
+                >
+                  <Download className="h-3.5 w-3.5" /> Download
+                </a>
+                <button
+                  onClick={() => setLightboxPhoto(null)}
+                  className="h-8 w-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-all"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Lightbox Image Preview */}
+            <div className="flex items-center justify-center bg-slate-950 rounded-2xl p-2 max-h-[70vh] overflow-hidden border border-slate-800">
+              <img
+                src={lightboxPhoto.url}
+                alt={lightboxPhoto.title}
+                className="max-h-[68vh] max-w-full object-contain rounded-xl shadow-lg"
+              />
+            </div>
+
+            {/* Lightbox Footer Note */}
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+              <span>Certified Government ID record stored securely under Data Privacy & Police Verification Guidelines.</span>
+              <span className="font-mono text-emerald-400 font-bold">100% Verified Digital Scan</span>
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { User, Users, Building2, Camera, Check, X, UserPlus, CreditCard, ShieldCheck, PenTool } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Users, Building2, Camera, Check, X, UserPlus, CreditCard, ShieldCheck, PenTool, RotateCcw } from 'lucide-react';
 import { IDProofType } from '../types';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -8,10 +8,11 @@ import DocumentScannerZone from './DocumentScannerZone';
 import SignatureModal from './SignatureModal';
 
 export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckInComplete }) {
+  const [resetKey, setResetKey] = useState(Date.now());
   const [selectedRoomNumber, setSelectedRoomNumber] = useState(vacantRooms[0]?.number || '');
   const [stayType, setStayType] = useState('24 Hours Full Stay');
-  const [roomRate, setRoomRate] = useState(vacantRooms[0]?.rate.toString() || '1800');
-  const [advancePaid, setAdvancePaid] = useState(vacantRooms[0]?.rate.toString() || '1800');
+  const [roomRate, setRoomRate] = useState(vacantRooms[0]?.rate?.toString() || '1800');
+  const [advancePaid, setAdvancePaid] = useState(vacantRooms[0]?.rate?.toString() || '1800');
   const [paymentMode, setPaymentMode] = useState('UPI / GPay');
 
   // Digital Signature & Uploaded Documents
@@ -32,7 +33,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
   const [isLocal, setIsLocal] = useState(false);
 
   // Accompanying Guest / Partner
-  const [hasAccompanying, setHasAccompanying] = useState(true);
+  const [hasAccompanying, setHasAccompanying] = useState(false);
   const [partnerName, setPartnerName] = useState('');
   const [partnerAge, setPartnerAge] = useState('');
   const [partnerGender, setPartnerGender] = useState('Female');
@@ -46,6 +47,46 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
   const [purpose, setPurpose] = useState('Personal / Tourism');
   const [vehicleNo, setVehicleNo] = useState('');
   const [idScanUploaded, setIdScanUploaded] = useState(false);
+
+  const resetForm = () => {
+    setSelectedRoomNumber(vacantRooms[0]?.number || '');
+    setStayType('24 Hours Full Stay');
+    setRoomRate(vacantRooms[0]?.rate?.toString() || '1800');
+    setAdvancePaid(vacantRooms[0]?.rate?.toString() || '1800');
+    setPaymentMode('UPI / GPay');
+    setSignatureData(null);
+    setPrimaryDocs({ front: null, back: null });
+    setPartnerDocs({ front: null, back: null });
+    setPrimaryName('');
+    setPrimaryAge('');
+    setPrimaryGender('Male');
+    setPrimaryPhone('');
+    setPrimaryIdType('Aadhaar Card');
+    setPrimaryIdNumber('');
+    setPrimaryAddress('');
+    setPrimaryCity('');
+    setIsLocal(false);
+    setHasAccompanying(false);
+    setPartnerName('');
+    setPartnerAge('');
+    setPartnerGender('Female');
+    setPartnerRelation('Partner / Couple');
+    setPartnerIdType('Aadhaar Card');
+    setPartnerIdNumber('');
+    setComingFrom('');
+    setGoingTo('');
+    setPurpose('Personal / Tourism');
+    setVehicleNo('');
+    setIdScanUploaded(false);
+    setResetKey(Date.now());
+  };
+
+  // Auto-reset whenever modal is opened
+  useEffect(() => {
+    if (isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -123,6 +164,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
     };
 
     onCheckInComplete(checkInData);
+    resetForm();
     onClose();
   };
 
@@ -147,7 +189,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
           <button 
             type="button"
             className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-            onClick={onClose}
+            onClick={() => { resetForm(); onClose(); }}
           >
             <X className="h-4 w-4" />
           </button>
@@ -163,6 +205,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
 
             {/* Document Photo Upload & OCR Auto-Fill Zone (2 Photos: Front & Back) */}
             <DocumentScannerZone
+              key={`primary-${resetKey}`}
               label="Primary Guest Document — Auto Scan & Fill"
               targetGuestName="Primary Guest"
               accentColor="indigo"
@@ -305,6 +348,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
               <div className="space-y-4 pt-2">
                 {/* Document Photo Upload & OCR Zone for Partner B */}
                 <DocumentScannerZone
+                  key={`partner-${resetKey}`}
                   label="Partner B Document — Auto Scan & Fill"
                   targetGuestName="Partner B"
                   accentColor="emerald"
@@ -540,13 +584,23 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
           </div>
 
           {/* Action Row */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+          <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+            <Button
+              type="button"
+              variant="outline"
+              className="text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 border-slate-300 gap-1.5"
+              onClick={resetForm}
+            >
+              <RotateCcw className="h-4 w-4" /> Clear / Reset Form
             </Button>
-            <Button type="submit" variant="emerald" size="lg" className="px-6 font-extrabold shadow-sm">
-              <Check className="h-4 w-4" /> Save Registration & Check In
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button type="button" variant="outline" onClick={() => { resetForm(); onClose(); }}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="emerald" size="lg" className="px-6 font-extrabold shadow-sm">
+                <Check className="h-4 w-4" /> Save Registration & Check In
+              </Button>
+            </div>
           </div>
         </form>
       </div>
