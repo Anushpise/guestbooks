@@ -8,6 +8,7 @@ import logoImg from '../assets/logo.png';
 
 export default function Sidebar({
   user,
+  hotel,
   activeTab,
   setActiveTab,
   openExpressModal,
@@ -206,9 +207,9 @@ export default function Sidebar({
             <Building2 className="h-4 w-4 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-xs font-bold text-white leading-none">{user?.name || 'Guestbooks'}</p>
-            <p className="text-[10px] text-slate-500 font-semibold capitalize mt-0.5">
-              {role === 'HOTEL' ? 'Property Owner' : role === 'POLICE' ? 'Police Inspector' : 'Super Admin'}
+            <p className="truncate text-xs font-bold text-white leading-none">{hotel?.name || user?.name || 'Guestbooks'}</p>
+            <p className="text-[10px] text-slate-400 font-semibold truncate mt-0.5">
+              {role === 'HOTEL' ? (hotel?.id ? `${hotel.id} • ${hotel.ownerName}` : 'Property Owner') : role === 'POLICE' ? 'Police Inspector' : 'Super Admin'}
             </p>
           </div>
           <div className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />

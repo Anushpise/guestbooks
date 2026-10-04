@@ -31,12 +31,13 @@ const initStorage = () => {
 initStorage();
 
 // ── Sync hotel occupancy stats to hotels storage (for Police Portal) ─────────
-const syncHotelOccupancyStats = (rooms) => {
+const syncHotelOccupancyStats = (rooms, targetHotelId = null) => {
   try {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
     const hotels = JSON.parse(localStorage.getItem('staylog_hotels_v2')) || [];
     const occCount = rooms.filter(r => r.status === 'OCCUPIED').length;
     const updatedHotels = hotels.map(h => {
-      if (h.id === 'HTL-101') {
+      if (h.id === hId) {
         return {
           ...h,
           totalRooms: rooms.length,
@@ -55,34 +56,93 @@ const syncHotelOccupancyStats = (rooms) => {
 
 export const hotelService = {
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // ROOMS CRUD API
-  // ══════════════════════════════════════════════════════════════════════════
-
-  getRooms: () => {
+  getCurrentHotelId: () => {
     try {
-      return JSON.parse(localStorage.getItem(ROOMS_STORAGE_KEY)) || initialRooms;
+      const user = JSON.parse(localStorage.getItem('staylog_session_v2')) || {};
+      return user.hotelId || 'HTL-101';
     } catch (e) {
-      return initialRooms;
+      return 'HTL-101';
     }
   },
 
+  getRoomsStorageKey: (hotelId = null) => {
+    const hId = hotelId || hotelService.getCurrentHotelId();
+    if (hId === 'HTL-101') {
+      return ROOMS_STORAGE_KEY;
+    }
+    return `staylog_rooms_${hId}`;
+  },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ROOMS CRUD API (Partitioned per Hotel)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  getRooms: (targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const storageKey = hotelService.getRoomsStorageKey(hId);
+
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {}
+
+    // If it's the default demo hotel, use initialRooms
+    if (hId === 'HTL-101') {
+      return initialRooms;
+    }
+
+    // For any newly registered hotel, initialize its own rooms inventory cleanly
+    let totalRoomsCount = 15;
+    try {
+      const hotels = JSON.parse(localStorage.getItem('staylog_hotels_v2')) || [];
+      const hRecord = hotels.find(h => h.id === hId);
+      if (hRecord && hRecord.totalRooms) {
+        totalRoomsCount = Number(hRecord.totalRooms) || 15;
+      }
+    } catch (e) {}
+
+    const generatedRooms = [];
+    const roomTypes = ['Executive Deluxe', 'Super Deluxe', 'Standard Suite', 'Presidential Suite'];
+    for (let i = 1; i <= totalRoomsCount; i++) {
+      const floorNum = Math.floor((i - 1) / 5) + 1;
+      const roomNum = floorNum * 100 + ((i - 1) % 5 + 1);
+      const type = roomTypes[(i - 1) % roomTypes.length];
+      const rate = type === 'Presidential Suite' ? 3500 : type === 'Super Deluxe' ? 2200 : type === 'Executive Deluxe' ? 1800 : 1500;
+      generatedRooms.push({
+        id: String(roomNum),
+        number: String(roomNum),
+        type,
+        floor: `${floorNum}${floorNum === 1 ? 'st' : floorNum === 2 ? 'nd' : floorNum === 3 ? 'rd' : 'th'} Floor`,
+        rate,
+        status: 'VACANT',
+      });
+    }
+
+    localStorage.setItem(storageKey, JSON.stringify(generatedRooms));
+    return generatedRooms;
+  },
+
   /**
-   * Add a new room to the inventory.
+   * Add a new room to the hotel's inventory.
    * @param {{ number: string, type: string, floor: string, rate: number }} roomData
+   * @param {string|null} targetHotelId
    * @returns {{ success: boolean, message: string, rooms: Array }}
    */
-  addRoom: (roomData) => {
-    const rooms = hotelService.getRooms();
+  addRoom: (roomData, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const storageKey = hotelService.getRoomsStorageKey(hId);
+    const rooms = hotelService.getRooms(hId);
 
-    // Validate: room number must be unique
+    // Validate: room number must be unique within this hotel
     const exists = rooms.find(r => String(r.number) === String(roomData.number));
     if (exists) {
-      return { success: false, message: `Room ${roomData.number} already exists.`, rooms };
+      return { success: false, message: `Room ${roomData.number} already exists in your inventory.`, rooms };
     }
 
     const newRoom = {
-      id: String(roomData.number), // use room number as ID for consistency
+      id: String(roomData.number),
       number: String(roomData.number),
       type: roomData.type || 'Standard Suite',
       floor: roomData.floor || '1st Floor',
@@ -91,8 +151,8 @@ export const hotelService = {
     };
 
     rooms.push(newRoom);
-    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(rooms));
-    syncHotelOccupancyStats(rooms);
+    localStorage.setItem(storageKey, JSON.stringify(rooms));
+    syncHotelOccupancyStats(rooms, hId);
 
     return { success: true, message: `Room ${newRoom.number} added successfully.`, rooms };
   },
@@ -100,10 +160,13 @@ export const hotelService = {
   /**
    * Delete a room from inventory. Only VACANT rooms can be deleted.
    * @param {string} roomId - Room ID or number
+   * @param {string|null} targetHotelId
    * @returns {{ success: boolean, message: string, rooms: Array }}
    */
-  deleteRoom: (roomId) => {
-    const rooms = hotelService.getRooms();
+  deleteRoom: (roomId, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const storageKey = hotelService.getRoomsStorageKey(hId);
+    const rooms = hotelService.getRooms(hId);
     const room = rooms.find(r => r.id === roomId || String(r.number) === String(roomId));
 
     if (!room) {
@@ -114,8 +177,8 @@ export const hotelService = {
     }
 
     const updatedRooms = rooms.filter(r => r.id !== room.id);
-    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(updatedRooms));
-    syncHotelOccupancyStats(updatedRooms);
+    localStorage.setItem(storageKey, JSON.stringify(updatedRooms));
+    syncHotelOccupancyStats(updatedRooms, hId);
 
     return { success: true, message: `Room ${room.number} deleted.`, rooms: updatedRooms };
   },
@@ -125,8 +188,10 @@ export const hotelService = {
    * IMPORTANT: When called with `_skipStaySync = true`, it will NOT auto-create
    * or remove active stays. This prevents circular loops when called from checkInGuest/checkOutGuest.
    */
-  updateRoomStatus: (roomId, status, _skipStaySync = false) => {
-    const rooms = hotelService.getRooms();
+  updateRoomStatus: (roomId, status, _skipStaySync = false, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const storageKey = hotelService.getRoomsStorageKey(hId);
+    const rooms = hotelService.getRooms(hId);
     const targetRoom = rooms.find(r => r.id === roomId || String(r.number) === String(roomId));
     if (!targetRoom) return rooms;
 
@@ -136,19 +201,20 @@ export const hotelService = {
     const updatedRooms = rooms.map(r =>
       (r.id === roomId || String(r.number) === String(roomId)) ? { ...r, status } : r
     );
-    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(updatedRooms));
+    localStorage.setItem(storageKey, JSON.stringify(updatedRooms));
 
     // Only sync active stays when called from RoomManagement UI (not from checkIn/checkOut)
     if (!_skipStaySync) {
-      const activeStays = hotelService.getActiveStays();
+      const activeStays = hotelService.getActiveStays(hId);
       const roomNo = String(targetRoom.number);
 
       if (status === 'OCCUPIED' && previousStatus !== 'OCCUPIED') {
-        // If manually marked OCCUPIED from Room Management, create a placeholder stay
+        // If manually marked OCCUPIED from Room Management, create a placeholder stay for this hotel
         const existingStay = activeStays.find(s => String(s.roomNumber) === roomNo);
         if (!existingStay) {
           const newStay = {
             id: generateId('STAY'),
+            hotelId: hId,
             roomNumber: roomNo,
             checkInTime: new Date().toISOString(),
             expectedCheckOut: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
@@ -171,15 +237,18 @@ export const hotelService = {
             paymentMode: 'Cash',
             policeSubmitted: false,
             policeSubmittedAt: null,
+            status: 'CHECKED_IN',
           };
-          activeStays.unshift(newStay);
-          localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(activeStays));
+          const rawStays = hotelService.getRawActiveStays();
+          rawStays.unshift(newStay);
+          localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(rawStays));
           hotelService.addPoliceLogEntry(newStay);
         }
       } else if (status !== 'OCCUPIED' && previousStatus === 'OCCUPIED') {
-        // If moved away from OCCUPIED, remove from active stays
-        const stayToRemove = activeStays.find(s => String(s.roomNumber) === roomNo);
-        const updatedStays = activeStays.filter(s => String(s.roomNumber) !== roomNo);
+        // If moved away from OCCUPIED, remove from active stays for this hotel
+        const rawStays = hotelService.getRawActiveStays();
+        const stayToRemove = rawStays.find(s => (s.hotelId === hId || (!s.hotelId && hId === 'HTL-101')) && String(s.roomNumber) === roomNo);
+        const updatedStays = rawStays.filter(s => !((s.hotelId === hId || (!s.hotelId && hId === 'HTL-101')) && String(s.roomNumber) === roomNo));
         localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedStays));
 
         if (stayToRemove) {
@@ -188,31 +257,39 @@ export const hotelService = {
       }
     }
 
-    syncHotelOccupancyStats(updatedRooms);
+    syncHotelOccupancyStats(updatedRooms, hId);
     return updatedRooms;
   },
 
-  updateRoomTariff: (roomId, newRate) => {
-    const rooms = hotelService.getRooms();
+  updateRoomTariff: (roomId, newRate, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const storageKey = hotelService.getRoomsStorageKey(hId);
+    const rooms = hotelService.getRooms(hId);
     const updated = rooms.map(r =>
       (r.id === roomId || String(r.number) === String(roomId))
         ? { ...r, rate: Number(newRate) || r.rate }
         : r
     );
-    localStorage.setItem(ROOMS_STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(storageKey, JSON.stringify(updated));
     return updated;
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // ACTIVE STAYS API
+  // ACTIVE STAYS API (Partitioned per Hotel)
   // ══════════════════════════════════════════════════════════════════════════
 
-  getActiveStays: () => {
+  getRawActiveStays: () => {
     try {
       return JSON.parse(localStorage.getItem(ACTIVE_STAYS_STORAGE_KEY)) || [];
     } catch (e) {
       return [];
     }
+  },
+
+  getActiveStays: (targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const rawStays = hotelService.getRawActiveStays();
+    return rawStays.filter(s => s.hotelId === hId || (!s.hotelId && hId === 'HTL-101'));
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -713,33 +790,18 @@ export const hotelService = {
       hotels = [];
     }
 
-    // Synchronize live rooms & occupancy for HTL-101
-    const liveRooms = hotelService.getRooms();
-    const liveOccupied = liveRooms.filter(r => r.status === 'OCCUPIED').length;
-    const liveVacant = liveRooms.filter(r => r.status === 'VACANT').length;
-    const liveTotal = liveRooms.length;
-
     const hotelsWithLiveStats = hotels.map(hotel => {
-      if (hotel.id === 'HTL-101') {
-        return {
-          ...hotel,
-          totalRooms: liveTotal,
-          occupiedRooms: liveOccupied,
-          vacantRooms: liveVacant,
-          occupancyRate: liveTotal > 0 ? Math.round((liveOccupied / liveTotal) * 100) : 0,
-          isLiveSync: true,
-        };
-      }
-      const total = hotel.totalRooms || 15;
-      const occupied = hotel.occupiedRooms !== undefined ? hotel.occupiedRooms : Math.floor(total * 0.6);
-      const vacant = Math.max(0, total - occupied);
+      const hotelRooms = hotelService.getRooms(hotel.id);
+      const liveOccupied = hotelRooms.filter(r => r.status === 'OCCUPIED').length;
+      const liveVacant = hotelRooms.filter(r => r.status === 'VACANT').length;
+      const liveTotal = hotelRooms.length || hotel.totalRooms || 15;
       return {
         ...hotel,
-        totalRooms: total,
-        occupiedRooms: occupied,
-        vacantRooms: vacant,
-        occupancyRate: Math.round((occupied / total) * 100),
-        isLiveSync: false,
+        totalRooms: liveTotal,
+        occupiedRooms: liveOccupied,
+        vacantRooms: liveVacant,
+        occupancyRate: liveTotal > 0 ? Math.round((liveOccupied / liveTotal) * 100) : 0,
+        isLiveSync: true,
       };
     });
 

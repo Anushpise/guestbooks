@@ -31,7 +31,9 @@ export default function Dashboard({
   openNewCheckInModal, 
   openPoliceModal,
   onRoomStatusChange,
-  onViewReceipt 
+  onViewReceipt,
+  user,
+  hotel
 }) {
   const [filterFloor, setFilterFloor] = useState('ALL');
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -46,20 +48,31 @@ export default function Dashboard({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner Header (Raj Silk ERP Style) */}
+      {/* Top Banner Header with Dynamic Property Name */}
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
         <div>
           <div className="flex items-center gap-3">
             <h2 className="font-heading text-2xl font-extrabold text-slate-900 tracking-tight">
-              Hotel Occupancy Pipeline
+              {hotel?.name || user?.name || 'Hotel'} - Room & Stay Matrix
             </h2>
             <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full font-bold px-3 py-1 text-xs">
               {totalRooms} Total Rooms
             </Badge>
+            <Badge className="bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full font-bold font-mono px-3 py-1 text-xs">
+              {hotel?.id || user?.hotelId || 'HTL-101'}
+            </Badge>
           </div>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            Manage room allocations, instant check-in auto-fills, guest ledger & police verification compliance.
-          </p>
+          <div className="text-xs text-slate-500 mt-1 font-medium flex flex-wrap items-center gap-2">
+            <span>Owner: <strong>{hotel?.ownerName || user?.name}</strong></span>
+            {hotel?.address && (
+              <>
+                <span>•</span>
+                <span>{hotel.address}</span>
+              </>
+            )}
+            <span>•</span>
+            <span className="text-emerald-700 font-semibold">{hotel?.propertyType || 'Hotel / Lodge Stay'}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

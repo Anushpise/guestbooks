@@ -4,6 +4,7 @@ import logoImg from '../assets/logo.png';
 
 export default function Header({
   user,
+  hotel,
   onLogout,
   activeTab,
   setActiveTab,
@@ -34,7 +35,8 @@ export default function Header({
 
   const { label: roleLabel, bg: roleBg, dot: roleDot } = ROLE_CONFIG[role] || ROLE_CONFIG.HOTEL;
   const tabTitle = TAB_TITLES[activeTab] || 'Portal';
-  const initials = user?.name ? user.name.slice(0, 2).toUpperCase() : 'US';
+  const displayName = hotel?.name || user?.name || 'Hotel Management';
+  const initials = displayName ? displayName.slice(0, 2).toUpperCase() : 'US';
 
   return (
     <header
@@ -115,11 +117,13 @@ export default function Header({
           </div>
           <div className="flex flex-col">
             <span className="text-[11px] font-extrabold text-slate-900 max-w-[160px] truncate leading-tight">
-              {user?.name || 'Hotel Management'}
+              {displayName}
             </span>
-            {user?.stationName && (
+            {user?.stationName ? (
               <span className="text-[9px] font-semibold text-indigo-600 truncate">{user.stationName}</span>
-            )}
+            ) : hotel?.id ? (
+              <span className="text-[9px] font-mono font-bold text-emerald-700 truncate">{hotel.id} • {hotel.ownerName}</span>
+            ) : null}
           </div>
         </div>
 

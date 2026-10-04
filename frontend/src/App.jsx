@@ -186,6 +186,10 @@ export default function App() {
     refreshData();
   };
 
+  const currentHotel = currentUser?.hotelId 
+    ? authService.getAllHotels().find(h => h.id === currentUser.hotelId)
+    : null;
+
   const handleLogout = () => {
     authService.logout();
     setCurrentUser(null);
@@ -195,10 +199,18 @@ export default function App() {
     }
   };
 
-  const refreshData = () => {
-    setRooms(hotelService.getRooms());
-    setActiveStays(hotelService.getActiveStays());
+  const refreshData = (targetUser = null) => {
+    const userToUse = targetUser !== null ? targetUser : currentUser;
+    const hId = userToUse?.hotelId || 'HTL-101';
+    setRooms(hotelService.getRooms(hId));
+    setActiveStays(hotelService.getActiveStays(hId));
   };
+
+  useEffect(() => {
+    if (currentUser) {
+      refreshData(currentUser);
+    }
+  }, [currentUser]);
 
   const vacantRooms = rooms.filter(r => r.status === 'VACANT');
   const occupiedCount = rooms.filter(r => r.status === 'OCCUPIED').length;
@@ -224,7 +236,11 @@ export default function App() {
 
   // Business Actions
   const handleCheckInComplete = (stayData) => {
-    hotelService.checkInGuest(stayData);
+    const dataWithHotel = {
+      ...stayData,
+      hotelId: currentUser?.hotelId || 'HTL-101',
+    };
+    hotelService.checkInGuest(dataWithHotel);
     refreshData();
   };
 
@@ -237,17 +253,17 @@ export default function App() {
   };
 
   const handleRoomStatusChange = (roomId, newStatus) => {
-    hotelService.updateRoomStatus(roomId, newStatus);
+    hotelService.updateRoomStatus(roomId, newStatus, false, currentUser?.hotelId);
     refreshData();
   };
 
   const handleRoomTariffChange = (roomId, newRate) => {
-    hotelService.updateRoomTariff(roomId, newRate);
+    hotelService.updateRoomTariff(roomId, newRate, currentUser?.hotelId);
     refreshData();
   };
 
   const handleAddRoom = (roomData) => {
-    const result = hotelService.addRoom(roomData);
+    const result = hotelService.addRoom(roomData, currentUser?.hotelId);
     if (result.success) {
       refreshData();
     }
@@ -255,7 +271,7 @@ export default function App() {
   };
 
   const handleDeleteRoom = (roomId) => {
-    const result = hotelService.deleteRoom(roomId);
+    const result = hotelService.deleteRoom(roomId, currentUser?.hotelId);
     if (result.success) {
       refreshData();
     }
@@ -287,6 +303,7 @@ export default function App() {
       {/* Left Sidebar Navigation */}
       <Sidebar 
         user={currentUser}
+        hotel={currentHotel}
         activeTab={activeTab}
         setActiveTab={handleTabChange}
         openExpressModal={() => handleOpenExpressModal()}
@@ -301,6 +318,7 @@ export default function App() {
       <div className="flex-1 pl-64 flex flex-col min-h-screen">
         <Header 
           user={currentUser}
+          hotel={currentHotel}
           onLogout={handleLogout}
           activeTab={activeTab}
           setActiveTab={handleTabChange}
@@ -332,6 +350,8 @@ export default function App() {
               openPoliceModal={handleOpenPoliceModal}
               onRoomStatusChange={handleRoomStatusChange}
               onViewReceipt={handleViewReceipt}
+              user={currentUser}
+              hotel={currentHotel}
             />
           )}
 
