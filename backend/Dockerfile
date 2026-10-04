@@ -20,6 +20,10 @@ WORKDIR /app
 # Create data directory for persistent SQLite DB and upload storage
 RUN mkdir -p /app/data
 
+# Pre-install CPU-only PyTorch to prevent massive 6-8GB CUDA GPU wheels from exhausting disk
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
 # Copy and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
