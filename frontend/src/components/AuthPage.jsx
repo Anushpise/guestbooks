@@ -25,22 +25,20 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
   const [authMode, setAuthMode] = useState(initialMode); // 'HOTEL_LOGIN', 'HOTEL_REGISTER', 'POLICE_LOGIN', 'ADMIN_LOGIN'
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [showSecretRoles, setShowSecretRoles] = useState(false);
 
-  // Check secret URL param on mount
+  // Sync mode with initialMode and route params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roleParam = params.get('role') || params.get('mode') || '';
-    const secretParam = params.get('secret') || '';
 
     if (roleParam === 'police' || initialMode === 'POLICE_LOGIN') {
-      setShowSecretRoles(true);
       setAuthMode('POLICE_LOGIN');
     } else if (roleParam === 'admin' || initialMode === 'ADMIN_LOGIN') {
-      setShowSecretRoles(true);
       setAuthMode('ADMIN_LOGIN');
-    } else if (secretParam === 'true') {
-      setShowSecretRoles(true);
+    } else if (initialMode === 'HOTEL_REGISTER') {
+      setAuthMode('HOTEL_REGISTER');
+    } else {
+      setAuthMode('HOTEL_LOGIN');
     }
   }, [initialMode]);
 
@@ -58,6 +56,7 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
   const [regPropertyType, setRegPropertyType] = useState('Hotel / Lodge Stay');
   const [regPlan, setRegPlan] = useState('Guestbooks Standard Plan (₹499/month)');
   const [documentsUploaded, setDocumentsUploaded] = useState(false);
+  const [regDocumentFiles, setRegDocumentFiles] = useState([]);
 
   // Quick Demo Login Handler
   const handleQuickLogin = (email, password) => {
@@ -101,6 +100,11 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
       return;
     }
 
+    const defaultDocs = [
+      { name: `${regHotelName.replace(/\s+/g, '_')}_Trade_Permit.pdf`, size: '1.4 MB', type: 'PDF' },
+      { name: 'Owner_Aadhaar_Verification.pdf', size: '890 KB', type: 'PDF' },
+    ];
+
     const regData = {
       hotelName: regHotelName,
       ownerName: regOwnerName,
@@ -111,10 +115,7 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
       propertyType: regPropertyType,
       subscriptionPlan: 'Guestbooks Standard Plan (₹499/month)',
       subscriptionAmount: 499,
-      documents: [
-        { name: `${regHotelName.replace(/\s+/g, '_')}_Trade_Permit.pdf`, size: '1.4 MB', type: 'PDF' },
-        { name: 'Owner_Aadhaar_Verification.pdf', size: '890 KB', type: 'PDF' },
-      ],
+      documents: regDocumentFiles.length > 0 ? regDocumentFiles : defaultDocs,
     };
 
     const res = authService.registerHotel(regData);
@@ -163,46 +164,10 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
             Digital Guest Registry & Stay Ledger
           </p>
           <p className="text-xs text-slate-400 font-medium mt-1.5">
-            Property Owner Portal for Instant AI Check-In & Guest Management
+            {authMode === 'ADMIN_LOGIN' ? 'Super Admin Control Center Portal' :
+             authMode === 'POLICE_LOGIN' ? 'State Police Inspector Inspection Portal' :
+             'Property Owner Portal for Instant AI Check-In & Guest Management'}
           </p>
-        </div>
-      </div>
-
-      {/* Quick Demo Selector Buttons */}
-      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl z-10">
-        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-3 shadow-xl backdrop-blur-md">
-          <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 text-center mb-2">
-            ⚡ Quick 1-Click Demo Login:
-          </div>
-          <div className="grid grid-cols-1 gap-2">
-            <button
-              onClick={() => handleQuickLogin('hotel@guestbooks.com', 'hotel123')}
-              className="flex items-center justify-center gap-2 rounded-xl bg-emerald-950/80 border border-emerald-800/80 px-4 py-2.5 text-xs font-bold text-emerald-300 hover:bg-emerald-900 transition-all shadow-xs"
-            >
-              <Building2 className="h-4 w-4 text-emerald-400" />
-              <span>Guestbooks Property Owner / Manager</span>
-            </button>
-
-            {showSecretRoles && (
-              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
-                <button
-                  onClick={() => handleQuickLogin('police@station.gov.in', 'police123')}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-indigo-950/80 border border-indigo-800/80 px-3 py-2 text-xs font-bold text-indigo-300 hover:bg-indigo-900 transition-all shadow-xs"
-                >
-                  <ShieldAlert className="h-4 w-4 text-indigo-400" />
-                  <span>Police Inspector (Secret)</span>
-                </button>
-
-                <button
-                  onClick={() => handleQuickLogin('admin@guestbooks.com', 'admin123')}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-amber-950/80 border border-amber-800/80 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-900 transition-all shadow-xs"
-                >
-                  <Lock className="h-4 w-4 text-amber-400" />
-                  <span>Super Admin (Secret)</span>
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
@@ -210,33 +175,20 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl z-10">
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
           
-          {/* Navigation Role Tabs (Only show police/admin tabs if secret parameter activated) */}
-          {showSecretRoles ? (
-            <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800 mb-6">
-              <button
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  authMode.startsWith('HOTEL') ? 'bg-emerald-800 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
-                }`}
-                onClick={() => setAuthMode('HOTEL_LOGIN')}
-              >
-                <Building2 className="h-3.5 w-3.5" /> Property Owner
-              </button>
-              <button
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  authMode === 'POLICE_LOGIN' ? 'bg-indigo-800 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
-                }`}
-                onClick={() => setAuthMode('POLICE_LOGIN')}
-              >
-                <ShieldAlert className="h-3.5 w-3.5" /> State Police
-              </button>
-              <button
-                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  authMode === 'ADMIN_LOGIN' ? 'bg-amber-800 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
-                }`}
-                onClick={() => setAuthMode('ADMIN_LOGIN')}
-              >
-                <Lock className="h-3.5 w-3.5" /> Admin
-              </button>
+          {/* Navigation Role Tabs - Only show Hotel Owner & Register tabs for standard public logins */}
+          {authMode === 'ADMIN_LOGIN' ? (
+            <div className="rounded-xl border border-amber-800/80 bg-amber-950/50 p-3 mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-amber-300">
+                <Lock className="h-4 w-4 text-amber-400" /> Super Admin Control Center Access
+              </div>
+              <Badge className="bg-amber-800 text-white font-bold text-[10px]">Restricted Route</Badge>
+            </div>
+          ) : authMode === 'POLICE_LOGIN' ? (
+            <div className="rounded-xl border border-indigo-800/80 bg-indigo-950/50 p-3 mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-indigo-300">
+                <ShieldAlert className="h-4 w-4 text-indigo-400" /> State Police Inspector Portal
+              </div>
+              <Badge className="bg-indigo-800 text-white font-bold text-[10px]">Official Route</Badge>
             </div>
           ) : (
             <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800 mb-6">
@@ -244,15 +196,15 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                   authMode === 'HOTEL_LOGIN' ? 'bg-emerald-800 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
                 }`}
-                onClick={() => setAuthMode('HOTEL_LOGIN')}
+                onClick={() => { setAuthMode('HOTEL_LOGIN'); setErrorMessage(''); setSuccessMessage(''); }}
               >
-                <Building2 className="h-3.5 w-3.5" /> Owner Login
+                <Building2 className="h-3.5 w-3.5" /> Property Owner Login
               </button>
               <button
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                   authMode === 'HOTEL_REGISTER' ? 'bg-emerald-800 text-white shadow-xs' : 'text-slate-400 hover:text-slate-200'
                 }`}
-                onClick={() => setAuthMode('HOTEL_REGISTER')}
+                onClick={() => { setAuthMode('HOTEL_REGISTER'); setErrorMessage(''); setSuccessMessage(''); }}
               >
                 <UserPlus className="h-3.5 w-3.5" /> Register Property (₹499/mo)
               </button>
@@ -422,33 +374,62 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
                 />
               </div>
 
-              {/* Document Upload Simulation */}
-              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 space-y-2">
-                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                  <UploadCloud className="h-4 w-4 text-emerald-400" /> Property Verification Documents:
+              {/* Real Property Verification Document Upload */}
+              <div className="rounded-xl border border-slate-800 bg-slate-950 p-3.5 space-y-2.5">
+                <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <UploadCloud className="h-4 w-4 text-emerald-400" /> Property Verification Documents:
+                  </span>
+                  <span className="text-[10px] text-amber-400 font-bold">Mandatory for Admin Approval</span>
                 </label>
-                <p className="text-[11px] text-slate-500">
-                  Upload Trade License / ID Proof for Account Setup.
+                <p className="text-[11px] text-slate-400">
+                  Attach Trade License, FSSAI Certificate, GST details or Property Owner Govt ID (.PDF, .JPG, .PNG).
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setDocumentsUploaded(!documentsUploaded)}
-                  className={`w-full h-9 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+
+                <input
+                  type="file"
+                  id="regDocUpload"
+                  multiple
+                  accept="image/*,application/pdf"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (files.length > 0) {
+                      setDocumentsUploaded(true);
+                      Promise.all(files.map(file => new Promise(resolve => {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(file);
+                        reader.onload = () => resolve({
+                          name: file.name,
+                          size: `${(file.size / 1024).toFixed(0)} KB`,
+                          type: file.type.includes('pdf') ? 'PDF' : 'IMAGE',
+                          dataUrl: reader.result
+                        });
+                      }))).then(fileObjs => {
+                        setRegDocumentFiles(fileObjs);
+                      });
+                    }
+                  }}
+                  className="hidden"
+                />
+
+                <label
+                  htmlFor="regDocUpload"
+                  className={`w-full h-10 rounded-lg border text-xs font-bold cursor-pointer transition-all flex items-center justify-center gap-2 ${
                     documentsUploaded
-                      ? 'border-emerald-500 bg-emerald-950 text-emerald-300'
-                      : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600'
+                      ? 'border-emerald-500 bg-emerald-950/80 text-emerald-300'
+                      : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-emerald-600 hover:bg-slate-800'
                   }`}
                 >
                   {documentsUploaded ? (
                     <>
-                      <Check className="h-4 w-4 text-emerald-400" /> Documents Attached
+                      <Check className="h-4 w-4 text-emerald-400" /> {regDocumentFiles.length || 1} Document(s) Attached
                     </>
                   ) : (
                     <>
-                      <UploadCloud className="h-4 w-4" /> Attach Verification File (.PDF / .JPG)
+                      <UploadCloud className="h-4 w-4 text-emerald-400" /> Browse & Attach Documents (.PDF / .JPG)
                     </>
                   )}
-                </button>
+                </label>
               </div>
 
               <Button type="submit" variant="emerald" size="lg" className="w-full h-11 font-bold text-sm">
@@ -508,11 +489,11 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
             </form>
           )}
 
-          {/* MODE 4: SUPER ADMIN LOGIN (SECRET ACCESSIBLE) */}
+          {/* MODE 4: SUPER ADMIN LOGIN (ACCESSIBLE) */}
           {authMode === 'ADMIN_LOGIN' && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="rounded-xl border border-amber-900/60 bg-amber-950/40 p-4 mb-2 text-xs text-amber-300">
-                👑 <strong>Super Admin Control Center:</strong> Internal management portal.
+                👑 <strong>Super Admin Control Center:</strong> Internal management portal for hotel document verification, police account creation, and subscription tracking.
               </div>
 
               <div className="space-y-1">
@@ -546,6 +527,14 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
               <Button type="submit" size="lg" className="w-full h-11 font-bold text-sm bg-amber-700 hover:bg-amber-600 text-white">
                 Enter Admin Control Center <ArrowRight className="h-4 w-4" />
               </Button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('admin@guestbooks.com', 'admin123')}
+                className="w-full text-xs font-bold py-2.5 px-3 rounded-xl bg-amber-950/90 border border-amber-800/80 text-amber-300 hover:bg-amber-900 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                ⚡ 1-Click Super Admin Login
+              </button>
             </form>
           )}
 

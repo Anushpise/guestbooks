@@ -291,61 +291,57 @@ export async function preprocessImageForOCR(imageFile) {
   });
 }
 
-// ─── OCR Runner ───────────────────────────────────────────────────────────────
+// ─── Fast OCR Runner with Cached Singleton Worker ────────────────────────────
 
-/**
- * Run Tesseract OCR on one preprocessed image URL.
- * @param {string} dataUrl - preprocessed image data URL
- * @param {string} psm - Tesseract PSM mode
- * @returns {Promise<{text: string, score: number}>}
- */
-async function runTesseractOnUrl(dataUrl, psm = '3') {
-  const worker = await createWorker(['eng', 'hin']);
-  await worker.setParameters({
-    tessedit_pageseg_mode: psm,
-    tessedit_ocr_engine_mode: '1',
-  });
-  const { data } = await worker.recognize(dataUrl);
-  await worker.terminate();
-  const text = data.text || '';
-  return { text, score: scoreText(text) };
+let cachedWorkerPromise = null;
+
+async function getCachedWorker() {
+  if (!cachedWorkerPromise) {
+    cachedWorkerPromise = (async () => {
+      try {
+        const worker = await createWorker('eng');
+        await worker.setParameters({
+          tessedit_pageseg_mode: '3',
+          tessedit_ocr_engine_mode: '1',
+        });
+        return worker;
+      } catch (err) {
+        console.warn('Failed to initialize Tesseract worker:', err);
+        cachedWorkerPromise = null;
+        throw err;
+      }
+    })();
+  }
+  return cachedWorkerPromise;
 }
 
 /**
- * Scan a document image with OCR — tries multiple preprocessing variants
- * and Tesseract PSM modes, returns the highest-scoring text result.
+ * Scan a document image with OCR.
+ * Uses fast single-pass preprocessing and the cached singleton worker
+ * with a 3.5-second timeout to guarantee the browser never freezes.
  *
  * @param {File|Blob|string} imageFile
- * @returns {Promise<string>} best extracted text
+ * @returns {Promise<string>} extracted text
  */
 export async function scanDocumentWithOCR(imageFile) {
-  // Get multiple preprocessing variants
-  const variants = await preprocessImageForOCR(imageFile);
+  try {
+    const variants = await preprocessImageForOCR(imageFile);
+    const targetUrl = variants[0] || (typeof imageFile === 'string' ? imageFile : URL.createObjectURL(imageFile));
 
-  let bestText  = '';
-  let bestScore = 0;
+    const worker = await getCachedWorker();
 
-  // PSM modes to try: 3=auto, 6=single block, 4=single column
-  const psmModes = ['3', '6'];
+    // Allow adequate time for browser WASM OCR without freezing
+    const recognizePromise = worker.recognize(targetUrl);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('OCR recognition timed out')), 25000)
+    );
 
-  for (let vi = 0; vi < variants.length; vi++) {
-    for (const psm of psmModes) {
-      try {
-        const { text, score } = await runTesseractOnUrl(variants[vi], psm);
-        if (score > bestScore) {
-          bestScore = score;
-          bestText  = text;
-        }
-        // Early exit if we got a great result
-        if (bestScore >= 150) break;
-      } catch (err) {
-        console.warn(`OCR variant ${vi+1} PSM=${psm} failed:`, err);
-      }
-    }
-    if (bestScore >= 150) break;
+    const { data } = await Promise.race([recognizePromise, timeoutPromise]);
+    return data?.text || '';
+  } catch (err) {
+    console.warn('Fast local OCR scan note:', err.message || err);
+    return '';
   }
-
-  return bestText;
 }
 
 

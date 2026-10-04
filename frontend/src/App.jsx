@@ -62,24 +62,24 @@ export default function App() {
       setCurrentUser(null);
       return;
     }
-    if (rawPath === '/police') {
+    if (rawPath === '/police' || rawPath === '/police-portal') {
       if (user && user.role === 'POLICE') {
         setCurrentUser(user);
         setActiveTab('police-portal');
         refreshData();
       } else {
-        setAuthView('LOGIN');
+        setAuthView('POLICE_LOGIN');
         setCurrentUser(null);
       }
       return;
     }
-    if (rawPath === '/admin') {
+    if (rawPath === '/admin' || rawPath === '/admin-approvals') {
       if (user && user.role === 'ADMIN') {
         setCurrentUser(user);
         setActiveTab('admin-approvals');
         refreshData();
       } else {
-        setAuthView('LOGIN');
+        setAuthView('ADMIN_LOGIN');
         setCurrentUser(null);
       }
       return;
@@ -156,7 +156,11 @@ export default function App() {
 
   const handleAuthViewChange = (view) => {
     setAuthView(view);
-    const targetPath = view === 'REGISTER' ? '/register' : view === 'LOGIN' ? '/login' : '/';
+    const targetPath =
+      view === 'REGISTER' ? '/register' :
+      view === 'ADMIN_LOGIN' ? '/admin' :
+      view === 'POLICE_LOGIN' ? '/police' :
+      view === 'LOGIN' ? '/login' : '/';
     if (window.location.pathname !== targetPath) {
       window.history.pushState({}, '', targetPath);
     }
@@ -263,7 +267,7 @@ export default function App() {
     if (authView === 'LANDING') {
       return (
         <LandingPage 
-          onOpenLogin={(mode = 'HOTEL_LOGIN') => handleAuthViewChange('LOGIN')}
+          onOpenLogin={(mode = 'HOTEL_LOGIN') => handleAuthViewChange(mode === 'ADMIN_LOGIN' ? 'ADMIN_LOGIN' : mode === 'POLICE_LOGIN' ? 'POLICE_LOGIN' : 'LOGIN')}
           onOpenRegister={() => handleAuthViewChange('REGISTER')}
         />
       );
@@ -273,7 +277,7 @@ export default function App() {
       <AuthPage 
         onLoginSuccess={handleUserSessionInit}
         onBackToLanding={() => handleAuthViewChange('LANDING')}
-        initialMode={authView === 'REGISTER' ? 'HOTEL_REGISTER' : 'HOTEL_LOGIN'}
+        initialMode={authView === 'REGISTER' ? 'HOTEL_REGISTER' : authView === 'ADMIN_LOGIN' ? 'ADMIN_LOGIN' : authView === 'POLICE_LOGIN' ? 'POLICE_LOGIN' : 'HOTEL_LOGIN'}
       />
     );
   }

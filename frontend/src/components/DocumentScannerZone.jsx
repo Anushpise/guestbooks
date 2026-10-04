@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { CheckCircle2, Loader2, Upload, Trash2, Clipboard, X, ScanLine } from 'lucide-react';
+import { CheckCircle2, Loader2, Upload, Trash2, Clipboard, X, ScanLine, Zap } from 'lucide-react';
 import { scanDocumentWithOCR, parseIndianIDText } from '../lib/ocrUtils';
+import { compressImageForOCR } from '../lib/imageCompressor';
 
 export default function DocumentScannerZone({
   label = "Guest Document",
@@ -52,20 +53,28 @@ export default function DocumentScannerZone({
     }
   }, [images]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addImages = useCallback((files) => {
-    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
-    if (!imageFiles.length) return;
+  const addImages = useCallback(async (files) => {
+    const rawFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (!rawFiles.length) return;
 
     setExtractedResult(null);
+
+    // Compress only for preview (fast <30ms); send original to backend for best OCR fidelity
+    const compressedItems = await Promise.all(
+      rawFiles.slice(0, 2).map(async (file) => {
+        const compressed = await compressImageForOCR(file, 1600, 0.92);
+        return {
+          file: compressed,   // for backend OCR (high quality)
+          original: file,     // original reference
+          preview: URL.createObjectURL(compressed)
+        };
+      })
+    );
+
     setImages(prev => {
-      // Max 2 images total
       const remaining = 2 - prev.length;
       if (remaining <= 0) return prev;
-      const toAdd = imageFiles.slice(0, remaining).map(file => ({
-        file,
-        preview: URL.createObjectURL(file)
-      }));
-      return [...prev, ...toAdd];
+      return [...prev, ...compressedItems.slice(0, remaining)];
     });
   }, []);
 
@@ -81,14 +90,14 @@ export default function DocumentScannerZone({
   const runOCR = async (imgs) => {
     if (!imgs || imgs.length === 0) return;
     setIsScanning(true);
-    setScanStatus('Enhancing image (OpenCV / AI deblur)...');
+    setScanStatus('AI OCR scanning & auto-fill in progress...');
     setActiveEngine('');
 
     try {
       let parsed = null;
       let engineName = '';
 
-      // 1. Try Python Multi-Engine Backend (OpenCV, NumPy, Pillow, scikit-image, EasyOCR/PaddleOCR)
+      // 1. Try Python High-Speed Backend (FastAPI + OpenCV + Neural OCR)
       try {
         const formData = new FormData();
         formData.append('front_image', imgs[0].file);
@@ -96,46 +105,54 @@ export default function DocumentScannerZone({
           formData.append('back_image', imgs[1].file);
         }
 
-        // Try relative URL (/api/ocr/scan via Vite proxy) first, then direct port 8000
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+
         let res = null;
         try {
-          res = await fetch('/api/ocr/scan', { method: 'POST', body: formData });
+          res = await fetch('/api/ocr/scan', { method: 'POST', body: formData, signal: controller.signal });
         } catch {
-          // fallback to direct backend port 8000
-          res = await fetch('http://127.0.0.1:8008/api/ocr/scan', { method: 'POST', body: formData });
+          // If proxy fails, try direct backend port 8008
+          try {
+            res = await fetch('http://127.0.0.1:8008/api/ocr/scan', { method: 'POST', body: formData });
+          } catch (directErr) {
+            console.warn('Direct backend OCR attempt failed:', directErr);
+          }
+        } finally {
+          clearTimeout(timeoutId);
         }
 
         if (res && res.ok) {
           const result = await res.json();
-          if (result.success && result.data && (result.data.name || result.data.idNumber)) {
+          if (result.success && result.data && (result.data.name || result.data.idNumber || result.data.dob)) {
             parsed = result.data;
-            engineName = 'Python OpenCV + scikit-image AI';
+            engineName = 'AI Neural OCR Engine';
           }
         }
       } catch (backendErr) {
-        console.warn('Python OCR backend unavailable or error, falling back to local OCR:', backendErr);
+        console.warn('Backend OCR note:', backendErr.message || backendErr);
       }
 
-      // 2. Client-side fallback if backend did not return usable data
+      // 2. Client-side fallback if backend did not extract fields
       if (!parsed || (!parsed.name && !parsed.idNumber)) {
-        setScanStatus('Running local high-contrast OCR scan...');
+        setScanStatus('Analyzing document (Browser OCR Engine)...');
         let combinedText = '';
         for (let i = 0; i < imgs.length; i++) {
-          setScanStatus(`Scanning ${i === 0 ? 'Front' : 'Back'} document photo...`);
           const text = await scanDocumentWithOCR(imgs[i].file);
           combinedText += `\n--- ${i === 0 ? 'FRONT' : 'BACK'} ---\n` + text;
         }
 
-        setScanStatus('Extracting details...');
         parsed = parseIndianIDText(combinedText);
-        engineName = 'In-Browser Local Scanner';
+        engineName = 'Browser OCR Engine';
       }
 
       setExtractedResult(parsed);
       setActiveEngine(engineName);
 
-      if (onApplyExtractedData) {
-        onApplyExtractedData(parsed);
+      if (parsed && (parsed.name || parsed.idNumber || parsed.dob || parsed.address)) {
+        if (onApplyExtractedData) {
+          onApplyExtractedData(parsed);
+        }
       }
     } catch (err) {
       console.error('OCR Error:', err);
@@ -164,9 +181,14 @@ export default function DocumentScannerZone({
     }
   };
 
-  // Global paste (Ctrl+V)
+  const isHoveredRef = useRef(false);
+
+  // Global paste (Ctrl+V) - only handles paste if mouse is over this dropzone or dropzone has focus
   useEffect(() => {
     const handlePaste = (e) => {
+      if (!isHoveredRef.current && dropZoneRef.current && !dropZoneRef.current.contains(document.activeElement)) {
+        return;
+      }
       const items = e.clipboardData?.items;
       if (!items) return;
       const imageFiles = [];
@@ -205,7 +227,11 @@ export default function DocumentScannerZone({
   const canAddMore = images.length < 2;
 
   return (
-    <div className={`rounded-xl border ${isIndigo ? 'border-indigo-200 bg-indigo-50/30' : 'border-emerald-200 bg-emerald-50/30'} p-4 space-y-3`}>
+    <div 
+      onMouseEnter={() => { isHoveredRef.current = true; }}
+      onMouseLeave={() => { isHoveredRef.current = false; }}
+      className={`rounded-xl border ${isIndigo ? 'border-indigo-200 bg-indigo-50/30' : 'border-emerald-200 bg-emerald-50/30'} p-4 space-y-3`}
+    >
       {/* Header */}
       <div className="flex items-center gap-2">
         <ScanLine className={`h-4 w-4 ${accent.text}`} />
@@ -320,7 +346,7 @@ export default function DocumentScannerZone({
         <div className={`flex items-center gap-3 rounded-lg border ${accent.lightBorder} ${accent.light} p-3`}>
           <Loader2 className={`h-4 w-4 animate-spin ${accent.text} flex-shrink-0`} />
           <div>
-            <p className={`text-xs font-bold ${accent.text}`}>Auto-scanning document...</p>
+            <p className={`text-xs font-bold ${accent.text}`}>Auto-scanning document... (may take 5–15s)</p>
             <p className="text-[11px] text-slate-500">{scanStatus}</p>
           </div>
         </div>

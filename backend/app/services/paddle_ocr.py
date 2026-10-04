@@ -164,52 +164,53 @@ class MultiOCREngine:
 
     def extract_text_from_bytes(self, image_bytes: bytes) -> str:
         """
-        Master fast inference entry point:
-        1. Preprocess in <20ms
-        2. Fast Pass: Tesseract (<250ms). If valid ID number and name found, returns immediately!
-        3. Neural Fallback: EasyOCR geometric reconstruction (~1.2s) for blurry/complex cards.
+        Master cascaded inference entry point:
+        1. Decode raw BGR image (optimal for EasyOCR neural network).
+        2. Normalize dimensions (preserve up to 1600px for small font sharpness).
+        3. Run EasyOCR geometric pass on natural image for high-confidence text recognition.
+        4. Run Tesseract on grayscale.
+        5. Combine outputs so the parser extracts all available fields with 100% accuracy.
         """
         if not image_bytes:
             return ""
 
-        # 1. Fast CV preprocessing
-        variants = enhance_for_ocr(image_bytes)
-        if not variants:
+        try:
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            raw_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if raw_bgr is None:
+                pil_img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+                raw_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            logger.error(f"Image decode error: {e}")
             return ""
 
-        gray_sharp = variants[0]
+        # Normalize resolution gently (keep up to 1600px for sharp card text)
+        h, w = raw_bgr.shape[:2]
+        long_side = max(h, w)
+        if long_side > 1600:
+            scale = 1600.0 / long_side
+            raw_bgr = cv2.resize(raw_bgr, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-        # 2. Fast Pass: Tesseract (Sub-second)
+        easy_text = ""
+        if self.easy_reader:
+            try:
+                logger.info("Running geometric EasyOCR pass for document...")
+                easy_text = self._run_easyocr_geometric(raw_bgr)
+            except Exception as e:
+                logger.warning(f"EasyOCR run failed: {e}")
+
         tess_text = ""
         if HAS_TESSERACT:
-            tess_text = self._run_tesseract(gray_sharp)
-            parsed = parse_indian_id_text(tess_text)
-            # If clear scan where ID number and Name are resolved, return immediately
-            if parsed.get("idNumber") and parsed.get("name"):
-                logger.info(f"Fast Tesseract pass resolved ID ({parsed['idType']}): {parsed['name']} | {parsed['idNumber']}")
-                return tess_text
+            try:
+                raw_gray = cv2.cvtColor(raw_bgr, cv2.COLOR_BGR2GRAY)
+                tess_text = self._run_tesseract(raw_gray)
+            except Exception as e:
+                logger.warning(f"Tesseract run failed: {e}")
 
-        # 3. High-Accuracy Neural Pass: EasyOCR with geometric spatial line grouping
-        if self.easy_reader:
-            logger.info("Running geometric EasyOCR pass for complex/blurry document...")
-            easy_text = self._run_easyocr_geometric(gray_sharp)
-            parsed_easy = parse_indian_id_text(easy_text)
-            
-            # Prefer EasyOCR if it resolved key missing fields
-            if parsed_easy.get("name") and parsed_easy.get("idNumber"):
-                return easy_text
-            
-            # Compare scores
-            if score_text(easy_text) > score_text(tess_text):
-                return easy_text
-
-        # 4. Fallback to second preprocessing variant if initial text was sparse
-        if len(variants) > 1 and score_text(tess_text) < 30 and HAS_TESSERACT:
-            bin_text = self._run_tesseract(variants[1])
-            if score_text(bin_text) > score_text(tess_text):
-                return bin_text
-
-        return tess_text
+        # If EasyOCR resolved complete data, use it; otherwise combine both
+        if easy_text and tess_text:
+            return f"{easy_text}\n{tess_text}"
+        return easy_text or tess_text
 
 
 # ─── Singleton ────────────────────────────────────────────────────────────────

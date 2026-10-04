@@ -168,7 +168,16 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {hotels.map((hotel) => (
+                {hotels.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                      <Building className="h-10 w-10 mx-auto text-slate-300 mb-2" />
+                      <div className="font-extrabold text-slate-700 text-sm">No Property Registrations in Queue</div>
+                      <div className="text-xs text-slate-400 mt-1">When property owners register on /register, their uploaded documents and application requests will appear here for your verification and approval.</div>
+                    </td>
+                  </tr>
+                ) : (
+                  hotels.map((hotel) => (
                   <tr key={hotel.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-5 py-4">
                       <div className="font-extrabold text-slate-900 text-sm">{hotel.name}</div>
@@ -234,7 +243,7 @@ export default function AdminDashboard() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                )))}
               </tbody>
             </table>
           </div>
@@ -408,17 +417,30 @@ export default function AdminDashboard() {
                 <strong>Owner:</strong> {selectedDocHotel.ownerName} | <strong>Email:</strong> {selectedDocHotel.email} | <strong>Phone:</strong> {selectedDocHotel.phone}
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="text-xs font-bold text-slate-800">Attached Documents for Verification:</div>
                 {selectedDocHotel.documents.map((doc, idx) => (
-                  <div key={idx} className="flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200 text-xs">
-                    <div className="flex items-center gap-2 font-mono font-semibold text-slate-700">
-                      <FileText className="h-4 w-4 text-emerald-600" />
-                      {doc.name} ({doc.size})
+                  <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-mono font-semibold text-slate-700">
+                        <FileText className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                        <span className="font-bold">{doc.name}</span> ({doc.size})
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        VERIFIED ATTACHMENT
+                      </span>
                     </div>
-                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      VERIFIED SCAN
-                    </span>
+
+                    {doc.dataUrl && doc.type === 'IMAGE' && (
+                      <div className="border rounded-lg overflow-hidden max-h-48 bg-slate-900">
+                        <img src={doc.dataUrl} alt={doc.name} className="h-full w-full object-contain" />
+                      </div>
+                    )}
+                    {doc.dataUrl && doc.type === 'PDF' && (
+                      <a href={doc.dataUrl} target="_blank" rel="noreferrer" className="inline-block text-[11px] font-bold text-indigo-600 hover:underline">
+                        📄 View PDF Document Attachment →
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

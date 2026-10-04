@@ -12,7 +12,9 @@ import {
   TrendingUp,
   Clock,
   Layers,
-  Search
+  Search,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -21,6 +23,8 @@ export default function RoomManagementView({
   rooms, 
   onRoomStatusChange, 
   onRoomTariffChange,
+  onAddRoom,
+  onDeleteRoom,
   refreshData 
 }) {
   const [editingRoomId, setEditingRoomId] = useState(null);
@@ -30,6 +34,15 @@ export default function RoomManagementView({
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState('');
 
+  // Add Room modal & delete confirmation states
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newRoomNumber, setNewRoomNumber] = useState('');
+  const [newRoomType, setNewRoomType] = useState('Deluxe AC Suite');
+  const [newRoomFloor, setNewRoomFloor] = useState('1st Floor');
+  const [newRoomRate, setNewRoomRate] = useState('2500');
+  const [addError, setAddError] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
   // Live occupancy calculations
   const totalRooms = rooms.length || 15;
   const occupiedCount = rooms.filter(r => r.status === 'OCCUPIED').length;
@@ -37,6 +50,10 @@ export default function RoomManagementView({
   const cleaningCount = rooms.filter(r => r.status === 'CLEANING').length;
   const maintenanceCount = rooms.filter(r => r.status === 'MAINTENANCE').length;
   const occupancyPercentage = totalRooms > 0 ? Math.round((occupiedCount / totalRooms) * 100) : 0;
+
+  // Extract unique floors dynamically
+  const uniqueFloors = Array.from(new Set(rooms.map(r => r.floor).filter(Boolean))).sort();
+  const floorOptions = uniqueFloors.length > 0 ? uniqueFloors : ['1st Floor', '2nd Floor', '3rd Floor'];
 
   const showNotification = (msg) => {
     setToastMessage(msg);
@@ -61,6 +78,48 @@ export default function RoomManagementView({
       showNotification(`✓ Tariff for Room RM-${roomNumber} updated to ₹${editTariffValue}/night.`);
     }
     setEditingRoomId(null);
+  };
+
+  const handleCreateRoom = (e) => {
+    e.preventDefault();
+    setAddError('');
+    if (!newRoomNumber.trim()) {
+      setAddError('Please enter a room number.');
+      return;
+    }
+    if (!newRoomRate || Number(newRoomRate) <= 0) {
+      setAddError('Please enter a valid tariff rate.');
+      return;
+    }
+    if (onAddRoom) {
+      const res = onAddRoom({
+        number: newRoomNumber.trim(),
+        type: newRoomType,
+        floor: newRoomFloor,
+        rate: Number(newRoomRate)
+      });
+      if (res && !res.success) {
+        setAddError(res.message || 'Failed to add room.');
+        return;
+      }
+    }
+    showNotification(`✓ Room RM-${newRoomNumber.trim()} added to inventory successfully!`);
+    setIsAddModalOpen(false);
+    setNewRoomNumber('');
+    setNewRoomRate('2500');
+  };
+
+  const handleConfirmDelete = (room) => {
+    if (onDeleteRoom) {
+      const res = onDeleteRoom(room.id);
+      if (res && !res.success) {
+        showNotification(`⚠️ ${res.message}`);
+        setDeleteConfirmId(null);
+        return;
+      }
+    }
+    showNotification(`✓ Room RM-${room.number} removed from inventory.`);
+    setDeleteConfirmId(null);
   };
 
   // Filter rooms
@@ -101,11 +160,17 @@ export default function RoomManagementView({
             </div>
           </div>
           <p className="text-xs text-slate-500 mt-1 font-medium">
-            Status changes here automatically update Live Occupancy across the Dashboard, Sidebar, and Police Portal in real time.
+            Manage hotel rooms, tariffs, live housekeeping, and add or delete rooms with instant synchronization across the PMS.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
+          <Button 
+            onClick={() => { setIsAddModalOpen(true); setAddError(''); }}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold gap-1.5 shadow-sm"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add New Room
+          </Button>
           <Button variant="outline" size="sm" onClick={refreshData} className="text-xs font-bold gap-1.5">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh Inventory
           </Button>
@@ -206,12 +271,12 @@ export default function RoomManagementView({
           <select
             value={filterFloor}
             onChange={(e) => setFilterFloor(e.target.value)}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-2xs outline-none focus:ring-2 focus:ring-indigo-600"
+            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-2xs outline-none focus:ring-2 focus:ring-indigo-600 cursor-pointer"
           >
             <option value="ALL">All Floors</option>
-            <option value="1st Floor">1st Floor</option>
-            <option value="2nd Floor">2nd Floor</option>
-            <option value="3rd Floor">3rd Floor</option>
+            {floorOptions.map(floor => (
+              <option key={floor} value={floor}>{floor}</option>
+            ))}
           </select>
 
           <span className="text-xs font-bold text-slate-400">
@@ -244,8 +309,47 @@ export default function RoomManagementView({
                 <span className="font-mono text-base font-black text-slate-900 bg-white px-3 py-1 rounded-xl border border-slate-200 shadow-2xs">
                   RM-{room.number}
                 </span>
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{room.floor}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{room.floor}</span>
+                  {onDeleteRoom && (
+                    <button
+                      onClick={() => setDeleteConfirmId(deleteConfirmId === room.id ? null : room.id)}
+                      disabled={isOccupied}
+                      title={isOccupied ? "Cannot delete occupied room" : "Delete Room"}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        isOccupied 
+                          ? 'text-slate-300 cursor-not-allowed opacity-40' 
+                          : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                      }`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Inline Delete Confirmation if requested */}
+              {deleteConfirmId === room.id && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 space-y-2">
+                  <p className="text-xs font-bold text-rose-900">
+                    Delete Room RM-{room.number} permanently from inventory?
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleConfirmDelete(room)}
+                      className="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs"
+                    >
+                      Yes, Delete
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(null)}
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Room Type */}
               <div>
@@ -373,6 +477,121 @@ export default function RoomManagementView({
           );
         })}
       </div>
+
+      {/* ── Add Room Modal Dialog ────────────────────────────────────────── */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
+                  <BedDouble className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-heading text-lg font-black text-slate-900">Add New Room</h3>
+                  <p className="text-xs text-slate-500">Create a new room in hotel inventory</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsAddModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {addError && (
+              <div className="rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-xs font-bold text-rose-800 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                <span>{addError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateRoom} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Room Number *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 401, 305"
+                  value={newRoomNumber}
+                  onChange={(e) => setNewRoomNumber(e.target.value)}
+                  className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Room Type *
+                </label>
+                <select
+                  value={newRoomType}
+                  onChange={(e) => setNewRoomType(e.target.value)}
+                  className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="Standard AC Room">Standard AC Room</option>
+                  <option value="Deluxe AC Suite">Deluxe AC Suite</option>
+                  <option value="Executive Suite">Executive Suite</option>
+                  <option value="Family Luxury Suite">Family Luxury Suite</option>
+                  <option value="Presidential Suite">Presidential Suite</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Floor *
+                  </label>
+                  <select
+                    value={newRoomFloor}
+                    onChange={(e) => setNewRoomFloor(e.target.value)}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                  >
+                    <option value="1st Floor">1st Floor</option>
+                    <option value="2nd Floor">2nd Floor</option>
+                    <option value="3rd Floor">3rd Floor</option>
+                    <option value="4th Floor">4th Floor</option>
+                    <option value="5th Floor">5th Floor</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Nightly Tariff (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min="100"
+                    placeholder="2500"
+                    value={newRoomRate}
+                    onChange={(e) => setNewRoomRate(e.target.value)}
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-mono font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-200 transition-all"
+                >
+                  Create Room
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

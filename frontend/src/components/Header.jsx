@@ -105,17 +105,22 @@ export default function Header({
           </>
         )}
 
-        {/* User pill */}
-        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white pl-1 pr-3 py-1 shadow-xs">
+        {/* User / Hotel Name pill */}
+        <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50/80 pl-1 pr-3.5 py-1 shadow-xs">
           <div
-            className="flex h-7 w-7 items-center justify-center rounded-full font-black text-white text-[11px]"
-            style={{ background: 'linear-gradient(135deg, #0d9488, #059669)' }}
+            className="flex h-7 w-7 items-center justify-center rounded-full font-black text-white text-[11px] shadow-2xs"
+            style={{ background: 'linear-gradient(135deg, #4f46e5, #059669)' }}
           >
             {initials}
           </div>
-          <span className="text-[11px] font-bold text-slate-800 max-w-[120px] truncate">
-            {user?.name || 'User'}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-[11px] font-extrabold text-slate-900 max-w-[160px] truncate leading-tight">
+              {user?.name || 'Hotel Management'}
+            </span>
+            {user?.stationName && (
+              <span className="text-[9px] font-semibold text-indigo-600 truncate">{user.stationName}</span>
+            )}
+          </div>
         </div>
 
         <button

@@ -33,8 +33,11 @@ async def scan_document_id(
             back_text = paddle_service.extract_text_from_bytes(back_bytes)
             combined_text += "\n--- BACK DOCUMENT ---\n" + back_text
 
+        logger.info(f"=== COMBINED OCR TEXT ===\n{combined_text}\n========================")
+
         # 3. Parse Indian ID Fields
         extracted_data = parse_indian_id_text(combined_text)
+        logger.info(f"=== EXTRACTED DATA ===\n{extracted_data}\n========================")
 
         return {
             "success": True,

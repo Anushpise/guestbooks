@@ -16,7 +16,8 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
   // Digital Signature & Uploaded Documents
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signatureData, setSignatureData] = useState(null);
-  const [uploadedDocs, setUploadedDocs] = useState({ front: null, back: null });
+  const [primaryDocs, setPrimaryDocs] = useState({ front: null, back: null });
+  const [partnerDocs, setPartnerDocs] = useState({ front: null, back: null });
 
   // Primary Guest
   const [primaryName, setPrimaryName] = useState('');
@@ -90,8 +91,8 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
       goingTo: goingTo || 'Direct Check-in',
       purpose,
       vehicleNo: vehicleNo || 'N/A',
-      documentFront: uploadedDocs.front,
-      documentBack: uploadedDocs.back,
+      documentFront: primaryDocs.front,
+      documentBack: primaryDocs.back,
       signature: signatureData,
       primaryGuest: {
         name: primaryName,
@@ -115,6 +116,8 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
               idNumber: partnerIdNumber,
               address: primaryAddress,
               city: primaryCity,
+              documentFront: partnerDocs.front,
+              documentBack: partnerDocs.back,
             }
           : null,
     };
@@ -157,7 +160,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
             targetGuestName="Primary Guest"
             accentColor="indigo"
             onApplyExtractedData={handlePrimaryOcrExtract}
-            onDocumentsChange={(docs) => setUploadedDocs(docs)}
+            onDocumentsChange={(docs) => setPrimaryDocs(docs)}
           />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -307,6 +310,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
                 targetGuestName="Partner B"
                 accentColor="emerald"
                 onApplyExtractedData={handlePartnerOcrExtract}
+                onDocumentsChange={(docs) => setPartnerDocs(docs)}
               />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
