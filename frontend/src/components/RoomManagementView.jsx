@@ -21,6 +21,7 @@ import { Badge } from './ui/badge';
 
 export default function RoomManagementView({ 
   rooms, 
+  hotel = null,
   onRoomStatusChange, 
   onRoomTariffChange,
   onAddRoom,
@@ -150,17 +151,22 @@ export default function RoomManagementView({
                 <Badge className="bg-indigo-50 text-indigo-800 border border-indigo-200 font-extrabold text-[10px]">
                   Real-Time Inventory Master
                 </Badge>
+                {hotel?.id && (
+                  <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-extrabold text-[10px]">
+                    {hotel.id}
+                  </Badge>
+                )}
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Auto-Sync Active
                 </span>
               </div>
               <h2 className="font-heading text-2xl font-black text-slate-900 tracking-tight mt-1">
-                Room Status & Tariffs Master
+                {hotel?.name ? `${hotel.name} - Rooms & Tariffs` : 'Room Status & Tariffs Master'}
               </h2>
             </div>
           </div>
           <p className="text-xs text-slate-500 mt-1 font-medium">
-            Manage hotel rooms, tariffs, live housekeeping, and add or delete rooms with instant synchronization across the PMS.
+            Manage rooms, tariffs, and housekeeping for {hotel?.name || 'your property'} with instant synchronization across the PMS.
           </p>
         </div>
 

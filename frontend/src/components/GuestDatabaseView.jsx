@@ -8,7 +8,7 @@ import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { hotelService } from '../services/hotelService';
 
-export default function GuestDatabaseView() {
+export default function GuestDatabaseView({ hotelId = null }) {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -18,7 +18,7 @@ export default function GuestDatabaseView() {
   const fetchRecords = async (query = '') => {
     setLoading(true);
     try {
-      const data = await hotelService.getDatabaseRecords(query);
+      const data = await hotelService.getDatabaseRecords(query, hotelId);
       setRecords(data);
     } catch (err) {
       console.error('Failed to fetch sequential guest database:', err);
@@ -29,7 +29,7 @@ export default function GuestDatabaseView() {
 
   useEffect(() => {
     fetchRecords(search);
-  }, [search]);
+  }, [search, hotelId]);
 
   const handleViewDetails = async (recordId) => {
     try {

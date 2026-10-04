@@ -361,25 +361,12 @@ export const hotelService = {
   /**
    * Performs guest check-in. This is the SINGLE source of truth for check-in flow:
    * 1. Save to backend SQLite DB (async, fire-and-forget on failure)
-   * 2. Create active stay record in localStorage
+   * 2. Create active stay record in localStorage scoped to the hotel
    * 3. Mark room as OCCUPIED (with _skipStaySync to prevent circular loop)
    * 4. Update frequent guest ledger
-   * 5. Add police log entry
+   * 5. Add police log entry with hotelId
    */
   checkInGuest: (stayData) => {
-    const activeStays = hotelService.getActiveStays();
-    const roomNo = String(stayData.roomNumber);
-
-    // Prevent double check-in to same room
-    const alreadyOccupied = activeStays.find(s => String(s.roomNumber) === roomNo);
-    if (alreadyOccupied) {
-      console.warn(`Room ${roomNo} already has an active stay. Skipping duplicate check-in.`);
-      return alreadyOccupied;
-    }
-
-    const newStayId = generateId('STAY');
-    const regNo = `REG-${String(activeStays.length + 1).padStart(4, '0')}`;
-
     // Get current user's hotel ID
     let currentHotelId = 'HTL-101';
     try {
@@ -388,6 +375,19 @@ export const hotelService = {
     } catch (e) {
       currentHotelId = stayData.hotelId || 'HTL-101';
     }
+
+    const roomNo = String(stayData.roomNumber);
+    const hotelActiveStays = hotelService.getActiveStays(currentHotelId);
+
+    // Prevent double check-in to same room within THIS hotel
+    const alreadyOccupied = hotelActiveStays.find(s => String(s.roomNumber) === roomNo);
+    if (alreadyOccupied) {
+      console.warn(`Room ${roomNo} already has an active stay in hotel ${currentHotelId}. Skipping duplicate check-in.`);
+      return alreadyOccupied;
+    }
+
+    const newStayId = generateId('STAY');
+    const regNo = `REG-${String(hotelActiveStays.length + 1).padStart(4, '0')}`;
 
     // Fire backend DB save async (non-blocking)
     try {
@@ -451,9 +451,10 @@ export const hotelService = {
       status: 'CHECKED_IN',
     };
 
-    // 1. Add to active stays
-    activeStays.unshift(newStayRecord);
-    localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(activeStays));
+    // 1. Add to active stays master (PRESERVES all hotels' active stays!)
+    const rawStays = hotelService.getRawActiveStays();
+    rawStays.unshift(newStayRecord);
+    localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(rawStays));
 
     // 2. Add to master all-stays log
     try {
@@ -464,13 +465,13 @@ export const hotelService = {
       console.warn('Failed to append to master stays log:', e);
     }
 
-    // 3. Mark room as OCCUPIED (_skipStaySync = true to prevent circular loop!)
-    hotelService.updateRoomStatus(roomNo, 'OCCUPIED', true);
+    // 3. Mark room as OCCUPIED in THIS hotel (_skipStaySync = true to prevent circular loop!)
+    hotelService.updateRoomStatus(roomNo, 'OCCUPIED', true, currentHotelId);
 
     // 4. Update frequent guest ledger
     hotelService.saveOrUpdateGuestHistory(stayData.primaryGuest, stayData.accompanyingGuest);
 
-    // 5. Add police log entry
+    // 5. Add police log entry with hotelId
     hotelService.addPoliceLogEntry(newStayRecord);
 
     return newStayRecord;
@@ -481,27 +482,27 @@ export const hotelService = {
   // ══════════════════════════════════════════════════════════════════════════
 
   /**
-   * Checks out a guest. Accepts either a stay ID or room number.
-   * 1. Find the stay by ID first, then by room number
-   * 2. Remove from active stays
-   * 3. Update master all-stays record status to CHECKED_OUT
-   * 4. Mark room as CLEANING (_skipStaySync to prevent circular loop)
-   * 5. Update police log checkout time
-   * 6. Notify backend DB (fire-and-forget)
+   * Checks out a guest. Accepts either a stay ID or room number, scoped by hotelId.
    */
-  checkOutGuest: (stayIdOrRoom) => {
-    const activeStays = hotelService.getActiveStays();
+  checkOutGuest: (stayIdOrRoom, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const rawStays = hotelService.getRawActiveStays();
 
-    // Find the stay: try by ID first, then by room number
-    let stayToCheckout = activeStays.find(s => s.id === stayIdOrRoom);
+    // Find the stay: try by ID first, then by room number within THIS hotel
+    let stayToCheckout = rawStays.find(s => s.id === stayIdOrRoom);
     if (!stayToCheckout) {
-      stayToCheckout = activeStays.find(s => String(s.roomNumber) === String(stayIdOrRoom));
+      stayToCheckout = rawStays.find(s =>
+        (s.hotelId === hId || (!s.hotelId && hId === 'HTL-101')) &&
+        String(s.roomNumber) === String(stayIdOrRoom)
+      );
     }
 
     if (!stayToCheckout) {
-      console.warn(`No active stay found for: ${stayIdOrRoom}`);
+      console.warn(`No active stay found for: ${stayIdOrRoom} in hotel: ${hId}`);
       return null;
     }
+
+    const stayHotelId = stayToCheckout.hotelId || hId;
 
     // Notify backend SQLite database (fire-and-forget)
     try {
@@ -510,16 +511,16 @@ export const hotelService = {
       });
     } catch {}
 
-    // Remove this specific stay from active stays
-    const updatedActiveStays = activeStays.filter(s => s.id !== stayToCheckout.id);
-    localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedActiveStays));
+    // Remove this specific stay from master active stays (preserves all other hotels!)
+    const updatedRawStays = rawStays.filter(s => s.id !== stayToCheckout.id);
+    localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedRawStays));
 
     // Update check-out timestamp in master all-stays log
     const nowIso = new Date().toISOString();
     try {
       const allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
       const updatedAllStays = allStays.map(s => {
-        if (s.id === stayToCheckout.id || (String(s.roomNumber) === String(stayToCheckout.roomNumber) && s.status === 'CHECKED_IN')) {
+        if (s.id === stayToCheckout.id || (s.hotelId === stayHotelId && String(s.roomNumber) === String(stayToCheckout.roomNumber) && s.status === 'CHECKED_IN')) {
           return { ...s, status: 'CHECKED_OUT', checkOutTime: nowIso };
         }
         return s;
@@ -527,11 +528,11 @@ export const hotelService = {
       localStorage.setItem(ALL_STAYS_STORAGE_KEY, JSON.stringify(updatedAllStays));
     } catch (e) {}
 
-    // Update room status to CLEANING (_skipStaySync = true!)
-    hotelService.updateRoomStatus(stayToCheckout.roomNumber, 'CLEANING', true);
+    // Update room status to CLEANING for this specific hotel (_skipStaySync = true!)
+    hotelService.updateRoomStatus(stayToCheckout.roomNumber, 'CLEANING', true, stayHotelId);
 
     // Update check-out timestamp in Police log
-    hotelService.updatePoliceLogCheckOut(stayToCheckout.roomNumber, stayToCheckout.primaryGuest?.name);
+    hotelService.updatePoliceLogCheckOut(stayToCheckout.roomNumber, stayToCheckout.primaryGuest?.name, stayHotelId);
 
     // Add checkout time to the returned record for receipt
     stayToCheckout.checkOutTime = nowIso;
@@ -556,8 +557,8 @@ export const hotelService = {
     }
 
     // Merge active stays if not already present
-    const activeStays = hotelService.getActiveStays();
-    activeStays.forEach(active => {
+    const rawActive = hotelService.getRawActiveStays();
+    rawActive.forEach(active => {
       const exists = allStays.some(s => s.id === active.id);
       if (!exists) {
         allStays.unshift(active);
@@ -679,9 +680,15 @@ export const hotelService = {
   // BACKEND DATABASE RECORDS (SQLite / PostgreSQL)
   // ══════════════════════════════════════════════════════════════════════════
 
-  getDatabaseRecords: async (search = '') => {
+  getDatabaseRecords: async (search = '', targetHotelId = null) => {
     try {
-      const url = search ? `/api/guests/records?search=${encodeURIComponent(search)}` : '/api/guests/records';
+      const hId = targetHotelId || hotelService.getCurrentHotelId();
+      let queryParams = [];
+      if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
+      if (hId && hId !== 'ALL') queryParams.push(`hotel_id=${encodeURIComponent(hId)}`);
+      const qs = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+      const url = `/api/guests/records${qs}`;
+
       let res = null;
       try {
         res = await fetch(url);
@@ -702,22 +709,28 @@ export const hotelService = {
   // POLICE LOGS
   // ══════════════════════════════════════════════════════════════════════════
 
-  getPoliceLogs: () => {
+  getPoliceLogs: (targetHotelId = null) => {
+    let logs = [];
     try {
-      return JSON.parse(localStorage.getItem(POLICE_LOGS_STORAGE_KEY)) || initialHistoricalPoliceLogs;
+      logs = JSON.parse(localStorage.getItem(POLICE_LOGS_STORAGE_KEY)) || initialHistoricalPoliceLogs;
     } catch (e) {
-      return initialHistoricalPoliceLogs;
+      logs = initialHistoricalPoliceLogs;
     }
+    if (!targetHotelId || targetHotelId === 'ALL') {
+      return logs;
+    }
+    return logs.filter(l => l.hotelId === targetHotelId || (!l.hotelId && targetHotelId === 'HTL-101'));
   },
 
   addPoliceLogEntry: (stayRecord) => {
-    const logs = hotelService.getPoliceLogs();
+    const logs = hotelService.getPoliceLogs('ALL');
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const newLog = {
       id: generateId('LOG'),
+      hotelId: stayRecord.hotelId || hotelService.getCurrentHotelId(),
       date: dateStr,
       checkInTime: `${dateStr} ${timeStr}`,
       checkOutTime: 'Active Stay',
@@ -738,11 +751,13 @@ export const hotelService = {
     localStorage.setItem(POLICE_LOGS_STORAGE_KEY, JSON.stringify(logs));
   },
 
-  updatePoliceLogCheckOut: (roomNumber, guestName) => {
-    const logs = hotelService.getPoliceLogs();
+  updatePoliceLogCheckOut: (roomNumber, guestName, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const logs = hotelService.getPoliceLogs('ALL');
     const logIndex = logs.findIndex(l =>
+      (l.hotelId === hId || (!l.hotelId && hId === 'HTL-101')) &&
       String(l.roomNumber) === String(roomNumber) &&
-      l.guestName === guestName &&
+      (!guestName || l.guestName === guestName) &&
       l.checkOutTime === 'Active Stay'
     );
 

@@ -5,12 +5,13 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 
-export default function BillingArchiveView({ onViewReceipt }) {
+export default function BillingArchiveView({ onViewReceipt, hotelId = null, hotel = null }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('ALL');
 
-  const activeStays = hotelService.getActiveStays();
-  const policeLogs = hotelService.getPoliceLogs();
+  const effectiveHotelId = hotelId || hotel?.id || hotelService.getCurrentHotelId();
+  const activeStays = hotelService.getActiveStays(effectiveHotelId);
+  const policeLogs = hotelService.getPoliceLogs(effectiveHotelId);
 
   // Combine stays into billing records
   const billingRecords = policeLogs.map((log) => {
@@ -63,14 +64,19 @@ export default function BillingArchiveView({ onViewReceipt }) {
           <div className="flex items-center gap-3">
             <h2 className="font-heading text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
               <Receipt className="h-6 w-6 text-emerald-800" />
-              Billing & Guest Receipt Archives
+              {hotel?.name ? `${hotel.name} - Billing & Receipts` : 'Billing & Guest Receipt Archives'}
             </h2>
+            {hotel?.id && (
+              <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-bold text-xs">
+                {hotel.id}
+              </Badge>
+            )}
             <Badge className="bg-emerald-800 text-white font-bold px-3 py-1 text-xs">
               Accounting Ledger
             </Badge>
           </div>
           <p className="text-xs text-slate-500 mt-1 font-medium">
-            Search invoices, check payment modes, print guest tax slips, and track room tariffs.
+            Search invoices, check payment modes, print guest tax slips, and track room tariffs for {hotel?.name || 'your property'}.
           </p>
         </div>
 

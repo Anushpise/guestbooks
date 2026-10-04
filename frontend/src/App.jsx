@@ -22,7 +22,7 @@ import { hotelService } from './services/hotelService';
 import { authService } from './services/authService';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser());
   const [authView, setAuthView] = useState('LANDING'); // 'LANDING', 'LOGIN', 'REGISTER'
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showPoliceOption, setShowPoliceOption] = useState(false);
@@ -39,6 +39,13 @@ export default function App() {
   
   const [preSelectedRoom, setPreSelectedRoom] = useState(null);
   const [selectedStayForReceipt, setSelectedStayForReceipt] = useState(null);
+
+  const refreshData = (targetUser = null) => {
+    const userToUse = targetUser || currentUser || authService.getCurrentUser();
+    const hId = userToUse?.hotelId || 'HTL-101';
+    setRooms(hotelService.getRooms(hId));
+    setActiveStays(hotelService.getActiveStays(hId));
+  };
 
   // Sync state from current URL pathname
   const syncRouteWithState = () => {
@@ -66,7 +73,7 @@ export default function App() {
       if (user && user.role === 'POLICE') {
         setCurrentUser(user);
         setActiveTab('police-portal');
-        refreshData();
+        refreshData(user);
       } else {
         setAuthView('POLICE_LOGIN');
         setCurrentUser(null);
@@ -77,7 +84,7 @@ export default function App() {
       if (user && user.role === 'ADMIN') {
         setCurrentUser(user);
         setActiveTab('admin-approvals');
-        refreshData();
+        refreshData(user);
       } else {
         setAuthView('ADMIN_LOGIN');
         setCurrentUser(null);
@@ -102,7 +109,7 @@ export default function App() {
       if (user) {
         setCurrentUser(user);
         setActiveTab(routeToTabMap[rawPath]);
-        refreshData();
+        refreshData(user);
       } else {
         setAuthView('LOGIN');
         setCurrentUser(null);
@@ -114,7 +121,7 @@ export default function App() {
     if (user) {
       setCurrentUser(user);
       setActiveTab('dashboard');
-      refreshData();
+      refreshData(user);
     } else {
       setAuthView('LANDING');
       setCurrentUser(null);
@@ -183,11 +190,22 @@ export default function App() {
     if (window.location.pathname !== targetPath) {
       window.history.pushState({}, '', targetPath);
     }
-    refreshData();
+    refreshData(user);
   };
 
-  const currentHotel = currentUser?.hotelId 
-    ? authService.getAllHotels().find(h => h.id === currentUser.hotelId)
+  const currentHotel = currentUser
+    ? (authService.getAllHotels().find(h =>
+        (currentUser.hotelId && h.id === currentUser.hotelId) ||
+        (currentUser.email && h.email && h.email.toLowerCase() === currentUser.email.toLowerCase())
+      ) || {
+        id: currentUser.hotelId || 'HTL-101',
+        name: currentUser.name || 'pease of palace',
+        ownerName: currentUser.ownerName || currentUser.name || 'dilip',
+        email: currentUser.email || '',
+        phone: currentUser.phone || '',
+        totalRooms: 15,
+        occupiedRooms: 0,
+      })
     : null;
 
   const handleLogout = () => {
@@ -197,13 +215,6 @@ export default function App() {
     if (window.location.pathname !== '/') {
       window.history.pushState({}, '', '/');
     }
-  };
-
-  const refreshData = (targetUser = null) => {
-    const userToUse = targetUser !== null ? targetUser : currentUser;
-    const hId = userToUse?.hotelId || 'HTL-101';
-    setRooms(hotelService.getRooms(hId));
-    setActiveStays(hotelService.getActiveStays(hId));
   };
 
   useEffect(() => {
@@ -241,12 +252,12 @@ export default function App() {
       hotelId: currentUser?.hotelId || 'HTL-101',
     };
     hotelService.checkInGuest(dataWithHotel);
-    refreshData();
+    refreshData(currentUser);
   };
 
   const handleCheckOut = (stayId) => {
-    const checkedOut = hotelService.checkOutGuest(stayId);
-    refreshData();
+    const checkedOut = hotelService.checkOutGuest(stayId, currentUser?.hotelId);
+    refreshData(currentUser);
     if (checkedOut) {
       handleViewReceipt(checkedOut);
     }
@@ -254,18 +265,18 @@ export default function App() {
 
   const handleRoomStatusChange = (roomId, newStatus) => {
     hotelService.updateRoomStatus(roomId, newStatus, false, currentUser?.hotelId);
-    refreshData();
+    refreshData(currentUser);
   };
 
   const handleRoomTariffChange = (roomId, newRate) => {
     hotelService.updateRoomTariff(roomId, newRate, currentUser?.hotelId);
-    refreshData();
+    refreshData(currentUser);
   };
 
   const handleAddRoom = (roomData) => {
     const result = hotelService.addRoom(roomData, currentUser?.hotelId);
     if (result.success) {
-      refreshData();
+      refreshData(currentUser);
     }
     return result;
   };
@@ -273,7 +284,7 @@ export default function App() {
   const handleDeleteRoom = (roomId) => {
     const result = hotelService.deleteRoom(roomId, currentUser?.hotelId);
     if (result.success) {
-      refreshData();
+      refreshData(currentUser);
     }
     return result;
   };
@@ -360,6 +371,7 @@ export default function App() {
               vacantRooms={vacantRooms}
               onCheckInComplete={handleCheckInComplete}
               switchToNewGuest={() => handleTabChange('new-checkin')}
+              hotel={currentHotel}
             />
           )}
 
@@ -367,37 +379,45 @@ export default function App() {
             <NewCheckInView
               vacantRooms={vacantRooms}
               onCheckInComplete={handleCheckInComplete}
+              hotel={currentHotel}
             />
           )}
 
           {activeTab === 'database' && (
-            <GuestDatabaseView />
+            <GuestDatabaseView hotelId={currentHotel?.id || currentUser?.hotelId} />
           )}
 
           {activeTab === 'ledger' && (
             <GuestLedger 
               openExpressModal={(roomNo, phone) => handleOpenExpressModal(roomNo)}
+              hotelId={currentHotel?.id || currentUser?.hotelId}
             />
           )}
 
           {activeTab === 'police-log' && (
-            <PoliceReportView />
+            <PoliceReportView 
+              hotelId={currentHotel?.id || currentUser?.hotelId} 
+              hotel={currentHotel} 
+            />
           )}
 
           {activeTab === 'billing' && (
             <BillingArchiveView 
               onViewReceipt={handleViewReceipt}
+              hotelId={currentHotel?.id || currentUser?.hotelId}
+              hotel={currentHotel}
             />
           )}
 
           {activeTab === 'room-mgmt' && (
             <RoomManagementView 
               rooms={rooms}
+              hotel={currentHotel}
               onRoomStatusChange={handleRoomStatusChange}
               onRoomTariffChange={handleRoomTariffChange}
               onAddRoom={handleAddRoom}
               onDeleteRoom={handleDeleteRoom}
-              refreshData={refreshData}
+              refreshData={() => refreshData(currentUser)}
             />
           )}
         </main>
@@ -411,6 +431,7 @@ export default function App() {
         vacantRooms={vacantRooms}
         onCheckInComplete={handleCheckInComplete}
         switchToNewGuest={() => setIsNewCheckInModalOpen(true)}
+        hotel={currentHotel}
       />
 
       <NewCheckInForm 
@@ -418,6 +439,7 @@ export default function App() {
         onClose={() => setIsNewCheckInModalOpen(false)}
         vacantRooms={vacantRooms}
         onCheckInComplete={handleCheckInComplete}
+        hotel={currentHotel}
       />
 
       <PoliceReportModal 
