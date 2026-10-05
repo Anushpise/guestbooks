@@ -9,6 +9,15 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+    dedupe: ['react', 'react-dom'],
+  },
+  optimizeDeps: {
+    include: ['framer-motion', 'react', 'react-dom'],
+  },
   server: {
     proxy: {
       '/api': {
@@ -17,11 +26,6 @@ export default defineConfig({
         proxyTimeout: 60000,
         timeout: 60000,
       },
-    },
-  },
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
 })
