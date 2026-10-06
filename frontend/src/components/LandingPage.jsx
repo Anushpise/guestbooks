@@ -68,18 +68,32 @@ export default function LandingPage({ onOpenLogin, onOpenRegister }) {
           </nav>
 
           {/* Right Phone & Action Buttons */}
-          <div className="flex items-center gap-5 sm:gap-7">
-            <div className="hidden lg:flex items-center gap-2 text-sm font-medium text-slate-700">
-              <span>+91 96183 10474</span>
-            </div>
+          <div className="flex items-center gap-3 sm:gap-5">
+            <a 
+              href="tel:7823084754" 
+              className="hidden lg:flex items-center gap-1.5 text-sm font-semibold text-slate-700 hover:text-[#0b3c33] transition-colors"
+            >
+              <PhoneCall className="h-3.5 w-3.5 text-[#0b3c33]" />
+              <span>7823084754</span>
+            </a>
+
+            <div className="h-5 w-px bg-slate-200 hidden lg:block" />
+
+            <button
+              onClick={() => onOpenLogin('HOTEL_LOGIN')}
+              className="px-4 py-2 text-sm font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-full transition-all cursor-pointer"
+            >
+              Login
+            </button>
 
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => onOpenRegister()}
-              className="px-6 py-2.5 text-sm font-medium text-white bg-[#0b3c33] hover:bg-[#072620] rounded-full transition-all shadow-xs cursor-pointer"
+              className="px-5 py-2 text-sm font-semibold text-white bg-[#0b3c33] hover:bg-[#072620] rounded-full transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
             >
-              Request a quotation
+              <span>Register</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </motion.button>
           </div>
 
@@ -104,14 +118,6 @@ export default function LandingPage({ onOpenLogin, onOpenRegister }) {
             animate="visible"
             className="max-w-3xl text-left space-y-7"
           >
-            {/* Category / Location Line (Reference Style: — ENGINEERING STEEL · CUT TO SIZE · HUBLI, INDIA) */}
-            <motion.div 
-              variants={fadeInUp}
-              className="text-xs sm:text-sm font-medium uppercase tracking-widest text-emerald-400 font-sans"
-            >
-              —  AI INDIAN ID OCR SCANNER · TOUCHSCREEN REGISTRY · INDIA
-            </motion.div>
-
             {/* Giant Headline matching exact reference line-breaks & color scheme */}
             <motion.h1 
               variants={fadeInUp}
