@@ -8,7 +8,8 @@ export default function DocumentScannerZone({
   targetGuestName = "Primary Guest",
   onApplyExtractedData,
   onDocumentsChange,
-  accentColor = "indigo"
+  accentColor = "indigo",
+  incomingFiles = null,
 }) {
   const [images, setImages] = useState([]); // Array of { file, preview }
   const [isDragging, setIsDragging] = useState(false);
@@ -53,8 +54,8 @@ export default function DocumentScannerZone({
     }
   }, [images]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const addImages = useCallback(async (files) => {
-    const rawFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+  const addImages = useCallback(async (files, replace = false) => {
+    const rawFiles = Array.from(files).filter(f => f && f.type && f.type.startsWith('image/'));
     if (!rawFiles.length) return;
 
     setExtractedResult(null);
@@ -72,11 +73,21 @@ export default function DocumentScannerZone({
     );
 
     setImages(prev => {
+      if (replace) {
+        return compressedItems.slice(0, 2);
+      }
       const remaining = 2 - prev.length;
       if (remaining <= 0) return prev;
       return [...prev, ...compressedItems.slice(0, remaining)];
     });
   }, []);
+
+  // Listen to incoming external files (e.g. from mobile QR code drop)
+  useEffect(() => {
+    if (incomingFiles && incomingFiles.length > 0) {
+      addImages(incomingFiles, true);
+    }
+  }, [incomingFiles, addImages]);
 
   const removeImage = useCallback((index) => {
     setImages(prev => {

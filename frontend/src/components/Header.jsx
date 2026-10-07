@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, Zap, UserPlus, ShieldCheck, ChevronRight } from 'lucide-react';
+import { LogOut, Zap, UserPlus, ShieldCheck, ChevronRight, QrCode } from 'lucide-react';
 import logoImg from '../assets/logo.png';
 
 export default function Header({
@@ -11,6 +11,7 @@ export default function Header({
   openExpressModal,
   openNewCheckInModal,
   openPoliceModal,
+  openCounterQRModal,
   showPoliceOption = false
 }) {
   const role = user?.role || 'HOTEL';
@@ -103,6 +104,13 @@ export default function Header({
                 <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" /> Police Log
               </button>
             )}
+            <button
+              onClick={openCounterQRModal}
+              className="hidden lg:flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 px-3 py-1.5 text-[11px] font-bold text-indigo-800 transition-all active:scale-95 shadow-xs"
+              title="Print Front-Desk QR Standee for Mobile Self ID Upload"
+            >
+              <QrCode className="h-3.5 w-3.5 text-indigo-600" /> Desk QR
+            </button>
             <div className="mx-1 h-5 w-px bg-slate-200" />
           </>
         )}

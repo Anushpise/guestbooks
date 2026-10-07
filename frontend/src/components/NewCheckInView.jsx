@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { User, Users, Building2, Camera, Check, UserPlus, PenTool, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, Users, Building2, Camera, Check, UserPlus, PenTool, RotateCcw, QrCode, Smartphone, Sparkles, Wifi } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import DocumentScannerZone from './DocumentScannerZone';
 import SignatureModal from './SignatureModal';
+import CounterQRModal from './CounterQRModal';
+import { base64ToFile } from '../lib/imageCompressor';
 
-export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
+export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }) {
   const [resetKey, setResetKey] = useState(Date.now());
   const [selectedRoomNumber, setSelectedRoomNumber] = useState(vacantRooms[0]?.number || '');
   const [stayType, setStayType] = useState('24 Hours Full Stay');
@@ -19,6 +21,99 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
   const [signatureData, setSignatureData] = useState(null);
   const [primaryDocs, setPrimaryDocs] = useState({ front: null, back: null });
   const [partnerDocs, setPartnerDocs] = useState({ front: null, back: null });
+
+  // Front-Desk QR Standee & Mobile Drop Relay State
+  const [isStandeeModalOpen, setIsStandeeModalOpen] = useState(false);
+  const [incomingPrimaryFiles, setIncomingPrimaryFiles] = useState([]);
+  const [incomingPartnerFiles, setIncomingPartnerFiles] = useState([]);
+  const [qrDropAlert, setQrDropAlert] = useState(null);
+
+  // Polling for guest mobile document uploads
+  useEffect(() => {
+    const hotelId = hotel?.id || 'HTL-101';
+    let isMounted = true;
+
+    const pollDrops = async () => {
+      try {
+        const res = await fetch(`/api/qr-drop/latest/${encodeURIComponent(hotelId)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && data.hasDrop && data.drop && isMounted) {
+          const drop = data.drop;
+          // Consume drop so reception doesn't process it repeatedly
+          fetch(`/api/qr-drop/consume/${drop.dropId}`, { method: 'POST' }).catch(() => {});
+
+          // Convert primary images to File objects
+          const pFiles = [];
+          if (drop.primaryFront) {
+            const f = base64ToFile(drop.primaryFront, 'primary_front.jpg');
+            if (f) pFiles.push(f);
+          }
+          if (drop.primaryBack) {
+            const b = base64ToFile(drop.primaryBack, 'primary_back.jpg');
+            if (b) pFiles.push(b);
+          }
+          if (pFiles.length > 0) {
+            setIncomingPrimaryFiles(pFiles);
+          }
+
+          if (drop.guestName) {
+            setPrimaryName(prev => prev || drop.guestName);
+          }
+          if (drop.guestPhone) {
+            setPrimaryPhone(prev => prev || drop.guestPhone);
+          }
+
+          // Partner documents if included
+          const partFiles = [];
+          if (drop.partnerFront) {
+            const pf = base64ToFile(drop.partnerFront, 'partner_front.jpg');
+            if (pf) partFiles.push(pf);
+          }
+          if (drop.partnerBack) {
+            const pb = base64ToFile(drop.partnerBack, 'partner_back.jpg');
+            if (pb) partFiles.push(pb);
+          }
+          if (partFiles.length > 0) {
+            setHasAccompanying(true);
+            setIncomingPartnerFiles(partFiles);
+          }
+
+          // Audible notification chime
+          try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+            osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.4);
+          } catch (e) {
+            console.warn('Audio chime notice:', e);
+          }
+
+          setQrDropAlert({
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            guest: drop.guestName || 'Guest Mobile',
+            count: pFiles.length + partFiles.length
+          });
+        }
+      } catch (err) {
+        // Silently catch polling network hiccup
+      }
+    };
+
+    const intervalId = setInterval(pollDrops, 2500);
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [hotel?.id]);
 
   // Primary Guest
   const [primaryName, setPrimaryName] = useState('');
@@ -183,6 +278,51 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
         </div>
       </div>
 
+      {/* Mobile QR Live Drop Status & Standee Banner */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-purple-50/90 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <QrCode className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black text-indigo-950 uppercase tracking-tight">Front-Desk QR Standee Self-Upload</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Relay Active
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 mt-0.5">
+              Guest scans counter QR on mobile → documents instantly arrive here & auto-fill via AI OCR.
+            </p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          onClick={() => setIsStandeeModalOpen(true)}
+          className="h-9 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 shadow-sm"
+        >
+          <Smartphone className="h-4 w-4" /> Print / View Desk QR Standee
+        </Button>
+      </div>
+
+      {qrDropAlert && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-emerald-900 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="h-4 w-4 text-emerald-600 animate-bounce shrink-0" />
+            <span>
+              🎉 <strong>New Guest Drop Received!</strong> Documents uploaded from guest mobile ({qrDropAlert.guest}) at {qrDropAlert.time}. AI OCR Auto-Fill started!
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setQrDropAlert(null)}
+            className="text-emerald-700 hover:text-emerald-950 font-bold px-2 py-0.5 text-[11px] rounded bg-emerald-100 hover:bg-emerald-200"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Main Registration Form */}
       <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs space-y-6">
         {/* Section 1: Primary Guest Details */}
@@ -197,6 +337,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
             label="Primary Guest Document — Auto Scan & Fill"
             targetGuestName="Primary Guest"
             accentColor="indigo"
+            incomingFiles={incomingPrimaryFiles}
             onApplyExtractedData={handlePrimaryOcrExtract}
             onDocumentsChange={(docs) => setPrimaryDocs(docs)}
           />
@@ -348,6 +489,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
                 label="Partner B Document — Auto Scan & Fill"
                 targetGuestName="Partner B"
                 accentColor="emerald"
+                incomingFiles={incomingPartnerFiles}
                 onApplyExtractedData={handlePartnerOcrExtract}
                 onDocumentsChange={(docs) => setPartnerDocs(docs)}
               />
@@ -565,6 +707,13 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
         onClose={() => setIsSignatureModalOpen(false)}
         onSave={(sig) => setSignatureData(sig)}
         existingSignature={signatureData}
+      />
+
+      {/* Front-Desk QR Standee Generator & Print Modal */}
+      <CounterQRModal
+        isOpen={isStandeeModalOpen}
+        onClose={() => setIsStandeeModalOpen(false)}
+        hotel={hotel}
       />
     </div>
   );

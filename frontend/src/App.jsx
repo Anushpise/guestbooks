@@ -19,12 +19,14 @@ import NewCheckInForm from './components/NewCheckInForm';
 import PoliceReportModal from './components/PoliceReportModal';
 import GuestReceiptModal from './components/GuestReceiptModal';
 import CheckOutModal from './components/CheckOutModal';
+import CounterQRModal from './components/CounterQRModal';
+import GuestUploadPortal from './components/GuestUploadPortal';
 import { hotelService } from './services/hotelService';
 import { authService } from './services/authService';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser());
-  const [authView, setAuthView] = useState('LANDING'); // 'LANDING', 'LOGIN', 'REGISTER'
+  const [authView, setAuthView] = useState('LANDING'); // 'LANDING', 'LOGIN', 'REGISTER', 'GUEST_UPLOAD'
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showPoliceOption, setShowPoliceOption] = useState(false);
 
@@ -38,6 +40,7 @@ export default function App() {
   const [isPoliceModalOpen, setIsPoliceModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [isCheckOutModalOpen, setIsCheckOutModalOpen] = useState(false);
+  const [isCounterQRModalOpen, setIsCounterQRModalOpen] = useState(false);
   
   const [preSelectedRoom, setPreSelectedRoom] = useState(null);
   const [selectedStayForReceipt, setSelectedStayForReceipt] = useState(null);
@@ -55,6 +58,12 @@ export default function App() {
     const rawPath = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
     const params = new URLSearchParams(window.location.search);
     const policeLogParam = params.get('police-log') || '';
+    const viewParam = params.get('view') || '';
+
+    if (rawPath === '/guest-upload' || viewParam === 'guest-upload') {
+      setAuthView('GUEST_UPLOAD');
+      return;
+    }
 
     if (policeLogParam === 'true' || rawPath === '/police-log' || rawPath === '/police') {
       setShowPoliceOption(true);
@@ -320,6 +329,11 @@ export default function App() {
     return result;
   };
 
+  // Public Guest Mobile Upload Screen (Accessible via QR scan without staff login)
+  if (authView === 'GUEST_UPLOAD') {
+    return <GuestUploadPortal />;
+  }
+
   // Render Landing Page or Auth Page if unauthenticated
   if (!currentUser) {
     if (authView === 'LANDING') {
@@ -367,6 +381,7 @@ export default function App() {
           openExpressModal={() => handleOpenExpressModal()}
           openNewCheckInModal={handleOpenNewCheckInModal}
           openPoliceModal={handleOpenPoliceModal}
+          openCounterQRModal={() => setIsCounterQRModalOpen(true)}
           showPoliceOption={showPoliceOption}
         />
 
@@ -492,6 +507,12 @@ export default function App() {
         }}
         stay={stayToCheckout}
         onConfirmCheckOut={handleConfirmCheckOut}
+      />
+
+      <CounterQRModal
+        isOpen={isCounterQRModalOpen}
+        onClose={() => setIsCounterQRModalOpen(false)}
+        hotel={currentHotel}
       />
     </div>
   );

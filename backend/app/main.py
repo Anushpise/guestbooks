@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.ocr_routes import router as ocr_router
 from app.api.guest_routes import router as guest_router
+from app.api.qr_drop_routes import router as qr_drop_router
 from app.db.database import init_db
 import logging
 
@@ -30,6 +31,7 @@ app.add_middleware(
 
 app.include_router(ocr_router)
 app.include_router(guest_router)
+app.include_router(qr_drop_router)
 
 @app.get("/")
 def health_check():

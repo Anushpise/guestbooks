@@ -75,3 +75,25 @@ export async function compressImageForOCR(fileOrBlob, maxDimension = 1600, quali
     };
   });
 }
+
+/**
+ * Converts a base64 Data URL to a native File object for OCR FormData submission.
+ */
+export function base64ToFile(base64String, filename = 'guest_id.jpg') {
+  if (!base64String) return null;
+  try {
+    const arr = base64String.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, { type: mime, lastModified: Date.now() });
+  } catch (e) {
+    console.error('Error converting base64 to file:', e);
+    return null;
+  }
+}
