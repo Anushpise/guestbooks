@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, Upload, CheckCircle2, ShieldCheck, AlertCircle, Sparkles, Building2, User, Users, RefreshCw, X, ArrowRight } from 'lucide-react';
+import { Camera, Image as ImageIcon, Upload, CheckCircle2, ShieldCheck, AlertCircle, Sparkles, Building2, User, Users, RefreshCw, X, ArrowRight } from 'lucide-react';
 import { compressImageForOCR } from '../lib/imageCompressor';
 import { hotelService } from '../services/hotelService';
 import { authService } from '../services/authService';
@@ -263,6 +263,7 @@ export default function GuestUploadPortal() {
                       type="button"
                       onClick={() => setPrimaryFront(null)}
                       className="absolute top-1.5 right-1.5 p-1 bg-black/70 hover:bg-red-600 rounded-full text-white transition-colors"
+                      title="Remove and choose another"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -271,18 +272,37 @@ export default function GuestUploadPortal() {
                     </span>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-indigo-400 rounded-xl aspect-[4/3] bg-slate-800/60 cursor-pointer transition-colors p-2 text-center active:scale-95">
-                    <Camera className="w-6 h-6 text-indigo-400 mb-1" />
-                    <span className="text-[11px] font-bold text-white">Take Photo</span>
-                    <span className="text-[9px] text-slate-400 mt-0.5">Front side with photo</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="hidden"
-                      onChange={(e) => handleCapture(e, setPrimaryFront)}
-                    />
-                  </label>
+                  <div className="flex flex-col justify-between border-2 border-dashed border-slate-700 hover:border-indigo-400 rounded-xl aspect-[4/3] bg-slate-800/60 p-2 text-center transition-colors">
+                    <div className="my-auto grid grid-cols-2 gap-1.5 w-full">
+                      {/* Live Camera Option */}
+                      <label className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 cursor-pointer active:scale-95 transition-all text-center">
+                        <Camera className="w-5 h-5 mb-1 text-indigo-400" />
+                        <span className="text-[10px] font-bold text-white leading-tight">Camera</span>
+                        <span className="text-[8px] text-indigo-300/80 mt-0.5">Take photo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => handleCapture(e, setPrimaryFront)}
+                        />
+                      </label>
+
+                      {/* Phone Gallery / Storage Option */}
+                      <label className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 cursor-pointer active:scale-95 transition-all text-center">
+                        <ImageIcon className="w-5 h-5 mb-1 text-emerald-400" />
+                        <span className="text-[10px] font-bold text-white leading-tight">Gallery</span>
+                        <span className="text-[8px] text-slate-400 mt-0.5">From device</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleCapture(e, setPrimaryFront)}
+                        />
+                      </label>
+                    </div>
+                    <span className="text-[9px] text-slate-400 shrink-0">Front side with photo</span>
+                  </div>
                 )}
               </div>
 
@@ -300,6 +320,7 @@ export default function GuestUploadPortal() {
                       type="button"
                       onClick={() => setPrimaryBack(null)}
                       className="absolute top-1.5 right-1.5 p-1 bg-black/70 hover:bg-red-600 rounded-full text-white transition-colors"
+                      title="Remove and choose another"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -308,18 +329,37 @@ export default function GuestUploadPortal() {
                     </span>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-slate-500 rounded-xl aspect-[4/3] bg-slate-800/60 cursor-pointer transition-colors p-2 text-center active:scale-95">
-                    <Camera className="w-6 h-6 text-slate-400 mb-1" />
-                    <span className="text-[11px] font-bold text-slate-300">Back Photo</span>
-                    <span className="text-[9px] text-slate-400 mt-0.5">For address & pin</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="hidden"
-                      onChange={(e) => handleCapture(e, setPrimaryBack)}
-                    />
-                  </label>
+                  <div className="flex flex-col justify-between border-2 border-dashed border-slate-700 hover:border-slate-500 rounded-xl aspect-[4/3] bg-slate-800/60 p-2 text-center transition-colors">
+                    <div className="my-auto grid grid-cols-2 gap-1.5 w-full">
+                      {/* Live Camera Option */}
+                      <label className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 cursor-pointer active:scale-95 transition-all text-center">
+                        <Camera className="w-5 h-5 mb-1 text-slate-300" />
+                        <span className="text-[10px] font-bold text-white leading-tight">Camera</span>
+                        <span className="text-[8px] text-indigo-300/80 mt-0.5">Take photo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => handleCapture(e, setPrimaryBack)}
+                        />
+                      </label>
+
+                      {/* Phone Gallery / Storage Option */}
+                      <label className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 cursor-pointer active:scale-95 transition-all text-center">
+                        <ImageIcon className="w-5 h-5 mb-1 text-emerald-400" />
+                        <span className="text-[10px] font-bold text-white leading-tight">Gallery</span>
+                        <span className="text-[8px] text-slate-400 mt-0.5">From device</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleCapture(e, setPrimaryBack)}
+                        />
+                      </label>
+                    </div>
+                    <span className="text-[9px] text-slate-400 shrink-0">For address & pin</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -353,59 +393,113 @@ export default function GuestUploadPortal() {
                 <div className="grid grid-cols-2 gap-3">
                   {/* Partner Front */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-slate-300">Partner Front Photo</label>
+                    <label className="text-[11px] font-semibold text-slate-300 flex items-center justify-between">
+                      <span>Partner Front Photo</span>
+                      {partnerFront && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                    </label>
                     {partnerFront ? (
                       <div className="relative rounded-xl overflow-hidden border-2 border-emerald-500 aspect-[4/3] bg-black">
                         <img src={partnerFront.preview} alt="Partner Front" className="w-full h-full object-cover" />
                         <button
                           type="button"
                           onClick={() => setPartnerFront(null)}
-                          className="absolute top-1.5 right-1.5 p-1 bg-black/70 hover:bg-red-600 rounded-full text-white"
+                          className="absolute top-1.5 right-1.5 p-1 bg-black/70 hover:bg-red-600 rounded-full text-white transition-colors"
+                          title="Remove and choose another"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
+                        <span className="absolute bottom-1 left-1.5 text-[9px] font-mono bg-black/75 px-1.5 py-0.5 rounded text-emerald-300">
+                          FRONT OK
+                        </span>
                       </div>
                     ) : (
-                      <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-emerald-400 rounded-xl aspect-[4/3] bg-slate-800/60 cursor-pointer p-2 text-center">
-                        <Camera className="w-6 h-6 text-emerald-400 mb-1" />
-                        <span className="text-[11px] font-bold text-white">Partner Photo</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          onChange={(e) => handleCapture(e, setPartnerFront)}
-                        />
-                      </label>
+                      <div className="flex flex-col justify-between border-2 border-dashed border-slate-700 hover:border-emerald-400 rounded-xl aspect-[4/3] bg-slate-800/60 p-2 text-center transition-colors">
+                        <div className="my-auto grid grid-cols-2 gap-1.5 w-full">
+                          {/* Live Camera Option */}
+                          <label className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 cursor-pointer active:scale-95 transition-all text-center">
+                            <Camera className="w-5 h-5 mb-1 text-emerald-400" />
+                            <span className="text-[10px] font-bold text-white leading-tight">Camera</span>
+                            <span className="text-[8px] text-emerald-300/80 mt-0.5">Take photo</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              className="hidden"
+                              onChange={(e) => handleCapture(e, setPartnerFront)}
+                            />
+                          </label>
+
+                          {/* Phone Gallery / Storage Option */}
+                          <label className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 cursor-pointer active:scale-95 transition-all text-center">
+                            <ImageIcon className="w-5 h-5 mb-1 text-emerald-400" />
+                            <span className="text-[10px] font-bold text-white leading-tight">Gallery</span>
+                            <span className="text-[8px] text-slate-400 mt-0.5">From device</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleCapture(e, setPartnerFront)}
+                            />
+                          </label>
+                        </div>
+                        <span className="text-[9px] text-slate-400 shrink-0">Partner front photo</span>
+                      </div>
                     )}
                   </div>
 
                   {/* Partner Back */}
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold text-slate-300">Partner Back Photo</label>
+                    <label className="text-[11px] font-semibold text-slate-300 flex items-center justify-between">
+                      <span>Partner Back Photo</span>
+                      {partnerBack && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                    </label>
                     {partnerBack ? (
                       <div className="relative rounded-xl overflow-hidden border-2 border-emerald-500 aspect-[4/3] bg-black">
                         <img src={partnerBack.preview} alt="Partner Back" className="w-full h-full object-cover" />
                         <button
                           type="button"
                           onClick={() => setPartnerBack(null)}
-                          className="absolute top-1.5 right-1.5 p-1 bg-black/70 hover:bg-red-600 rounded-full text-white"
+                          className="absolute top-1.5 right-1.5 p-1 bg-black/70 hover:bg-red-600 rounded-full text-white transition-colors"
+                          title="Remove and choose another"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
+                        <span className="absolute bottom-1 left-1.5 text-[9px] font-mono bg-black/75 px-1.5 py-0.5 rounded text-emerald-300">
+                          BACK OK
+                        </span>
                       </div>
                     ) : (
-                      <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-700 hover:border-slate-500 rounded-xl aspect-[4/3] bg-slate-800/60 cursor-pointer p-2 text-center">
-                        <Camera className="w-6 h-6 text-slate-400 mb-1" />
-                        <span className="text-[11px] font-bold text-slate-300">Back Photo</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          onChange={(e) => handleCapture(e, setPartnerBack)}
-                        />
-                      </label>
+                      <div className="flex flex-col justify-between border-2 border-dashed border-slate-700 hover:border-slate-500 rounded-xl aspect-[4/3] bg-slate-800/60 p-2 text-center transition-colors">
+                        <div className="my-auto grid grid-cols-2 gap-1.5 w-full">
+                          {/* Live Camera Option */}
+                          <label className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 cursor-pointer active:scale-95 transition-all text-center">
+                            <Camera className="w-5 h-5 mb-1 text-slate-300" />
+                            <span className="text-[10px] font-bold text-white leading-tight">Camera</span>
+                            <span className="text-[8px] text-emerald-300/80 mt-0.5">Take photo</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              capture="environment"
+                              className="hidden"
+                              onChange={(e) => handleCapture(e, setPartnerBack)}
+                            />
+                          </label>
+
+                          {/* Phone Gallery / Storage Option */}
+                          <label className="flex flex-col items-center justify-center py-2 px-1 rounded-lg bg-slate-700/50 hover:bg-slate-700 border border-slate-600 text-slate-300 cursor-pointer active:scale-95 transition-all text-center">
+                            <ImageIcon className="w-5 h-5 mb-1 text-emerald-400" />
+                            <span className="text-[10px] font-bold text-white leading-tight">Gallery</span>
+                            <span className="text-[8px] text-slate-400 mt-0.5">From device</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleCapture(e, setPartnerBack)}
+                            />
+                          </label>
+                        </div>
+                        <span className="text-[9px] text-slate-400 shrink-0">Partner back photo</span>
+                      </div>
                     )}
                   </div>
                 </div>
