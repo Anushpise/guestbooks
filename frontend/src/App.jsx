@@ -18,6 +18,7 @@ import ExpressCheckInModal from './components/ExpressCheckInModal';
 import NewCheckInForm from './components/NewCheckInForm';
 import PoliceReportModal from './components/PoliceReportModal';
 import GuestReceiptModal from './components/GuestReceiptModal';
+import CheckOutModal from './components/CheckOutModal';
 import { hotelService } from './services/hotelService';
 import { authService } from './services/authService';
 
@@ -36,9 +37,11 @@ export default function App() {
   const [isNewCheckInModalOpen, setIsNewCheckInModalOpen] = useState(false);
   const [isPoliceModalOpen, setIsPoliceModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [isCheckOutModalOpen, setIsCheckOutModalOpen] = useState(false);
   
   const [preSelectedRoom, setPreSelectedRoom] = useState(null);
   const [selectedStayForReceipt, setSelectedStayForReceipt] = useState(null);
+  const [stayToCheckout, setStayToCheckout] = useState(null);
 
   const refreshData = (targetUser = null) => {
     const userToUse = targetUser || currentUser || authService.getCurrentUser();
@@ -255,13 +258,41 @@ export default function App() {
     refreshData(currentUser);
   };
 
-  const handleCheckOut = (stayId) => {
-    const checkedOut = hotelService.checkOutGuest(stayId, currentUser?.hotelId);
+  const handleCheckOut = (stayIdOrStay) => {
+    let stayObj = null;
+    if (typeof stayIdOrStay === 'object' && stayIdOrStay !== null) {
+      stayObj = stayIdOrStay;
+    } else {
+      stayObj = activeStays.find(s => s.id === stayIdOrStay || String(s.roomNumber) === String(stayIdOrStay));
+      if (!stayObj) {
+        const raw = hotelService.getActiveStays(currentUser?.hotelId);
+        stayObj = raw.find(s => s.id === stayIdOrStay || String(s.roomNumber) === String(stayIdOrStay));
+      }
+    }
+
+    if (stayObj) {
+      setStayToCheckout(stayObj);
+      setIsCheckOutModalOpen(true);
+    } else {
+      // Fallback direct checkout if stay record not found
+      const checkedOut = hotelService.checkOutGuest(stayIdOrStay, currentUser?.hotelId);
+      refreshData(currentUser);
+      if (checkedOut) {
+        handleViewReceipt(checkedOut);
+      }
+    }
+  };
+
+  const handleConfirmCheckOut = (stayIdOrRoom, checkOutData) => {
+    const checkedOut = hotelService.checkOutGuest(stayIdOrRoom, currentUser?.hotelId, checkOutData);
     refreshData(currentUser);
+    setIsCheckOutModalOpen(false);
+    setStayToCheckout(null);
     if (checkedOut) {
       handleViewReceipt(checkedOut);
     }
   };
+
 
   const handleRoomStatusChange = (roomId, newStatus) => {
     hotelService.updateRoomStatus(roomId, newStatus, false, currentUser?.hotelId);
@@ -451,6 +482,16 @@ export default function App() {
         isOpen={isReceiptModalOpen}
         onClose={() => setIsReceiptModalOpen(false)}
         stayRecord={selectedStayForReceipt}
+      />
+
+      <CheckOutModal
+        isOpen={isCheckOutModalOpen}
+        onClose={() => {
+          setIsCheckOutModalOpen(false);
+          setStayToCheckout(null);
+        }}
+        stay={stayToCheckout}
+        onConfirmCheckOut={handleConfirmCheckOut}
       />
     </div>
   );

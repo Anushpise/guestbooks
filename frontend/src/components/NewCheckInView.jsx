@@ -139,15 +139,17 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete }) {
         city: primaryCity,
         isLocal,
       },
+      partnerDocumentFront: partnerDocs.front || null,
+      partnerDocumentBack: partnerDocs.back || null,
       accompanyingGuest:
-        hasAccompanying && partnerName
+        (hasAccompanying && (partnerName || partnerDocs.front))
           ? {
-              name: partnerName,
+              name: partnerName || 'Accompanying Partner',
               age: Number(partnerAge) || 24,
-              gender: partnerGender,
-              relation: partnerRelation,
-              idType: partnerIdType,
-              idNumber: partnerIdNumber,
+              gender: partnerGender || 'Female',
+              relation: partnerRelation || 'Partner / Couple',
+              idType: partnerIdType || 'Aadhaar Card',
+              idNumber: partnerIdNumber || 'Verified ID',
               address: primaryAddress,
               city: primaryCity,
               documentFront: partnerDocs.front,

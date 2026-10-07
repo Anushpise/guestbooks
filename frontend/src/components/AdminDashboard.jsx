@@ -599,28 +599,106 @@ export default function AdminDashboard() {
                             </div>
                           )}
 
-                          {/* Guest Signature */}
+                          {/* Partner Front ID Photo (if accompanying partner present) */}
+                          {guest.partnerDocumentFront && (
+                            <div
+                              onClick={() => setLightboxPhoto({
+                                url: guest.partnerDocumentFront,
+                                title: `Partner ${guest.accompanyingGuest?.name || 'Accompanying'} - Front ID`,
+                                subTitle: `Partner of ${guest.guestName} • Room ${guest.roomNumber} • ${guest.accompanyingGuest?.idType || 'ID'}`,
+                              })}
+                              className="group relative h-28 w-44 rounded-xl border-2 border-indigo-300 bg-slate-900 overflow-hidden cursor-pointer shadow-sm hover:shadow-md hover:border-indigo-500 transition-all flex-shrink-0"
+                            >
+                              <img
+                                src={guest.partnerDocumentFront}
+                                alt="Partner ID Front"
+                                className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-[11px] font-bold text-white flex items-center gap-1 bg-black/60 px-2 py-1 rounded-md backdrop-blur-xs">
+                                  <ZoomIn className="h-3.5 w-3.5" /> View Partner Front
+                                </span>
+                              </div>
+                              <div className="absolute bottom-0 inset-x-0 bg-indigo-950/90 px-2 py-0.5 text-[10px] font-bold text-indigo-200 truncate">
+                                👥 Partner Front ID
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Partner Back ID Photo (if accompanying partner present) */}
+                          {guest.partnerDocumentBack && (
+                            <div
+                              onClick={() => setLightboxPhoto({
+                                url: guest.partnerDocumentBack,
+                                title: `Partner ${guest.accompanyingGuest?.name || 'Accompanying'} - Back ID`,
+                                subTitle: `Partner of ${guest.guestName} • Room ${guest.roomNumber} • ${guest.accompanyingGuest?.idType || 'ID'}`,
+                              })}
+                              className="group relative h-28 w-44 rounded-xl border-2 border-indigo-300 bg-slate-900 overflow-hidden cursor-pointer shadow-sm hover:shadow-md hover:border-indigo-500 transition-all flex-shrink-0"
+                            >
+                              <img
+                                src={guest.partnerDocumentBack}
+                                alt="Partner ID Back"
+                                className="h-full w-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-[11px] font-bold text-white flex items-center gap-1 bg-black/60 px-2 py-1 rounded-md backdrop-blur-xs">
+                                  <ZoomIn className="h-3.5 w-3.5" /> View Partner Back
+                                </span>
+                              </div>
+                              <div className="absolute bottom-0 inset-x-0 bg-indigo-950/90 px-2 py-0.5 text-[10px] font-bold text-indigo-200 truncate">
+                                👥 Partner Back ID
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Guest Check-In Signature */}
                           {guest.signature && (
                             <div
                               onClick={() => setLightboxPhoto({
                                 url: guest.signature,
-                                title: `Guest Digital Signature`,
+                                title: `Guest Check-In Signature`,
                                 subTitle: `Signed by ${guest.guestName} at Check-in`,
                               })}
                               className="group relative h-28 w-36 rounded-xl border border-slate-200 bg-white overflow-hidden cursor-pointer shadow-sm hover:border-slate-400 transition-all flex-shrink-0"
                             >
                               <img
                                 src={guest.signature}
-                                alt="Signature"
+                                alt="Check-In Signature"
                                 className="h-full w-full object-contain p-2 group-hover:scale-105 transition-transform"
                               />
                               <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                 <span className="text-[10px] font-bold text-white flex items-center gap-1 bg-black/60 px-2 py-0.5 rounded backdrop-blur-xs">
-                                  <ZoomIn className="h-3 w-3" /> View Sign
+                                  <ZoomIn className="h-3 w-3" /> View Check-In
                                 </span>
                               </div>
-                              <div className="absolute bottom-0 inset-x-0 bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-600 text-center">
-                                Digital Signature
+                              <div className="absolute bottom-0 inset-x-0 bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-800 text-center border-t border-emerald-100">
+                                Check-In Signature
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Guest Check-Out Signature */}
+                          {guest.checkOutSignature && (
+                            <div
+                              onClick={() => setLightboxPhoto({
+                                url: guest.checkOutSignature,
+                                title: `Guest Departure Check-Out Signature`,
+                                subTitle: `Departure clearance for ${guest.guestName} • Room ${guest.roomNumber}`,
+                              })}
+                              className="group relative h-28 w-36 rounded-xl border border-purple-200 bg-white overflow-hidden cursor-pointer shadow-sm hover:border-purple-400 transition-all flex-shrink-0"
+                            >
+                              <img
+                                src={guest.checkOutSignature}
+                                alt="Check-Out Signature"
+                                className="h-full w-full object-contain p-2 group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="text-[10px] font-bold text-white flex items-center gap-1 bg-black/60 px-2 py-0.5 rounded backdrop-blur-xs">
+                                  <ZoomIn className="h-3 w-3" /> View Departure
+                                </span>
+                              </div>
+                              <div className="absolute bottom-0 inset-x-0 bg-purple-50 px-2 py-0.5 text-[9px] font-bold text-purple-800 text-center border-t border-purple-100">
+                                Check-Out Signature
                               </div>
                             </div>
                           )}

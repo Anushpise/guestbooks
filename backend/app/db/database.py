@@ -100,13 +100,22 @@ def init_db():
                 signature TEXT,
                 status VARCHAR(50) DEFAULT 'CHECKED_IN',
                 checked_out_at VARCHAR(100),
-                hotel_id VARCHAR(100) DEFAULT 'HTL-101'
+                hotel_id VARCHAR(100) DEFAULT 'HTL-101',
+                partner_document_front TEXT,
+                partner_document_back TEXT,
+                checkout_signature TEXT
             )
         """)
-        try:
-            execute_query(conn, db_type, "ALTER TABLE guest_records ADD COLUMN hotel_id VARCHAR(100) DEFAULT 'HTL-101'")
-        except Exception:
-            pass
+        for col_def in [
+            ("hotel_id", "VARCHAR(100) DEFAULT 'HTL-101'"),
+            ("partner_document_front", "TEXT"),
+            ("partner_document_back", "TEXT"),
+            ("checkout_signature", "TEXT")
+        ]:
+            try:
+                execute_query(conn, db_type, f"ALTER TABLE guest_records ADD COLUMN {col_def[0]} {col_def[1]}")
+            except Exception:
+                pass
         conn.commit()
         conn.close()
         logger.info("PostgreSQL database initialized successfully.")
@@ -141,13 +150,22 @@ def init_db():
                 signature TEXT,
                 status TEXT DEFAULT 'CHECKED_IN',
                 checked_out_at TEXT,
-                hotel_id TEXT DEFAULT 'HTL-101'
+                hotel_id TEXT DEFAULT 'HTL-101',
+                partner_document_front TEXT,
+                partner_document_back TEXT,
+                checkout_signature TEXT
             )
         """)
-        try:
-            cursor.execute("ALTER TABLE guest_records ADD COLUMN hotel_id TEXT DEFAULT 'HTL-101'")
-        except Exception:
-            pass
+        for col_def in [
+            ("hotel_id", "TEXT DEFAULT 'HTL-101'"),
+            ("partner_document_front", "TEXT"),
+            ("partner_document_back", "TEXT"),
+            ("checkout_signature", "TEXT")
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE guest_records ADD COLUMN {col_def[0]} {col_def[1]}")
+            except Exception:
+                pass
         conn.commit()
         conn.close()
         logger.info(f"SQLite database initialized successfully at {DB_PATH}")
@@ -161,7 +179,7 @@ def create_guest_record(data: dict) -> dict:
 
     cursor = execute_query(conn, db_type, "SELECT COALESCE(MAX(id), 0) + 1 FROM guest_records")
     row = cursor.fetchone()
-    next_id = row[0] if isinstance(row, (tuple, list)) else list(row.values())[0]
+    next_id = int(row[0]) if row is not None else 1
     
     reg_no = f"REG-{next_id:04d}"
     created_at = datetime.now().isoformat()
@@ -171,6 +189,17 @@ def create_guest_record(data: dict) -> dict:
     accompanying_json = json.dumps(accompanying) if accompanying else None
     hotel_id = str(data.get("hotelId") or data.get("hotel_id") or "HTL-101")
 
+    # Extract partner document images reliably
+    partner_front = ""
+    partner_back = ""
+    if isinstance(accompanying, dict):
+        partner_front = accompanying.get("documentFront") or accompanying.get("document_front") or ""
+        partner_back = accompanying.get("documentBack") or accompanying.get("document_back") or ""
+    if not partner_front:
+        partner_front = data.get("partnerDocumentFront") or data.get("partner_document_front") or ""
+    if not partner_back:
+        partner_back = data.get("partnerDocumentBack") or data.get("partner_document_back") or ""
+
     query = """
         INSERT INTO guest_records (
             id, reg_no, created_at, room_number, stay_type,
@@ -178,14 +207,16 @@ def create_guest_record(data: dict) -> dict:
             phone, id_type, id_number, dob, age, gender,
             address, city, pincode, coming_from, going_to,
             purpose, vehicle_no, accompanying_guest_json,
-            document_front, document_back, signature, status, hotel_id
+            document_front, document_back, signature, status, hotel_id,
+            partner_document_front, partner_document_back
         ) VALUES (
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?,
             ?, ?, ?,
-            ?, ?, ?, 'CHECKED_IN', ?
+            ?, ?, ?, 'CHECKED_IN', ?,
+            ?, ?
         )
     """
     params = (
@@ -215,7 +246,9 @@ def create_guest_record(data: dict) -> dict:
         data.get("documentFront", ""),
         data.get("documentBack", ""),
         data.get("signature", ""),
-        hotel_id
+        hotel_id,
+        partner_front,
+        partner_back
     )
 
     execute_query(conn, db_type, query, params)
@@ -251,9 +284,12 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
                payment_mode, guest_name, phone, id_type, id_number, address, city, pincode,
                status, checked_out_at, hotel_id,
                document_front, document_back, signature,
+               accompanying_guest_json, partner_document_front, partner_document_back, checkout_signature,
                (CASE WHEN document_front IS NOT NULL AND document_front != '' THEN 1 ELSE 0 END) as has_doc_front,
                (CASE WHEN document_back IS NOT NULL AND document_back != '' THEN 1 ELSE 0 END) as has_doc_back,
-               (CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END) as has_signature
+               (CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END) as has_signature,
+               (CASE WHEN (partner_document_front IS NOT NULL AND partner_document_front != '') OR (accompanying_guest_json LIKE '%documentFront%') THEN 1 ELSE 0 END) as has_partner_doc,
+               (CASE WHEN checkout_signature IS NOT NULL AND checkout_signature != '' THEN 1 ELSE 0 END) as has_checkout_signature
         FROM guest_records
         {where_clause}
         ORDER BY id DESC
@@ -263,7 +299,20 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
 
     cursor = execute_query(conn, db_type, query, tuple(params))
     rows = cursor.fetchall()
-    records = [dict(r) for r in rows]
+    records = []
+    for r in rows:
+        rec = dict(r)
+        if rec.get("accompanying_guest_json"):
+            try:
+                rec["accompanying_guest"] = json.loads(rec["accompanying_guest_json"])
+            except Exception:
+                rec["accompanying_guest"] = None
+        if rec.get("accompanying_guest") and isinstance(rec["accompanying_guest"], dict):
+            if not rec.get("partner_document_front"):
+                rec["partner_document_front"] = rec["accompanying_guest"].get("documentFront") or rec["accompanying_guest"].get("document_front")
+            if not rec.get("partner_document_back"):
+                rec["partner_document_back"] = rec["accompanying_guest"].get("documentBack") or rec["accompanying_guest"].get("document_back")
+        records.append(rec)
     conn.close()
     return records
 
@@ -279,20 +328,29 @@ def get_guest_record_by_id(record_id: int) -> dict:
     if record.get("accompanying_guest_json"):
         try:
             record["accompanying_guest"] = json.loads(record["accompanying_guest_json"])
-        except:
+        except Exception:
             record["accompanying_guest"] = None
+    if record.get("accompanying_guest") and isinstance(record["accompanying_guest"], dict):
+        if not record.get("partner_document_front"):
+            record["partner_document_front"] = record["accompanying_guest"].get("documentFront") or record["accompanying_guest"].get("document_front")
+        if not record.get("partner_document_back"):
+            record["partner_document_back"] = record["accompanying_guest"].get("documentBack") or record["accompanying_guest"].get("document_back")
     return record
 
-def checkout_guest_in_db(room_or_id: str) -> bool:
-    """Marks a guest record as checked out."""
+def checkout_guest_in_db(room_or_id: str, checkout_signature: str = None) -> bool:
+    """Marks a guest record as checked out, saving checkout signature if provided."""
     conn, db_type = get_db_connection()
     now = datetime.now().isoformat()
     if str(room_or_id).isdigit() and len(str(room_or_id)) > 3:
-        cursor = execute_query(conn, db_type, "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ? WHERE id = ?", (now, int(room_or_id)))
+        query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE id = ?"
+        params = (now, checkout_signature, int(room_or_id))
     else:
-        cursor = execute_query(conn, db_type, "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ? WHERE room_number = ? AND status = 'CHECKED_IN'", (now, str(room_or_id)))
+        query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE room_number = ? AND status = 'CHECKED_IN'"
+        params = (now, checkout_signature, str(room_or_id))
+    cursor = execute_query(conn, db_type, query, params)
     affected = cursor.rowcount
     conn.commit()
     conn.close()
     return affected > 0
+
 

@@ -37,17 +37,27 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
 
           <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-700 py-1">
             <div><strong className="text-slate-900">Slip ID:</strong> {stayRecord.id}</div>
-            <div><strong className="text-slate-900">Date:</strong> {new Date(stayRecord.checkInTime).toLocaleString()}</div>
+            <div><strong className="text-slate-900">Check-In:</strong> {new Date(stayRecord.checkInTime).toLocaleString()}</div>
             <div><strong className="text-slate-900">Room No:</strong> Room {stayRecord.roomNumber}</div>
-            <div><strong className="text-slate-900">Stay Slot:</strong> {stayRecord.stayType}</div>
+            <div>
+              <strong className="text-slate-900">Status:</strong>{' '}
+              <span className={stayRecord.status === 'CHECKED_OUT' ? 'text-rose-600 font-bold' : 'text-emerald-700 font-bold'}>
+                {stayRecord.status === 'CHECKED_OUT' ? 'Checked Out' : 'Active Stay'}
+              </span>
+            </div>
+            {stayRecord.checkOutTime && (
+              <div className="col-span-2 text-rose-700 bg-rose-50/70 p-1 rounded border border-rose-200">
+                <strong className="text-rose-900">Checked Out At:</strong> {new Date(stayRecord.checkOutTime).toLocaleString()}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1 py-2 border-t border-b border-dashed border-slate-300 text-[11px]">
-            <p><strong className="text-slate-900">Primary Guest:</strong> {stayRecord.primaryGuest.name}</p>
-            <p><strong className="text-slate-900">Mobile:</strong> {stayRecord.primaryGuest.phone}</p>
-            <p><strong className="text-slate-900">ID Proof:</strong> {stayRecord.primaryGuest.idType} ({stayRecord.primaryGuest.idNumber})</p>
+            <p><strong className="text-slate-900">Primary Guest:</strong> {stayRecord.primaryGuest?.name || 'Guest'}</p>
+            <p><strong className="text-slate-900">Mobile:</strong> {stayRecord.primaryGuest?.phone || 'N/A'}</p>
+            <p><strong className="text-slate-900">ID Proof:</strong> {stayRecord.primaryGuest?.idType} ({stayRecord.primaryGuest?.idNumber})</p>
             {stayRecord.accompanyingGuest && (
-              <p><strong className="text-slate-900">Partner / Accompanying:</strong> {stayRecord.accompanyingGuest.name} ({stayRecord.accompanyingGuest.idType})</p>
+              <p><strong className="text-slate-900">Partner / Accompanying:</strong> {stayRecord.accompanyingGuest.name} ({stayRecord.accompanyingGuest.idType}: {stayRecord.accompanyingGuest.idNumber})</p>
             )}
           </div>
 
@@ -68,22 +78,48 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
                 <td className="py-1.5 text-right font-extrabold text-slate-900">₹{stayRecord.advancePaid}</td>
               </tr>
               <tr>
-                <td className="py-1.5">Balance Due</td>
-                <td className="py-1.5 text-right font-bold text-emerald-700">₹0.00 (Fully Paid)</td>
+                <td className="py-1.5">Balance Dues</td>
+                <td className="py-1.5 text-right font-bold text-emerald-700">₹0.00 (Cleared)</td>
               </tr>
             </tbody>
           </table>
 
-          <div className="flex justify-between pt-6 text-[10px] text-slate-600">
-            <div className="text-center w-32 border-t border-slate-400 pt-1">
-              <p>Guest Signature</p>
+          {/* Captured Digital Signatures */}
+          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-dashed border-slate-300">
+            <div className="flex flex-col items-center text-center">
+              <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">Check-In Signature</span>
+              {stayRecord.signature ? (
+                <div className="h-14 w-full flex items-center justify-center border border-slate-200 rounded bg-slate-50 p-1">
+                  <img src={stayRecord.signature} alt="Check-In Sig" className="max-h-12 max-w-full object-contain" />
+                </div>
+              ) : (
+                <div className="h-14 w-full flex items-center justify-center border border-dashed border-slate-300 rounded text-[10px] text-slate-400">
+                  Signed on hardcopy
+                </div>
+              )}
+              <div className="w-28 border-t border-slate-400 mt-1 pt-0.5 text-[9px] text-slate-600">
+                Guest Check-In
+              </div>
             </div>
-            <div className="text-center w-32 border-t border-slate-400 pt-1">
-              <p>Reception Manager</p>
+
+            <div className="flex flex-col items-center text-center">
+              <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">Check-Out Signature</span>
+              {stayRecord.checkOutSignature ? (
+                <div className="h-14 w-full flex items-center justify-center border border-slate-200 rounded bg-slate-50 p-1">
+                  <img src={stayRecord.checkOutSignature} alt="Check-Out Sig" className="max-h-12 max-w-full object-contain" />
+                </div>
+              ) : (
+                <div className="h-14 w-full flex items-center justify-center border border-dashed border-slate-300 rounded text-[10px] text-slate-400">
+                  {stayRecord.status === 'CHECKED_OUT' ? 'Key Handover Verified' : 'Pending Check-Out'}
+                </div>
+              )}
+              <div className="w-28 border-t border-slate-400 mt-1 pt-0.5 text-[9px] text-slate-600">
+                Guest Departure
+              </div>
             </div>
           </div>
 
-          <p className="text-[10px] text-slate-400 text-center pt-2">Thank you for staying with us! Check-out time as per stay slot.</p>
+          <p className="text-[10px] text-slate-400 text-center pt-2">Thank you for staying with us! Safe travels and visit again.</p>
         </div>
 
         {/* Footer */}

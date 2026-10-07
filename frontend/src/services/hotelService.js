@@ -403,6 +403,8 @@ export const hotelService = {
         vehicleNo: stayData.vehicleNo || 'N/A',
         primaryGuest: stayData.primaryGuest,
         accompanyingGuest: stayData.accompanyingGuest || null,
+        partnerDocumentFront: stayData.accompanyingGuest?.documentFront || stayData.documentFrontPartner || null,
+        partnerDocumentBack: stayData.accompanyingGuest?.documentBack || stayData.documentBackPartner || null,
         documentFront: stayData.documentFront || null,
         documentBack: stayData.documentBack || null,
         signature: stayData.signature || null,
@@ -446,6 +448,7 @@ export const hotelService = {
       documentFront: stayData.documentFront || null,
       documentBack: stayData.documentBack || null,
       signature: stayData.signature || null,
+      checkOutSignature: null,
       policeSubmitted: true,
       policeSubmittedAt: new Date().toISOString(),
       status: 'CHECKED_IN',
@@ -483,8 +486,9 @@ export const hotelService = {
 
   /**
    * Checks out a guest. Accepts either a stay ID or room number, scoped by hotelId.
+   * Also accepts checkOutData containing { checkOutSignature, settlementMode, notes }.
    */
-  checkOutGuest: (stayIdOrRoom, targetHotelId = null) => {
+  checkOutGuest: (stayIdOrRoom, targetHotelId = null, checkOutData = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const rawStays = hotelService.getRawActiveStays();
 
@@ -503,11 +507,24 @@ export const hotelService = {
     }
 
     const stayHotelId = stayToCheckout.hotelId || hId;
+    const checkoutSignature = checkOutData?.checkOutSignature || null;
 
-    // Notify backend SQLite database (fire-and-forget)
+    // Notify backend database with checkout signature (fire-and-forget)
     try {
-      fetch(`/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {
-        fetch(`http://127.0.0.1:8008/api/guests/checkout/${stayToCheckout.roomNumber}`, { method: 'POST' }).catch(() => {});
+      const checkoutPayload = {
+        checkout_signature: checkoutSignature,
+        signature: checkoutSignature,
+      };
+      fetch(`/api/guests/checkout/${stayToCheckout.roomNumber}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(checkoutPayload)
+      }).catch(() => {
+        fetch(`http://127.0.0.1:8008/api/guests/checkout/${stayToCheckout.roomNumber}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(checkoutPayload)
+        }).catch(() => {});
       });
     } catch {}
 
@@ -515,13 +532,19 @@ export const hotelService = {
     const updatedRawStays = rawStays.filter(s => s.id !== stayToCheckout.id);
     localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(updatedRawStays));
 
-    // Update check-out timestamp in master all-stays log
+    // Update check-out timestamp & signature in master all-stays log
     const nowIso = new Date().toISOString();
     try {
       const allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
       const updatedAllStays = allStays.map(s => {
         if (s.id === stayToCheckout.id || (s.hotelId === stayHotelId && String(s.roomNumber) === String(stayToCheckout.roomNumber) && s.status === 'CHECKED_IN')) {
-          return { ...s, status: 'CHECKED_OUT', checkOutTime: nowIso };
+          return {
+            ...s,
+            status: 'CHECKED_OUT',
+            checkOutTime: nowIso,
+            checkOutSignature: checkoutSignature || s.checkOutSignature || null,
+            settlementMode: checkOutData?.settlementMode || s.paymentMode || 'Cash',
+          };
         }
         return s;
       });
@@ -534,9 +557,13 @@ export const hotelService = {
     // Update check-out timestamp in Police log
     hotelService.updatePoliceLogCheckOut(stayToCheckout.roomNumber, stayToCheckout.primaryGuest?.name, stayHotelId);
 
-    // Add checkout time to the returned record for receipt
+    // Add checkout time & signature to the returned record for receipt
     stayToCheckout.checkOutTime = nowIso;
     stayToCheckout.status = 'CHECKED_OUT';
+    stayToCheckout.checkOutSignature = checkoutSignature;
+    if (checkOutData?.settlementMode) {
+      stayToCheckout.settlementMode = checkOutData.settlementMode;
+    }
 
     return stayToCheckout;
   },
@@ -629,9 +656,15 @@ export const hotelService = {
         documentFront: stay.documentFront || null,
         documentBack: stay.documentBack || null,
         signature: stay.signature || null,
+        checkOutSignature: stay.checkOutSignature || null,
+        accompanyingGuest: stay.accompanyingGuest || null,
+        partnerDocumentFront: stay.accompanyingGuest?.documentFront || stay.accompanyingGuest?.document_front || null,
+        partnerDocumentBack: stay.accompanyingGuest?.documentBack || stay.accompanyingGuest?.document_back || null,
         hasDocFront: !!stay.documentFront,
         hasDocBack: !!stay.documentBack,
         hasSignature: !!stay.signature,
+        hasPartnerDoc: !!(stay.accompanyingGuest?.documentFront || stay.accompanyingGuest?.documentBack),
+        hasCheckoutSignature: !!stay.checkOutSignature,
         source: 'local',
       });
     });
@@ -639,6 +672,9 @@ export const hotelService = {
     backendRecords.forEach(bRec => {
       const key = `DB-${bRec.id}` || bRec.reg_no;
       if (!combinedMap.has(key)) {
+        const partner = bRec.accompanying_guest;
+        const pFront = bRec.partner_document_front || partner?.documentFront || partner?.document_front || null;
+        const pBack = bRec.partner_document_back || partner?.documentBack || partner?.document_back || null;
         combinedMap.set(key, {
           id: key,
           regNo: bRec.reg_no,
@@ -662,9 +698,15 @@ export const hotelService = {
           documentFront: bRec.document_front || null,
           documentBack: bRec.document_back || null,
           signature: bRec.signature || null,
+          checkOutSignature: bRec.checkout_signature || null,
+          accompanyingGuest: partner || null,
+          partnerDocumentFront: pFront,
+          partnerDocumentBack: pBack,
           hasDocFront: bRec.has_doc_front === 1 || !!bRec.document_front,
           hasDocBack: bRec.has_doc_back === 1 || !!bRec.document_back,
           hasSignature: bRec.has_signature === 1 || !!bRec.signature,
+          hasPartnerDoc: (bRec.has_partner_doc === 1) || !!pFront || !!pBack,
+          hasCheckoutSignature: (bRec.has_checkout_signature === 1) || !!bRec.checkout_signature,
           source: 'backend',
         });
       }
@@ -681,8 +723,9 @@ export const hotelService = {
   // ══════════════════════════════════════════════════════════════════════════
 
   getDatabaseRecords: async (search = '', targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    let backendRecords = [];
     try {
-      const hId = targetHotelId || hotelService.getCurrentHotelId();
       let queryParams = [];
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
       if (hId && hId !== 'ALL') queryParams.push(`hotel_id=${encodeURIComponent(hId)}`);
@@ -697,12 +740,127 @@ export const hotelService = {
       }
       if (res && res.ok) {
         const json = await res.json();
-        return json.records || [];
+        backendRecords = json.records || [];
       }
     } catch (e) {
       console.warn('Failed to fetch from backend database:', e);
     }
-    return [];
+
+    if (backendRecords.length > 0) {
+      return backendRecords;
+    }
+
+    // Fallback: populate from local stays if backend returned empty/offline
+    const localStays = hotelService.getAllStays(hId);
+    let mapped = localStays.map(s => {
+      const partner = s.accompanyingGuest;
+      const partnerFront = partner?.documentFront || partner?.document_front || null;
+      const partnerBack = partner?.documentBack || partner?.document_back || null;
+      return {
+        id: s.id,
+        reg_no: s.regNo || 'REG-0000',
+        created_at: s.checkInTime || new Date().toISOString(),
+        room_number: s.roomNumber,
+        stay_type: s.stayType || '24 Hours Full Stay',
+        room_rate: s.roomRate || 0,
+        advance_paid: s.advancePaid || 0,
+        payment_mode: s.paymentMode || 'Cash',
+        guest_name: s.primaryGuest?.name || 'Guest',
+        phone: s.primaryGuest?.phone || 'N/A',
+        id_type: s.primaryGuest?.idType || 'Aadhaar Card',
+        id_number: s.primaryGuest?.idNumber || 'N/A',
+        address: s.primaryGuest?.address || '',
+        city: s.primaryGuest?.city || '',
+        pincode: s.primaryGuest?.pincode || '',
+        status: s.status || (s.checkOutTime ? 'CHECKED_OUT' : 'CHECKED_IN'),
+        checked_out_at: s.checkOutTime || null,
+        hotel_id: s.hotelId || hId,
+        document_front: s.documentFront || null,
+        document_back: s.documentBack || null,
+        signature: s.signature || null,
+        checkout_signature: s.checkOutSignature || null,
+        partner_document_front: partnerFront,
+        partner_document_back: partnerBack,
+        accompanying_guest: partner || null,
+        has_doc_front: s.documentFront ? 1 : 0,
+        has_doc_back: s.documentBack ? 1 : 0,
+        has_signature: s.signature ? 1 : 0,
+        has_partner_doc: (partnerFront || partnerBack) ? 1 : 0,
+        has_checkout_signature: s.checkOutSignature ? 1 : 0,
+      };
+    });
+
+    if (search) {
+      const q = search.toLowerCase();
+      mapped = mapped.filter(r =>
+        (r.guest_name && r.guest_name.toLowerCase().includes(q)) ||
+        (r.phone && r.phone.includes(q)) ||
+        (r.reg_no && r.reg_no.toLowerCase().includes(q)) ||
+        (String(r.room_number).includes(q))
+      );
+    }
+    return mapped;
+  },
+
+  getDatabaseRecordById: async (recordId) => {
+    try {
+      let res = null;
+      try {
+        res = await fetch(`/api/guests/records/${recordId}`);
+      } catch {
+        res = await fetch(`http://127.0.0.1:8008/api/guests/records/${recordId}`);
+      }
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json.record) {
+          const rec = json.record;
+          const partner = rec.accompanying_guest || (rec.accompanying_guest_json ? (typeof rec.accompanying_guest_json === 'string' ? JSON.parse(rec.accompanying_guest_json) : rec.accompanying_guest_json) : null);
+          if (partner) {
+            rec.accompanying_guest = partner;
+            if (!rec.partner_document_front) rec.partner_document_front = partner.documentFront || partner.document_front;
+            if (!rec.partner_document_back) rec.partner_document_back = partner.documentBack || partner.document_back;
+          }
+          return rec;
+        }
+      }
+    } catch (e) {
+      console.warn('Backend getDatabaseRecordById error:', e);
+    }
+
+    // Fallback: check local storage stays
+    const allStays = hotelService.getAllStays('ALL');
+    const match = allStays.find(s => String(s.id) === String(recordId) || String(s.regNo) === String(recordId));
+    if (match) {
+      const partner = match.accompanyingGuest;
+      return {
+        id: match.id,
+        reg_no: match.regNo,
+        created_at: match.checkInTime,
+        room_number: match.roomNumber,
+        stay_type: match.stayType,
+        room_rate: match.roomRate,
+        advance_paid: match.advancePaid,
+        payment_mode: match.paymentMode,
+        guest_name: match.primaryGuest?.name,
+        phone: match.primaryGuest?.phone,
+        id_type: match.primaryGuest?.idType,
+        id_number: match.primaryGuest?.idNumber,
+        address: match.primaryGuest?.address,
+        city: match.primaryGuest?.city,
+        pincode: match.primaryGuest?.pincode,
+        status: match.status,
+        checked_out_at: match.checkOutTime,
+        hotel_id: match.hotelId,
+        document_front: match.documentFront,
+        document_back: match.documentBack,
+        signature: match.signature,
+        checkout_signature: match.checkOutSignature,
+        partner_document_front: partner?.documentFront || partner?.document_front,
+        partner_document_back: partner?.documentBack || partner?.document_back,
+        accompanying_guest: partner,
+      };
+    }
+    return null;
   },
 
   // ══════════════════════════════════════════════════════════════════════════
