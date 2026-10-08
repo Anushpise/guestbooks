@@ -116,9 +116,63 @@ def init_db():
                 execute_query(conn, db_type, f"ALTER TABLE guest_records ADD COLUMN {col_def[0]} {col_def[1]}")
             except Exception:
                 pass
+
+        # PostgreSQL: Hotels Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hotels (
+                id VARCHAR(100) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                owner_name VARCHAR(255),
+                email VARCHAR(255),
+                phone VARCHAR(50),
+                address TEXT,
+                area VARCHAR(255),
+                property_type VARCHAR(100),
+                subscription_plan VARCHAR(255),
+                subscription_amount NUMERIC DEFAULT 499,
+                status VARCHAR(50) DEFAULT 'PENDING',
+                reg_number VARCHAR(100),
+                total_rooms INT DEFAULT 15,
+                occupied_rooms INT DEFAULT 0,
+                star_rating VARCHAR(50) DEFAULT '3 Star',
+                documents_json TEXT,
+                registered_at VARCHAR(100),
+                approved_at VARCHAR(100),
+                rejected_at VARCHAR(100)
+            )
+        """)
+
+        # PostgreSQL: Users Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id VARCHAR(100) PRIMARY KEY,
+                email VARCHAR(255),
+                username VARCHAR(100),
+                password VARCHAR(255) NOT NULL,
+                name VARCHAR(255),
+                role VARCHAR(50) NOT NULL,
+                hotel_id VARCHAR(100),
+                station_name VARCHAR(255),
+                jurisdiction VARCHAR(255),
+                created_at VARCHAR(100)
+            )
+        """)
+
+        # PostgreSQL: Police Accounts Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS police_accounts (
+                id VARCHAR(100) PRIMARY KEY,
+                user_id VARCHAR(100),
+                station_name VARCHAR(255),
+                officer_name VARCHAR(255),
+                badge_no VARCHAR(100),
+                email VARCHAR(255),
+                username VARCHAR(100),
+                jurisdiction VARCHAR(255),
+                created_at VARCHAR(100)
+            )
+        """)
         conn.commit()
-        conn.close()
-        logger.info("PostgreSQL database initialized successfully.")
     else:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS guest_records (
@@ -166,9 +220,171 @@ def init_db():
                 cursor.execute(f"ALTER TABLE guest_records ADD COLUMN {col_def[0]} {col_def[1]}")
             except Exception:
                 pass
+
+        # SQLite: Hotels Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hotels (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                owner_name TEXT,
+                email TEXT,
+                phone TEXT,
+                address TEXT,
+                area TEXT,
+                property_type TEXT,
+                subscription_plan TEXT,
+                subscription_amount REAL DEFAULT 499,
+                status TEXT DEFAULT 'PENDING',
+                reg_number TEXT,
+                total_rooms INTEGER DEFAULT 15,
+                occupied_rooms INTEGER DEFAULT 0,
+                star_rating TEXT DEFAULT '3 Star',
+                documents_json TEXT,
+                registered_at TEXT,
+                approved_at TEXT,
+                rejected_at TEXT
+            )
+        """)
+
+        # SQLite: Users Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                email TEXT,
+                username TEXT,
+                password TEXT NOT NULL,
+                name TEXT,
+                role TEXT NOT NULL,
+                hotel_id TEXT,
+                station_name TEXT,
+                jurisdiction TEXT,
+                created_at TEXT
+            )
+        """)
+
+        # SQLite: Police Accounts Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS police_accounts (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                station_name TEXT,
+                officer_name TEXT,
+                badge_no TEXT,
+                email TEXT,
+                username TEXT,
+                jurisdiction TEXT,
+                created_at TEXT
+            )
+        """)
         conn.commit()
-        conn.close()
-        logger.info(f"SQLite database initialized successfully at {DB_PATH}")
+
+    # Seed Default Records if missing
+    _seed_default_data(conn, db_type)
+    conn.close()
+    logger.info("Database initialized with hotels, users, and guest records.")
+
+def _seed_default_data(conn, db_type):
+    """Seeds default admin, initial hotel, and police station if not present."""
+    # Seed default Admin
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM users WHERE email = ?", ("admin@guestbooks.com",))
+    if c.fetchone()[0] == 0:
+        execute_query(conn, db_type, """
+            INSERT INTO users (id, email, username, password, name, role, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "USR-ADMIN-1",
+            "admin@guestbooks.com",
+            "admin",
+            "admin123",
+            "Super System Administrator",
+            "ADMIN",
+            "2026-09-01T09:00:00.000Z"
+        ))
+
+    # Seed default Hotel
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM hotels WHERE id = ?", ("HTL-101",))
+    if c.fetchone()[0] == 0:
+        docs = json.dumps([
+            {"name": "Trade_License_2026.pdf", "size": "1.2 MB", "type": "PDF"},
+            {"name": "Owner_Aadhaar_Scan.pdf", "size": "850 KB", "type": "PDF"}
+        ])
+        execute_query(conn, db_type, """
+            INSERT INTO hotels (
+                id, name, owner_name, email, phone, address, area,
+                property_type, subscription_plan, subscription_amount, status,
+                reg_number, total_rooms, occupied_rooms, star_rating, documents_json,
+                registered_at, approved_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "HTL-101",
+            "Guestbooks Hotel Management & Lodge",
+            "NexOpps Hospitality",
+            "hotel@guestbooks.com",
+            "9876543210",
+            "102 MG Road, Sector 14, Metro City",
+            "Metro Division Sector 4",
+            "Boutique Hotel & Lodge",
+            "Guestbooks Standard Plan (₹499/month)",
+            499.0,
+            "APPROVED",
+            "HTL-MH-2026-9041",
+            15,
+            0,
+            "3 Star",
+            docs,
+            "2026-09-01T10:00:00.000Z",
+            "2026-09-01T11:30:00.000Z"
+        ))
+
+    # Seed default Hotel user
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM users WHERE email = ?", ("hotel@guestbooks.com",))
+    if c.fetchone()[0] == 0:
+        execute_query(conn, db_type, """
+            INSERT INTO users (id, email, username, password, name, role, hotel_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "USR-HOTEL-1",
+            "hotel@guestbooks.com",
+            "hotel",
+            "hotel123",
+            "Guestbooks Hotel Management & Lodge",
+            "HOTEL",
+            "HTL-101",
+            "2026-09-01T10:00:00.000Z"
+        ))
+
+    # Seed default Police user & police account
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM users WHERE email = ?", ("police@station.gov.in",))
+    if c.fetchone()[0] == 0:
+        execute_query(conn, db_type, """
+            INSERT INTO users (id, email, username, password, name, role, station_name, jurisdiction, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "USR-POLICE-1",
+            "police@station.gov.in",
+            "police",
+            "police123",
+            "Inspector V. K. Sharma",
+            "POLICE",
+            "Central City Police Station",
+            "Metro Division 4",
+            "2026-09-01T09:00:00.000Z"
+        ))
+        execute_query(conn, db_type, """
+            INSERT INTO police_accounts (id, user_id, station_name, officer_name, badge_no, email, username, jurisdiction, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            "POL-101",
+            "USR-POLICE-1",
+            "Central City Police Station",
+            "Inspector V. K. Sharma",
+            "POL-INSP-8891",
+            "police@station.gov.in",
+            "police",
+            "Metro Division 4",
+            "2026-09-01T09:00:00.000Z"
+        ))
+    conn.commit()
 
 def create_guest_record(data: dict) -> dict:
     """
@@ -352,5 +568,377 @@ def checkout_guest_in_db(room_or_id: str, checkout_signature: str = None) -> boo
     conn.commit()
     conn.close()
     return affected > 0
+
+# ══════════════════════════════════════════════════════════════════════════
+# HOTELS & MULTI-TENANT AUTH DATABASE OPERATIONS (Central Multi-PC Shared DB)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _format_hotel_dict(row_dict: dict, guest_count: int = 0) -> dict:
+    docs = []
+    if row_dict.get("documents_json"):
+        try:
+            docs = json.loads(row_dict["documents_json"])
+        except Exception:
+            docs = []
+    return {
+        "id": row_dict.get("id"),
+        "name": row_dict.get("name"),
+        "hotelName": row_dict.get("name"),
+        "ownerName": row_dict.get("owner_name") or "",
+        "owner_name": row_dict.get("owner_name") or "",
+        "email": row_dict.get("email") or "",
+        "phone": row_dict.get("phone") or "",
+        "address": row_dict.get("address") or "",
+        "area": row_dict.get("area") or "Metro Division Sector 4",
+        "propertyType": row_dict.get("property_type") or "Hotel / Lodge Stay",
+        "property_type": row_dict.get("property_type") or "Hotel / Lodge Stay",
+        "subscriptionPlan": row_dict.get("subscription_plan") or "Guestbooks Standard Plan (₹499/month)",
+        "subscriptionAmount": float(row_dict.get("subscription_amount") or 499),
+        "status": row_dict.get("status") or "PENDING",
+        "regNumber": row_dict.get("reg_number") or f"REG-{row_dict.get('id', '')}",
+        "totalRooms": int(row_dict.get("total_rooms") or 15),
+        "occupiedRooms": int(row_dict.get("occupied_rooms") or 0),
+        "starRating": row_dict.get("star_rating") or "3 Star",
+        "documents": docs,
+        "registeredAt": row_dict.get("registered_at") or "",
+        "registered_at": row_dict.get("registered_at") or "",
+        "approvedAt": row_dict.get("approved_at") or None,
+        "approved_at": row_dict.get("approved_at") or None,
+        "rejectedAt": row_dict.get("rejected_at") or None,
+        "rejected_at": row_dict.get("rejected_at") or None,
+        "guestCount": guest_count
+    }
+
+def db_register_hotel(data: dict) -> dict:
+    """
+    Registers a new hotel in the central SQLite/Postgres DB.
+    Also creates a corresponding user account for login.
+    Initial status is set to PENDING for Super Admin approval.
+    """
+    import random
+    conn, db_type = get_db_connection()
+
+    clean_email = (data.get("email") or "").strip().lower()
+    clean_name = data.get("hotelName") or data.get("name") or "Unnamed Hotel"
+
+    # Check if email is already in use
+    c = execute_query(conn, db_type, "SELECT id FROM users WHERE LOWER(email) = ?", (clean_email,))
+    if c.fetchone():
+        conn.close()
+        raise ValueError("An account with this email address already exists.")
+
+    hotel_id = f"HTL-{random.randint(1000, 9999)}"
+    user_id = f"USR-{hotel_id}"
+
+    # Verify ID collision
+    while True:
+        c = execute_query(conn, db_type, "SELECT id FROM hotels WHERE id = ?", (hotel_id,))
+        if not c.fetchone():
+            break
+        hotel_id = f"HTL-{random.randint(1000, 9999)}"
+        user_id = f"USR-{hotel_id}"
+
+    reg_number = data.get("regNumber") or f"REG-{random.randint(100000, 999999)}"
+    now_iso = datetime.now().isoformat()
+    docs = data.get("documents") or []
+    if isinstance(docs, str):
+        docs_json = docs
+    else:
+        docs_json = json.dumps(docs)
+
+    # Insert into hotels table
+    execute_query(conn, db_type, """
+        INSERT INTO hotels (
+            id, name, owner_name, email, phone, address, area,
+            property_type, subscription_plan, subscription_amount,
+            status, reg_number, total_rooms, occupied_rooms,
+            star_rating, documents_json, registered_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        hotel_id,
+        clean_name,
+        data.get("ownerName") or "",
+        clean_email,
+        data.get("phone") or "",
+        data.get("address") or "",
+        data.get("area") or "Metro Division Sector 4",
+        data.get("propertyType") or "Hotel / Lodge Stay",
+        data.get("subscriptionPlan") or "Guestbooks Standard Plan (₹499/month)",
+        float(data.get("subscriptionAmount") or 499),
+        "PENDING",
+        reg_number,
+        int(data.get("totalRooms") or 15),
+        0,
+        data.get("starRating") or "3 Star",
+        docs_json,
+        now_iso
+    ))
+
+    # Insert into users table
+    execute_query(conn, db_type, """
+        INSERT INTO users (
+            id, email, username, password, name, role, hotel_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        user_id,
+        clean_email,
+        clean_email.split('@')[0],
+        data.get("password") or "password123",
+        clean_name,
+        "HOTEL",
+        hotel_id,
+        now_iso
+    ))
+
+    conn.commit()
+    conn.close()
+
+    hotel_dict = {
+        "id": hotel_id,
+        "name": clean_name,
+        "hotelName": clean_name,
+        "ownerName": data.get("ownerName") or "",
+        "email": clean_email,
+        "phone": data.get("phone") or "",
+        "address": data.get("address") or "",
+        "area": data.get("area") or "Metro Division Sector 4",
+        "propertyType": data.get("propertyType") or "Hotel / Lodge Stay",
+        "subscriptionPlan": data.get("subscriptionPlan") or "Guestbooks Standard Plan (₹499/month)",
+        "subscriptionAmount": float(data.get("subscriptionAmount") or 499),
+        "status": "PENDING",
+        "regNumber": reg_number,
+        "totalRooms": int(data.get("totalRooms") or 15),
+        "documents": docs,
+        "registeredAt": now_iso
+    }
+    logger.info(f"Successfully registered new hotel in central DB: {hotel_id} - {clean_name}")
+    return hotel_dict
+
+def db_get_all_hotels() -> list:
+    """
+    Returns all hotels from central database with guest counts, ordered by registration time.
+    """
+    conn, db_type = get_db_connection()
+    cursor = execute_query(conn, db_type, """
+        SELECT h.*, 
+               (SELECT COUNT(*) FROM guest_records WHERE hotel_id = h.id) as guest_count
+        FROM hotels h
+        ORDER BY registered_at DESC
+    """)
+    rows = cursor.fetchall()
+    result = []
+    for r in rows:
+        r_dict = dict(r)
+        g_count = r_dict.get("guest_count", 0)
+        result.append(_format_hotel_dict(r_dict, guest_count=g_count))
+    conn.close()
+    return result
+
+def db_get_hotel(hotel_id: str) -> dict:
+    """Fetches a single hotel by ID."""
+    conn, db_type = get_db_connection()
+    cursor = execute_query(conn, db_type, """
+        SELECT h.*, 
+               (SELECT COUNT(*) FROM guest_records WHERE hotel_id = h.id) as guest_count
+        FROM hotels h
+        WHERE h.id = ?
+    """, (hotel_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    r_dict = dict(row)
+    return _format_hotel_dict(r_dict, guest_count=r_dict.get("guest_count", 0))
+
+def db_update_hotel_status(hotel_id: str, status: str) -> dict:
+    """Updates hotel status to APPROVED or REJECTED."""
+    conn, db_type = get_db_connection()
+    now_iso = datetime.now().isoformat()
+    if status == "APPROVED":
+        execute_query(conn, db_type, """
+            UPDATE hotels SET status = 'APPROVED', approved_at = ? WHERE id = ?
+        """, (now_iso, hotel_id))
+    elif status == "REJECTED":
+        execute_query(conn, db_type, """
+            UPDATE hotels SET status = 'REJECTED', rejected_at = ? WHERE id = ?
+        """, (now_iso, hotel_id))
+    else:
+        execute_query(conn, db_type, """
+            UPDATE hotels SET status = ? WHERE id = ?
+        """, (status, hotel_id))
+    conn.commit()
+    conn.close()
+    return db_get_hotel(hotel_id)
+
+def db_login_user(credential: str, password: str) -> dict:
+    """
+    Authenticates user credentials against the database.
+    Checks password and enforces hotel approval check for HOTEL role.
+    """
+    conn, db_type = get_db_connection()
+    clean_cred = (credential or "").strip().lower()
+
+    cursor = execute_query(conn, db_type, """
+        SELECT * FROM users
+        WHERE LOWER(email) = ? OR LOWER(username) = ?
+    """, (clean_cred, clean_cred))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return {"success": False, "message": "Invalid credentials. User account not found."}
+
+    user = dict(row)
+    if user.get("password") != password:
+        conn.close()
+        return {"success": False, "message": "Incorrect password provided."}
+
+    # If user is a hotel manager, verify approval status
+    if user.get("role") == "HOTEL":
+        h_id = user.get("hotel_id")
+        h_cur = execute_query(conn, db_type, "SELECT status, name FROM hotels WHERE id = ?", (h_id,))
+        h_row = h_cur.fetchone()
+        if h_row:
+            h_status = h_row[0]
+            if h_status == "PENDING":
+                conn.close()
+                return {
+                    "success": False,
+                    "message": "Your Hotel Registration is currently PENDING Super Admin approval & document verification."
+                }
+            if h_status == "REJECTED":
+                conn.close()
+                return {
+                    "success": False,
+                    "message": "Your Hotel Registration was rejected by Admin. Please contact support."
+                }
+
+    conn.close()
+    # Format returned user session
+    return {
+        "success": True,
+        "user": {
+            "id": user.get("id"),
+            "email": user.get("email"),
+            "username": user.get("username"),
+            "name": user.get("name"),
+            "role": user.get("role"),
+            "hotelId": user.get("hotel_id"),
+            "hotel_id": user.get("hotel_id"),
+            "stationName": user.get("station_name"),
+            "jurisdiction": user.get("jurisdiction")
+        }
+    }
+
+def db_get_all_police() -> list:
+    """Returns all police station accounts from DB."""
+    conn, db_type = get_db_connection()
+    cursor = execute_query(conn, db_type, "SELECT * FROM police_accounts ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = dict(r)
+        result.append({
+            "id": d.get("id"),
+            "userId": d.get("user_id"),
+            "stationName": d.get("station_name"),
+            "officerName": d.get("officer_name"),
+            "badgeNo": d.get("badge_no"),
+            "email": d.get("email"),
+            "username": d.get("username"),
+            "jurisdiction": d.get("jurisdiction"),
+            "createdAt": d.get("created_at")
+        })
+    return result
+
+def db_create_police_account(data: dict) -> dict:
+    """Creates a new police station account in the DB."""
+    import random
+    conn, db_type = get_db_connection()
+    clean_email = (data.get("email") or "").strip().lower()
+    clean_username = (data.get("username") or "").strip().lower()
+
+    # Check collision
+    c = execute_query(conn, db_type, """
+        SELECT id FROM users WHERE LOWER(email) = ? OR LOWER(username) = ?
+    """, (clean_email, clean_username))
+    if c.fetchone():
+        conn.close()
+        raise ValueError("Police username or email already exists.")
+
+    user_id = f"USR-POL-{random.randint(100, 999)}"
+    pol_id = f"POL-{random.randint(100, 999)}"
+    now_iso = datetime.now().isoformat()
+    badge = data.get("badgeNo") or f"POL-INSP-{random.randint(1000, 9999)}"
+
+    execute_query(conn, db_type, """
+        INSERT INTO users (
+            id, email, username, password, name, role, station_name, jurisdiction, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        user_id,
+        clean_email,
+        clean_username,
+        data.get("password") or "police123",
+        data.get("officerName") or "Police Officer",
+        "POLICE",
+        data.get("stationName") or "Police Station",
+        data.get("jurisdiction") or "Metro Jurisdiction Zone",
+        now_iso
+    ))
+
+    execute_query(conn, db_type, """
+        INSERT INTO police_accounts (
+            id, user_id, station_name, officer_name, badge_no, email, username, jurisdiction, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        pol_id,
+        user_id,
+        data.get("stationName") or "Police Station",
+        data.get("officerName") or "Police Officer",
+        badge,
+        clean_email,
+        clean_username,
+        data.get("jurisdiction") or "Metro Jurisdiction Zone",
+        now_iso
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": pol_id,
+        "userId": user_id,
+        "stationName": data.get("stationName"),
+        "officerName": data.get("officerName"),
+        "badgeNo": badge,
+        "email": clean_email,
+        "username": clean_username,
+        "jurisdiction": data.get("jurisdiction") or "Metro Jurisdiction Zone",
+        "createdAt": now_iso
+    }
+
+def db_get_stats() -> dict:
+    """Returns real-time system stats across all hotels, rooms and guests."""
+    conn, db_type = get_db_connection()
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM hotels")
+    total_hotels = c.fetchone()[0]
+
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM hotels WHERE status = 'PENDING'")
+    pending_hotels = c.fetchone()[0]
+
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM guest_records")
+    total_guests = c.fetchone()[0]
+
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM guest_records WHERE status = 'CHECKED_IN'")
+    active_stays = c.fetchone()[0]
+
+    conn.close()
+    return {
+        "totalHotels": total_hotels,
+        "pendingHotels": pending_hotels,
+        "totalGuests": total_guests,
+        "activeStays": active_stays
+    }
 
 

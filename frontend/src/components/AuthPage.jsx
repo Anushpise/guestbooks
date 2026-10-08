@@ -58,20 +58,27 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
   const [documentsUploaded, setDocumentsUploaded] = useState(false);
   const [regDocumentFiles, setRegDocumentFiles] = useState([]);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Quick Demo Login Handler
-  const handleQuickLogin = (email, password) => {
+  const handleQuickLogin = async (email, password) => {
     setErrorMessage('');
     setSuccessMessage('');
-    const res = authService.login(email, password);
-    if (res.success) {
-      onLoginSuccess(res.user);
-    } else {
-      setErrorMessage(res.message);
+    setIsSubmitting(true);
+    try {
+      const res = await authService.login(email, password);
+      if (res && res.success) {
+        onLoginSuccess(res.user);
+      } else {
+        setErrorMessage(res?.message || 'Login failed.');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Submit Login Form
-  const handleLoginSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
@@ -81,16 +88,21 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
       return;
     }
 
-    const res = authService.login(loginEmail, loginPassword);
-    if (res.success) {
-      onLoginSuccess(res.user);
-    } else {
-      setErrorMessage(res.message);
+    setIsSubmitting(true);
+    try {
+      const res = await authService.login(loginEmail, loginPassword);
+      if (res && res.success) {
+        onLoginSuccess(res.user);
+      } else {
+        setErrorMessage(res?.message || 'Invalid credentials or pending approval.');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Submit Hotel Registration Form
-  const handleRegisterSubmit = (e) => {
+  const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
@@ -118,14 +130,19 @@ export default function AuthPage({ onLoginSuccess, onBackToLanding, initialMode 
       documents: regDocumentFiles.length > 0 ? regDocumentFiles : defaultDocs,
     };
 
-    const res = authService.registerHotel(regData);
-    if (res.success) {
-      setSuccessMessage(res.message);
-      setTimeout(() => {
-        setAuthMode('HOTEL_LOGIN');
-      }, 2500);
-    } else {
-      setErrorMessage(res.message);
+    setIsSubmitting(true);
+    try {
+      const res = await authService.registerHotel(regData);
+      if (res && res.success) {
+        setSuccessMessage(res.message);
+        setTimeout(() => {
+          setAuthMode('HOTEL_LOGIN');
+        }, 2500);
+      } else {
+        setErrorMessage(res?.message || 'Registration failed.');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

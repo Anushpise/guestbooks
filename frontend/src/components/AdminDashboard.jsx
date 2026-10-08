@@ -68,28 +68,45 @@ export default function AdminDashboard() {
   const [jurisdiction, setJurisdiction] = useState('');
   const [formMessage, setFormMessage] = useState('');
 
-  const refreshData = () => {
-    const allHotels = authService.getAllHotels();
-    setHotels(allHotels);
-    setPoliceAccounts(authService.getAllPoliceAccounts());
-    if (selectedHotel) {
-      const refreshedSelected = allHotels.find(h => h.id === selectedHotel.id);
-      if (refreshedSelected) setSelectedHotel(refreshedSelected);
+  const refreshData = async () => {
+    try {
+      const allHotels = await authService.fetchHotels();
+      if (allHotels && Array.isArray(allHotels)) {
+        setHotels(allHotels);
+        if (selectedHotel) {
+          const refreshedSelected = allHotels.find(h => h.id === selectedHotel.id);
+          if (refreshedSelected) setSelectedHotel(refreshedSelected);
+        }
+      }
+      const allPolice = await authService.fetchPoliceAccounts();
+      if (allPolice && Array.isArray(allPolice)) {
+        setPoliceAccounts(allPolice);
+      }
+    } catch (e) {
+      console.warn('AdminDashboard refresh error:', e);
     }
   };
 
-  // Sync event listener for newly registered hotels or status changes
+  // Sync event listener & periodic polling for multi-PC real-time sync
   useEffect(() => {
+    refreshData();
     const handleSync = () => {
       refreshData();
     };
     window.addEventListener('guestbooks_hotel_registered', handleSync);
     window.addEventListener('guestbooks_hotel_status_changed', handleSync);
     window.addEventListener('storage', handleSync);
+
+    // Auto-poll server every 4 seconds to sync PC1 and PC2 requests automatically
+    const pollInterval = setInterval(() => {
+      refreshData();
+    }, 4000);
+
     return () => {
       window.removeEventListener('guestbooks_hotel_registered', handleSync);
       window.removeEventListener('guestbooks_hotel_status_changed', handleSync);
       window.removeEventListener('storage', handleSync);
+      clearInterval(pollInterval);
     };
   }, [selectedHotel]);
 
@@ -115,19 +132,19 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleApprove = (hotelId) => {
-    authService.approveHotel(hotelId);
-    refreshData();
+  const handleApprove = async (hotelId) => {
+    await authService.approveHotel(hotelId);
+    await refreshData();
     setSelectedDocHotel(null);
   };
 
-  const handleReject = (hotelId) => {
-    authService.rejectHotel(hotelId);
-    refreshData();
+  const handleReject = async (hotelId) => {
+    await authService.rejectHotel(hotelId);
+    await refreshData();
     setSelectedDocHotel(null);
   };
 
-  const handleCreatePoliceAccount = (e) => {
+  const handleCreatePoliceAccount = async (e) => {
     e.preventDefault();
     setFormMessage('');
 
@@ -136,7 +153,7 @@ export default function AdminDashboard() {
       return;
     }
 
-    const res = authService.createPoliceAccount({
+    const res = await authService.createPoliceAccount({
       stationName,
       officerName,
       email: policeEmail || `${policeUsername}@police.gov.in`,
@@ -153,9 +170,9 @@ export default function AdminDashboard() {
       setPoliceUsername('');
       setPolicePassword('');
       setJurisdiction('');
-      refreshData();
+      await refreshData();
     } else {
-      setFormMessage(res.message);
+      setFormMessage(res.message || 'Failed to create police account.');
     }
   };
 
@@ -814,7 +831,9 @@ export default function AdminDashboard() {
                             </div>
                             <div className="bg-emerald-50 rounded-lg p-2 border border-emerald-100">
                               <div className="text-[10px] uppercase font-bold text-emerald-700">Guest Stays</div>
-                              <div className="text-sm font-extrabold text-emerald-900 font-mono">{hotelStays.length}</div>
+                              <div className="text-sm font-extrabold text-emerald-900 font-mono">
+                                {hotel.guestCount !== undefined ? hotel.guestCount : hotelStays.length}
+                              </div>
                             </div>
                             <div className="bg-indigo-50 rounded-lg p-2 border border-indigo-100">
                               <div className="text-[10px] uppercase font-bold text-indigo-700">Plan</div>

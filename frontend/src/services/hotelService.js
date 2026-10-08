@@ -9,6 +9,14 @@ const POLICE_LOGS_STORAGE_KEY = 'staylog_police_logs_v1';
 // ── Unique ID Generator (timestamp + random, no collisions) ──────────────────
 const generateId = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
+// ── Multi-PC Dynamic Backend URL Helper ──────────────────────────────────────
+export const getBackendFallbackUrl = (path) => {
+  const host = (typeof window !== 'undefined' && window.location && window.location.hostname) 
+    ? window.location.hostname 
+    : '127.0.0.1';
+  return `http://${host}:8008${path}`;
+};
+
 // ── Initialize LocalStorage if empty ─────────────────────────────────────────
 const initStorage = () => {
   if (!localStorage.getItem(ROOMS_STORAGE_KEY)) {
@@ -416,7 +424,7 @@ export const hotelService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       }).catch(() => {
-        fetch('http://127.0.0.1:8008/api/guests/checkin', {
+        fetch(getBackendFallbackUrl('/api/guests/checkin'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -520,7 +528,7 @@ export const hotelService = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(checkoutPayload)
       }).catch(() => {
-        fetch(`http://127.0.0.1:8008/api/guests/checkout/${stayToCheckout.roomNumber}`, {
+        fetch(getBackendFallbackUrl(`/api/guests/checkout/${stayToCheckout.roomNumber}`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(checkoutPayload)
@@ -616,7 +624,7 @@ export const hotelService = {
       try {
         res = await fetch(url);
       } catch {
-        res = await fetch(`http://127.0.0.1:8008${url}`);
+        res = await fetch(getBackendFallbackUrl(url));
       }
 
       if (res && res.ok) {
@@ -736,7 +744,7 @@ export const hotelService = {
       try {
         res = await fetch(url);
       } catch {
-        res = await fetch(`http://127.0.0.1:8008${url}`);
+        res = await fetch(getBackendFallbackUrl(url));
       }
       if (res && res.ok) {
         const json = await res.json();
@@ -808,7 +816,7 @@ export const hotelService = {
       try {
         res = await fetch(`/api/guests/records/${recordId}`);
       } catch {
-        res = await fetch(`http://127.0.0.1:8008/api/guests/records/${recordId}`);
+        res = await fetch(getBackendFallbackUrl(`/api/guests/records/${recordId}`));
       }
       if (res && res.ok) {
         const json = await res.json();
