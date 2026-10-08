@@ -46,11 +46,29 @@ export default function App() {
   const [selectedStayForReceipt, setSelectedStayForReceipt] = useState(null);
   const [stayToCheckout, setStayToCheckout] = useState(null);
 
-  const refreshData = (targetUser = null) => {
+  const refreshData = async (targetUser = null) => {
     const userToUse = targetUser || currentUser || authService.getCurrentUser();
     const hId = userToUse?.hotelId || 'HTL-101';
+
+    // Immediate responsive cache update
     setRooms(hotelService.getRooms(hId));
     setActiveStays(hotelService.getActiveStays(hId));
+
+    // Central DB real-time synchronization across PCs
+    try {
+      const [latestRooms, latestStays] = await Promise.all([
+        hotelService.fetchRooms(hId),
+        hotelService.fetchActiveStays(hId),
+      ]);
+      if (latestRooms && Array.isArray(latestRooms)) {
+        setRooms(latestRooms);
+      }
+      if (latestStays && Array.isArray(latestStays)) {
+        setActiveStays(latestStays);
+      }
+    } catch (err) {
+      console.warn('Central DB sync warning in refreshData:', err);
+    }
   };
 
   // Sync state from current URL pathname
@@ -229,10 +247,14 @@ export default function App() {
     }
   };
 
+  // Auto-sync rooms and active stays across multiple PCs every 4 seconds
   useEffect(() => {
-    if (currentUser) {
+    if (!currentUser) return;
+    refreshData(currentUser);
+    const interval = setInterval(() => {
       refreshData(currentUser);
-    }
+    }, 4000);
+    return () => clearInterval(interval);
   }, [currentUser]);
 
   const vacantRooms = rooms.filter(r => r.status === 'VACANT');
@@ -258,16 +280,16 @@ export default function App() {
   };
 
   // Business Actions
-  const handleCheckInComplete = (stayData) => {
+  const handleCheckInComplete = async (stayData) => {
     const dataWithHotel = {
       ...stayData,
       hotelId: currentUser?.hotelId || 'HTL-101',
     };
-    hotelService.checkInGuest(dataWithHotel);
-    refreshData(currentUser);
+    await hotelService.checkInGuest(dataWithHotel);
+    await refreshData(currentUser);
   };
 
-  const handleCheckOut = (stayIdOrStay) => {
+  const handleCheckOut = async (stayIdOrStay) => {
     let stayObj = null;
     if (typeof stayIdOrStay === 'object' && stayIdOrStay !== null) {
       stayObj = stayIdOrStay;
@@ -284,17 +306,17 @@ export default function App() {
       setIsCheckOutModalOpen(true);
     } else {
       // Fallback direct checkout if stay record not found
-      const checkedOut = hotelService.checkOutGuest(stayIdOrStay, currentUser?.hotelId);
-      refreshData(currentUser);
+      const checkedOut = await hotelService.checkOutGuest(stayIdOrStay, currentUser?.hotelId);
+      await refreshData(currentUser);
       if (checkedOut) {
         handleViewReceipt(checkedOut);
       }
     }
   };
 
-  const handleConfirmCheckOut = (stayIdOrRoom, checkOutData) => {
-    const checkedOut = hotelService.checkOutGuest(stayIdOrRoom, currentUser?.hotelId, checkOutData);
-    refreshData(currentUser);
+  const handleConfirmCheckOut = async (stayIdOrRoom, checkOutData) => {
+    const checkedOut = await hotelService.checkOutGuest(stayIdOrRoom, currentUser?.hotelId, checkOutData);
+    await refreshData(currentUser);
     setIsCheckOutModalOpen(false);
     setStayToCheckout(null);
     if (checkedOut) {
@@ -302,29 +324,28 @@ export default function App() {
     }
   };
 
-
-  const handleRoomStatusChange = (roomId, newStatus) => {
+  const handleRoomStatusChange = async (roomId, newStatus) => {
     hotelService.updateRoomStatus(roomId, newStatus, false, currentUser?.hotelId);
-    refreshData(currentUser);
+    await refreshData(currentUser);
   };
 
-  const handleRoomTariffChange = (roomId, newRate) => {
+  const handleRoomTariffChange = async (roomId, newRate) => {
     hotelService.updateRoomTariff(roomId, newRate, currentUser?.hotelId);
-    refreshData(currentUser);
+    await refreshData(currentUser);
   };
 
-  const handleAddRoom = (roomData) => {
+  const handleAddRoom = async (roomData) => {
     const result = hotelService.addRoom(roomData, currentUser?.hotelId);
     if (result.success) {
-      refreshData(currentUser);
+      await refreshData(currentUser);
     }
     return result;
   };
 
-  const handleDeleteRoom = (roomId) => {
+  const handleDeleteRoom = async (roomId) => {
     const result = hotelService.deleteRoom(roomId, currentUser?.hotelId);
     if (result.success) {
-      refreshData(currentUser);
+      await refreshData(currentUser);
     }
     return result;
   };

@@ -11,11 +11,26 @@ from app.db.database import (
     create_guest_record,
     get_all_guest_records,
     get_guest_record_by_id,
-    checkout_guest_in_db
+    checkout_guest_in_db,
+    db_get_active_stays
 )
 
 logger = logging.getLogger("guest_routes")
 router = APIRouter(prefix="/api/guests", tags=["Guests"])
+
+@router.get("/active-stays")
+def list_active_stays_endpoint(hotel_id: Optional[str] = Query(None, description="Hotel ID")):
+    """Returns all currently active checked-in stays for the hotel from central DB."""
+    try:
+        stays = db_get_active_stays(hotel_id=hotel_id)
+        return {
+            "success": True,
+            "count": len(stays),
+            "stays": stays
+        }
+    except Exception as e:
+        logger.error(f"Error fetching active stays: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 class CheckInPayload(BaseModel):
     roomNumber: str

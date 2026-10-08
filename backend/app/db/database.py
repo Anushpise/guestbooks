@@ -172,6 +172,20 @@ def init_db():
                 created_at VARCHAR(100)
             )
         """)
+
+        # PostgreSQL: Rooms Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rooms (
+                id VARCHAR(100) PRIMARY KEY,
+                hotel_id VARCHAR(100) NOT NULL,
+                room_number VARCHAR(50) NOT NULL,
+                type VARCHAR(100) DEFAULT 'Standard Suite',
+                floor VARCHAR(50) DEFAULT '1st Floor',
+                rate NUMERIC DEFAULT 1500,
+                status VARCHAR(50) DEFAULT 'VACANT',
+                updated_at VARCHAR(100)
+            )
+        """)
         conn.commit()
     else:
         cursor.execute("""
@@ -274,6 +288,20 @@ def init_db():
                 username TEXT,
                 jurisdiction TEXT,
                 created_at TEXT
+            )
+        """)
+
+        # SQLite: Rooms Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rooms (
+                id TEXT PRIMARY KEY,
+                hotel_id TEXT NOT NULL,
+                room_number TEXT NOT NULL,
+                type TEXT DEFAULT 'Standard Suite',
+                floor TEXT DEFAULT '1st Floor',
+                rate REAL DEFAULT 1500,
+                status TEXT DEFAULT 'VACANT',
+                updated_at TEXT
             )
         """)
         conn.commit()
@@ -384,6 +412,35 @@ def _seed_default_data(conn, db_type):
             "Metro Division 4",
             "2026-09-01T09:00:00.000Z"
         ))
+
+    # Seed default Rooms for HTL-101 if missing
+    c = execute_query(conn, db_type, "SELECT COUNT(*) FROM rooms WHERE hotel_id = ?", ("HTL-101",))
+    if c.fetchone()[0] == 0:
+        room_types = [
+            ("101", "Executive Deluxe", "1st Floor", 1800),
+            ("102", "Executive Deluxe", "1st Floor", 1800),
+            ("103", "Standard Suite", "1st Floor", 1500),
+            ("104", "Super Deluxe", "1st Floor", 2200),
+            ("105", "Presidential Suite", "1st Floor", 3500),
+            ("201", "Executive Deluxe", "2nd Floor", 1800),
+            ("202", "Executive Deluxe", "2nd Floor", 1800),
+            ("203", "Standard Suite", "2nd Floor", 1500),
+            ("204", "Super Deluxe", "2nd Floor", 2200),
+            ("205", "Presidential Suite", "2nd Floor", 3500),
+            ("301", "Executive Deluxe", "3rd Floor", 1800),
+            ("302", "Executive Deluxe", "3rd Floor", 1800),
+            ("303", "Standard Suite", "3rd Floor", 1500),
+            ("304", "Super Deluxe", "3rd Floor", 2200),
+            ("305", "Presidential Suite", "3rd Floor", 3500),
+        ]
+        now_iso = datetime.now().isoformat()
+        for r_num, r_type, r_fl, r_rate in room_types:
+            r_id = f"HTL-101_{r_num}"
+            execute_query(conn, db_type, """
+                INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (r_id, "HTL-101", r_num, r_type, r_fl, float(r_rate), "VACANT", now_iso))
+
     conn.commit()
 
 def create_guest_record(data: dict) -> dict:
@@ -940,5 +997,214 @@ def db_get_stats() -> dict:
         "totalGuests": total_guests,
         "activeStays": active_stays
     }
+
+# ══════════════════════════════════════════════════════════════════════════
+# ROOMS & ACTIVE STAYS REAL-TIME MULTI-PC SYNC
+# ══════════════════════════════════════════════════════════════════════════
+
+def db_get_rooms(hotel_id: str = "HTL-101") -> list:
+    """
+    Returns room inventory for a hotel from the central database.
+    If hotel has no rooms yet, auto-initializes them based on hotel.total_rooms.
+    Automatically marks rooms as 'OCCUPIED' if there is an active check-in in guest_records.
+    """
+    h_id = hotel_id or "HTL-101"
+    conn, db_type = get_db_connection()
+
+    # Check if rooms exist for this hotel
+    cursor = execute_query(conn, db_type, "SELECT COUNT(*) FROM rooms WHERE hotel_id = ?", (h_id,))
+    count = cursor.fetchone()[0]
+
+    if count == 0:
+        h_cur = execute_query(conn, db_type, "SELECT total_rooms FROM hotels WHERE id = ?", (h_id,))
+        h_row = h_cur.fetchone()
+        tot_rooms = int(h_row[0]) if (h_row and h_row[0]) else 15
+        now_iso = datetime.now().isoformat()
+        room_types = [
+            ("Executive Deluxe", 1800),
+            ("Super Deluxe", 2200),
+            ("Standard Suite", 1500),
+            ("Presidential Suite", 3500)
+        ]
+        for i in range(1, tot_rooms + 1):
+            fl_num = (i - 1) // 5 + 1
+            fl_suffix = "st" if fl_num == 1 else "nd" if fl_num == 2 else "rd" if fl_num == 3 else "th"
+            r_num = str(fl_num * 100 + ((i - 1) % 5 + 1))
+            t_name, t_rate = room_types[(i - 1) % len(room_types)]
+            execute_query(conn, db_type, """
+                INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (f"{h_id}_{r_num}", h_id, r_num, t_name, f"{fl_num}{fl_suffix} Floor", float(t_rate), "VACANT", now_iso))
+        conn.commit()
+
+    # Fetch all rooms
+    cursor = execute_query(conn, db_type, """
+        SELECT * FROM rooms WHERE hotel_id = ? ORDER BY CAST(room_number AS INTEGER) ASC
+    """, (h_id,))
+    room_rows = cursor.fetchall()
+
+    # Fetch active stays to guarantee 100% sync
+    active_cur = execute_query(conn, db_type, """
+        SELECT room_number, guest_name, id, reg_no, created_at, room_rate, advance_paid
+        FROM guest_records
+        WHERE status = 'CHECKED_IN' AND (hotel_id = ? OR hotel_id IS NULL)
+    """, (h_id,))
+    active_rows = active_cur.fetchall()
+    active_map = {str(r[0]): dict(r) for r in active_rows}
+
+    rooms = []
+    for r in room_rows:
+        r_dict = dict(r)
+        r_num = str(r_dict.get("room_number"))
+        status = r_dict.get("status") or "VACANT"
+        guest_info = None
+
+        if r_num in active_map:
+            status = "OCCUPIED"
+            guest_info = {
+                "name": active_map[r_num].get("guest_name"),
+                "regNo": active_map[r_num].get("reg_no"),
+                "checkInTime": active_map[r_num].get("created_at"),
+                "advancePaid": active_map[r_num].get("advance_paid")
+            }
+        elif status == "OCCUPIED" and r_num not in active_map:
+            status = "VACANT"
+
+        rooms.append({
+            "id": str(r_dict.get("id")),
+            "number": r_num,
+            "type": r_dict.get("type"),
+            "floor": r_dict.get("floor"),
+            "rate": float(r_dict.get("rate") or 1500),
+            "status": status,
+            "currentGuest": guest_info
+        })
+
+    conn.close()
+    return rooms
+
+def db_update_room_status(hotel_id: str, room_number: str, status: str) -> dict:
+    """Updates status for a room in central DB."""
+    h_id = hotel_id or "HTL-101"
+    conn, db_type = get_db_connection()
+    now_iso = datetime.now().isoformat()
+    execute_query(conn, db_type, """
+        UPDATE rooms SET status = ?, updated_at = ?
+        WHERE hotel_id = ? AND room_number = ?
+    """, (status, now_iso, h_id, str(room_number)))
+    conn.commit()
+    conn.close()
+    return {"success": True, "hotel_id": h_id, "room_number": str(room_number), "status": status}
+
+def db_update_room_tariff(hotel_id: str, room_number: str, rate: float) -> dict:
+    """Updates room tariff rate in central DB."""
+    h_id = hotel_id or "HTL-101"
+    conn, db_type = get_db_connection()
+    now_iso = datetime.now().isoformat()
+    execute_query(conn, db_type, """
+        UPDATE rooms SET rate = ?, updated_at = ?
+        WHERE hotel_id = ? AND room_number = ?
+    """, (float(rate), now_iso, h_id, str(room_number)))
+    conn.commit()
+    conn.close()
+    return {"success": True, "hotel_id": h_id, "room_number": str(room_number), "rate": float(rate)}
+
+def db_add_room(hotel_id: str, room_data: dict) -> dict:
+    """Adds a new room to hotel inventory in central DB."""
+    h_id = hotel_id or "HTL-101"
+    r_num = str(room_data.get("number"))
+    r_id = f"{h_id}_{r_num}"
+    conn, db_type = get_db_connection()
+
+    c = execute_query(conn, db_type, "SELECT id FROM rooms WHERE hotel_id = ? AND room_number = ?", (h_id, r_num))
+    if c.fetchone():
+        conn.close()
+        raise ValueError(f"Room {r_num} already exists in hotel inventory.")
+
+    now_iso = datetime.now().isoformat()
+    execute_query(conn, db_type, """
+        INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        r_id,
+        h_id,
+        r_num,
+        room_data.get("type") or "Standard Suite",
+        room_data.get("floor") or "1st Floor",
+        float(room_data.get("rate") or 1500),
+        "VACANT",
+        now_iso
+    ))
+    conn.commit()
+    conn.close()
+    return {
+        "id": r_id,
+        "number": r_num,
+        "type": room_data.get("type") or "Standard Suite",
+        "floor": room_data.get("floor") or "1st Floor",
+        "rate": float(room_data.get("rate") or 1500),
+        "status": "VACANT"
+    }
+
+def db_get_active_stays(hotel_id: str = None) -> list:
+    """
+    Returns all active guest stays (status = 'CHECKED_IN') from the central database.
+    Formatted identically to what Dashboard, RoomGrid, and CheckOutModal expect.
+    """
+    conn, db_type = get_db_connection()
+    if hotel_id and hotel_id != "ALL":
+        query = "SELECT * FROM guest_records WHERE status = 'CHECKED_IN' AND (hotel_id = ? OR hotel_id IS NULL) ORDER BY id DESC"
+        cursor = execute_query(conn, db_type, query, (hotel_id,))
+    else:
+        query = "SELECT * FROM guest_records WHERE status = 'CHECKED_IN' ORDER BY id DESC"
+        cursor = execute_query(conn, db_type, query)
+
+    rows = cursor.fetchall()
+    conn.close()
+    stays = []
+    for r in rows:
+        rec = dict(r)
+        partner = None
+        if rec.get("accompanying_guest_json"):
+            try:
+                partner = json.loads(rec["accompanying_guest_json"])
+            except Exception:
+                partner = None
+
+        stays.append({
+            "id": f"STAY-{rec.get('id')}",
+            "dbId": rec.get("id"),
+            "regNo": rec.get("reg_no"),
+            "hotelId": rec.get("hotel_id") or "HTL-101",
+            "roomNumber": str(rec.get("room_number")),
+            "checkInTime": rec.get("created_at"),
+            "expectedCheckOut": None,
+            "stayType": rec.get("stay_type") or "24 Hours Full Stay",
+            "roomRate": float(rec.get("room_rate") or 0),
+            "advancePaid": float(rec.get("advance_paid") or 0),
+            "paymentMode": rec.get("payment_mode") or "Cash",
+            "status": "CHECKED_IN",
+            "primaryGuest": {
+                "name": rec.get("guest_name"),
+                "phone": rec.get("phone"),
+                "idType": rec.get("id_type"),
+                "idNumber": rec.get("id_number"),
+                "dob": rec.get("dob"),
+                "age": rec.get("age"),
+                "gender": rec.get("gender"),
+                "address": rec.get("address"),
+                "city": rec.get("city"),
+                "pincode": rec.get("pincode"),
+            },
+            "accompanyingGuest": partner,
+            "documentFront": rec.get("document_front"),
+            "documentBack": rec.get("document_back"),
+            "signature": rec.get("signature"),
+            "comingFrom": rec.get("coming_from"),
+            "goingTo": rec.get("going_to"),
+            "purpose": rec.get("purpose"),
+            "vehicleNo": rec.get("vehicle_no")
+        })
+    return stays
 
 

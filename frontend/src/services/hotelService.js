@@ -85,6 +85,29 @@ export const hotelService = {
   // ROOMS CRUD API (Partitioned per Hotel)
   // ══════════════════════════════════════════════════════════════════════════
 
+  // Fetch rooms from Central DB and update local cache
+  fetchRooms: async (targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    try {
+      let res = await fetch(`/api/rooms?hotel_id=${encodeURIComponent(hId)}`);
+      if (!res.ok) {
+        res = await fetch(getBackendFallbackUrl(`/api/rooms?hotel_id=${encodeURIComponent(hId)}`));
+      }
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json.rooms && Array.isArray(json.rooms)) {
+          const storageKey = hotelService.getRoomsStorageKey(hId);
+          localStorage.setItem(storageKey, JSON.stringify(json.rooms));
+          syncHotelOccupancyStats(json.rooms, hId);
+          return json.rooms;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch rooms from backend DB:', e);
+    }
+    return hotelService.getRooms(hId);
+  },
+
   getRooms: (targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const storageKey = hotelService.getRoomsStorageKey(hId);
@@ -161,6 +184,19 @@ export const hotelService = {
     rooms.push(newRoom);
     localStorage.setItem(storageKey, JSON.stringify(rooms));
     syncHotelOccupancyStats(rooms, hId);
+
+    // Sync room to Central Backend DB
+    fetch('/api/rooms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...roomData, hotel_id: hId })
+    }).catch(() => {
+      fetch(getBackendFallbackUrl('/api/rooms'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...roomData, hotel_id: hId })
+      }).catch(() => {});
+    });
 
     return { success: true, message: `Room ${newRoom.number} added successfully.`, rooms };
   },
@@ -266,6 +302,21 @@ export const hotelService = {
     }
 
     syncHotelOccupancyStats(updatedRooms, hId);
+
+    // Sync room status change to central DB
+    const roomNoToUpdate = String(targetRoom.number);
+    fetch(`/api/rooms/${roomNoToUpdate}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hotel_id: hId, status })
+    }).catch(() => {
+      fetch(getBackendFallbackUrl(`/api/rooms/${roomNoToUpdate}/status`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hotel_id: hId, status })
+      }).catch(() => {});
+    });
+
     return updatedRooms;
   },
 
@@ -279,6 +330,20 @@ export const hotelService = {
         : r
     );
     localStorage.setItem(storageKey, JSON.stringify(updated));
+
+    // Sync room tariff change to central DB
+    fetch(`/api/rooms/${roomId}/tariff`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hotel_id: hId, rate: Number(newRate) })
+    }).catch(() => {
+      fetch(getBackendFallbackUrl(`/api/rooms/${roomId}/tariff`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hotel_id: hId, rate: Number(newRate) })
+      }).catch(() => {});
+    });
+
     return updated;
   },
 
@@ -292,6 +357,31 @@ export const hotelService = {
     } catch (e) {
       return [];
     }
+  },
+
+  // Fetch active stays from Central DB and update local cache
+  fetchActiveStays: async (targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    try {
+      let res = await fetch(`/api/guests/active-stays?hotel_id=${encodeURIComponent(hId)}`);
+      if (!res.ok) {
+        res = await fetch(getBackendFallbackUrl(`/api/guests/active-stays?hotel_id=${encodeURIComponent(hId)}`));
+      }
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json.stays && Array.isArray(json.stays)) {
+          // Merge active stays for this hotel into storage
+          const rawStays = hotelService.getRawActiveStays();
+          const otherHotelsStays = rawStays.filter(s => s.hotelId !== hId && (s.hotelId || hId !== 'HTL-101'));
+          const merged = [...json.stays, ...otherHotelsStays];
+          localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(merged));
+          return json.stays;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch active stays from backend DB:', e);
+    }
+    return hotelService.getActiveStays(hId);
   },
 
   getActiveStays: (targetHotelId = null) => {
@@ -374,7 +464,7 @@ export const hotelService = {
    * 4. Update frequent guest ledger
    * 5. Add police log entry with hotelId
    */
-  checkInGuest: (stayData) => {
+  checkInGuest: async (stayData) => {
     // Get current user's hotel ID
     let currentHotelId = 'HTL-101';
     try {
@@ -395,9 +485,10 @@ export const hotelService = {
     }
 
     const newStayId = generateId('STAY');
-    const regNo = `REG-${String(hotelActiveStays.length + 1).padStart(4, '0')}`;
+    let regNo = `REG-${String(hotelActiveStays.length + 1).padStart(4, '0')}`;
+    let dbId = null;
 
-    // Fire backend DB save async (non-blocking)
+    // Save to backend SQLite DB
     try {
       const payload = {
         roomNumber: roomNo,
@@ -419,17 +510,28 @@ export const hotelService = {
         hotelId: currentHotelId,
       };
 
-      fetch('/api/guests/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).catch(() => {
-        fetch(getBackendFallbackUrl('/api/guests/checkin'), {
+      let res = null;
+      try {
+        res = await fetch('/api/guests/checkin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
-        }).catch(err => console.warn('Backend DB check-in failed (non-critical):', err));
-      });
+        });
+      } catch {
+        res = await fetch(getBackendFallbackUrl('/api/guests/checkin'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json.record) {
+          regNo = json.record.reg_no || regNo;
+          dbId = json.record.id || null;
+        }
+      }
     } catch (dbErr) {
       console.warn('Backend database check-in warning:', dbErr);
     }
@@ -496,7 +598,7 @@ export const hotelService = {
    * Checks out a guest. Accepts either a stay ID or room number, scoped by hotelId.
    * Also accepts checkOutData containing { checkOutSignature, settlementMode, notes }.
    */
-  checkOutGuest: (stayIdOrRoom, targetHotelId = null, checkOutData = null) => {
+  checkOutGuest: async (stayIdOrRoom, targetHotelId = null, checkOutData = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const rawStays = hotelService.getRawActiveStays();
 
@@ -517,24 +619,29 @@ export const hotelService = {
     const stayHotelId = stayToCheckout.hotelId || hId;
     const checkoutSignature = checkOutData?.checkOutSignature || null;
 
-    // Notify backend database with checkout signature (fire-and-forget)
+    // Notify backend database with checkout signature
     try {
       const checkoutPayload = {
         checkout_signature: checkoutSignature,
         signature: checkoutSignature,
       };
-      fetch(`/api/guests/checkout/${stayToCheckout.roomNumber}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(checkoutPayload)
-      }).catch(() => {
-        fetch(getBackendFallbackUrl(`/api/guests/checkout/${stayToCheckout.roomNumber}`), {
+      let res = null;
+      try {
+        res = await fetch(`/api/guests/checkout/${stayToCheckout.roomNumber}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(checkoutPayload)
-        }).catch(() => {});
-      });
-    } catch {}
+        });
+      } catch {
+        res = await fetch(getBackendFallbackUrl(`/api/guests/checkout/${stayToCheckout.roomNumber}`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(checkoutPayload)
+        });
+      }
+    } catch (e) {
+      console.warn('Backend checkout failed:', e);
+    }
 
     // Remove this specific stay from master active stays (preserves all other hotels!)
     const updatedRawStays = rawStays.filter(s => s.id !== stayToCheckout.id);
