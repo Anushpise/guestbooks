@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Image as ImageIcon, Upload, CheckCircle2, ShieldCheck, AlertCircle, Sparkles, Building2, User, Users, RefreshCw, X, ArrowRight } from 'lucide-react';
-import { compressImageForOCR } from '../lib/imageCompressor';
-import { hotelService } from '../services/hotelService';
-import { authService } from '../services/authService';
+import { compressImageForOCR } from '../../lib/imageCompressor';
+import { hotelService } from '../../services/hotelService';
+import { authService } from '../../services/authService';
 
 export default function GuestUploadPortal() {
   const urlParams = new URLSearchParams(window.location.search);

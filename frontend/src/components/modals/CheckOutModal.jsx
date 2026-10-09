@@ -3,7 +3,7 @@ import {
   PenTool, RotateCcw, Check, X, ShieldCheck, IndianRupee,
   Key, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, Clock, Calendar
 } from 'lucide-react';
-import { Button } from './ui/button';
+import { Button } from '../ui/button';
 
 export default function CheckOutModal({
   isOpen,

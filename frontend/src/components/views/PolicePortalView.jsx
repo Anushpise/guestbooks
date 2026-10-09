@@ -13,9 +13,9 @@ import {
   TrendingUp,
   AlertTriangle
 } from 'lucide-react';
-import { hotelService } from '../services/hotelService';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
+import { hotelService } from '../../services/hotelService';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 
 export default function PolicePortalView({ user }) {
   const [selectedArea, setSelectedArea] = useState(user?.jurisdiction || 'Metro Division Sector 4');

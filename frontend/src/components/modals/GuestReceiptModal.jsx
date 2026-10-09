@@ -1,6 +1,6 @@
 import React from 'react';
 import { Receipt, Printer, X } from 'lucide-react';
-import { Button } from './ui/button';
+import { Button } from '../ui/button';
 
 export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
   if (!isOpen || !stayRecord) return null;

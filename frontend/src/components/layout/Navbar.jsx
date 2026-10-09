@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, LayoutDashboard, Users, Zap, UserPlus, ShieldAlert } from 'lucide-react';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 
 export default function Navbar({ 
   activeTab, 

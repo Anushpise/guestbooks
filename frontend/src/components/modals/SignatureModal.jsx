@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { PenTool, RotateCcw, Check, X } from 'lucide-react';
-import { Button } from './ui/button';
+import { Button } from '../ui/button';
 
 export default function SignatureModal({ isOpen, onClose, onSave, existingSignature = null }) {
   const canvasRef = useRef(null);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldAlert, Printer, X, Search, FileCheck, CheckCircle2 } from 'lucide-react';
-import { hotelService } from '../services/hotelService';
+import { hotelService } from '../../services/hotelService';
 import { 
   Table, 
   TableHeader, 
@@ -8,10 +8,10 @@ import {
   TableBody, 
   TableRow, 
   TableCell 
-} from './ui/table';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
+} from '../ui/table';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 
 export default function PoliceReportModal({ isOpen, onClose }) {
   const [dateFilter, setDateFilter] = useState('ALL');

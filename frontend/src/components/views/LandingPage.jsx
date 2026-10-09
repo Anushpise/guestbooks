@@ -19,7 +19,7 @@ import {
   ChevronRight,
   PhoneCall
 } from 'lucide-react';
-import logoImg from '../assets/logo.png';
+import logoImg from '../../assets/logo.png';
 
 const fadeInUp = {
   hidden: { opacity: 0, y: 20 },

@@ -30,11 +30,11 @@ import {
   RefreshCw,
   Sparkles
 } from 'lucide-react';
-import { authService } from '../services/authService';
-import { hotelService } from '../services/hotelService';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
+import { authService } from '../../services/authService';
+import { hotelService } from '../../services/hotelService';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 
 export default function AdminDashboard() {
   const [hotels, setHotels] = useState(authService.getAllHotels());

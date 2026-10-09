@@ -3,7 +3,7 @@ import {
   ShieldAlert, Printer, Search, Calendar, FileText,
   Download, Filter, CheckCircle2, Clock, Users, X
 } from 'lucide-react';
-import { hotelService } from '../services/hotelService';
+import { hotelService } from '../../services/hotelService';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 

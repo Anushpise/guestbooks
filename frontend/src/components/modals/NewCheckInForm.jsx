@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { User, Users, Building2, Camera, Check, X, UserPlus, CreditCard, ShieldCheck, PenTool, RotateCcw, QrCode, Smartphone, Sparkles, Wifi } from 'lucide-react';
-import { IDProofType } from '../types';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
-import DocumentScannerZone from './DocumentScannerZone';
-import SignatureModal from './SignatureModal';
-import CounterQRModal from './CounterQRModal';
-import { base64ToFile } from '../lib/imageCompressor';
+import { IDProofType } from '../../types';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
+import DocumentScannerZone from '../common/DocumentScannerZone';
+import SignatureModal from '../modals/SignatureModal';
+import CounterQRModal from '../modals/CounterQRModal';
+import { base64ToFile } from '../../lib/imageCompressor';
 
 export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckInComplete, hotel }) {
   const [resetKey, setResetKey] = useState(Date.now());

@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { User, Users, Building2, Camera, Check, UserPlus, PenTool, RotateCcw, QrCode, Smartphone, Sparkles, Wifi } from 'lucide-react';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
-import DocumentScannerZone from './DocumentScannerZone';
-import SignatureModal from './SignatureModal';
-import CounterQRModal from './CounterQRModal';
-import { base64ToFile } from '../lib/imageCompressor';
+import { 
+  User, 
+  Users, 
+  Building2, 
+  Camera, 
+  Check, 
+  UserPlus, 
+  PenTool, 
+  RotateCcw, 
+  QrCode, 
+  Smartphone, 
+  Sparkles 
+} from 'lucide-react';
+import DocumentScannerZone from '../common/DocumentScannerZone';
+import SignatureModal from '../modals/SignatureModal';
+import CounterQRModal from '../modals/CounterQRModal';
+import { base64ToFile } from '../../lib/imageCompressor';
 
 export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }) {
   const [resetKey, setResetKey] = useState(Date.now());
@@ -40,10 +49,8 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
         const data = await res.json();
         if (data.success && data.hasDrop && data.drop && isMounted) {
           const drop = data.drop;
-          // Consume drop so reception doesn't process it repeatedly
           fetch(`/api/qr-drop/consume/${drop.dropId}`, { method: 'POST' }).catch(() => {});
 
-          // Convert primary images to File objects
           const pFiles = [];
           if (drop.primaryFront) {
             const f = base64ToFile(drop.primaryFront, 'primary_front.jpg');
@@ -57,14 +64,9 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             setIncomingPrimaryFiles(pFiles);
           }
 
-          if (drop.guestName) {
-            setPrimaryName(prev => prev || drop.guestName);
-          }
-          if (drop.guestPhone) {
-            setPrimaryPhone(prev => prev || drop.guestPhone);
-          }
+          if (drop.guestName) setPrimaryName(prev => prev || drop.guestName);
+          if (drop.guestPhone) setPrimaryPhone(prev => prev || drop.guestPhone);
 
-          // Partner documents if included
           const partFiles = [];
           if (drop.partnerFront) {
             const pf = base64ToFile(drop.partnerFront, 'partner_front.jpg');
@@ -79,24 +81,6 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             setIncomingPartnerFiles(partFiles);
           }
 
-          // Audible notification chime
-          try {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-            osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
-            gain.gain.setValueAtTime(0.3, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.4);
-          } catch (e) {
-            console.warn('Audio chime notice:', e);
-          }
-
           setQrDropAlert({
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             guest: drop.guestName || 'Guest Mobile',
@@ -104,7 +88,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
           });
         }
       } catch (err) {
-        // Silently catch polling network hiccup
+        // Silent catch
       }
     };
 
@@ -259,95 +243,77 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+    <div className="space-y-6 pb-12 select-none">
+      
+      {/* Clean Header Bar */}
+      <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-3">
-            <h2 className="font-heading text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-              <UserPlus className="h-6 w-6 text-emerald-800" />
-              New Guest Registration Form
-            </h2>
-            <Badge className="bg-emerald-800 text-white font-bold px-3 py-1 text-xs">
-              First Visit Entry
-            </Badge>
-          </div>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            First-time visitor registration & statutory Police Form C verification capture.
+          <h2 className="font-heading text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <UserPlus className="h-6 w-6 text-[#0b3c33]" />
+            New Guest Registration
+          </h2>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">
+            Guest ID verification & statutory Police Form C registration.
           </p>
         </div>
-      </div>
 
-      {/* Mobile QR Live Drop Status & Standee Banner */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/90 via-sky-50/80 to-purple-50/90 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-            <QrCode className="h-5 w-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black text-indigo-950 uppercase tracking-tight">Front-Desk QR Standee Self-Upload</span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Relay Active
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-600 mt-0.5">
-              Guest scans counter QR on mobile → documents instantly arrive here & auto-fill via AI OCR.
-            </p>
-          </div>
-        </div>
-        <Button
+        <button
           type="button"
           onClick={() => setIsStandeeModalOpen(true)}
-          className="h-9 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shrink-0 flex items-center gap-1.5 shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer shadow-2xs font-heading"
         >
-          <Smartphone className="h-4 w-4" /> Print / View Desk QR Standee
-        </Button>
+          <Smartphone className="h-4 w-4 text-[#0b3c33]" />
+          <span>Desk QR Standee</span>
+        </button>
       </div>
 
       {qrDropAlert && (
-        <div className="p-3.5 rounded-2xl bg-emerald-50 border-2 border-emerald-400 text-emerald-900 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs">
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs">
           <div className="flex items-center gap-2.5">
             <Sparkles className="h-4 w-4 text-emerald-600 animate-bounce shrink-0" />
             <span>
-              🎉 <strong>New Guest Drop Received!</strong> Documents uploaded from guest mobile ({qrDropAlert.guest}) at {qrDropAlert.time}. AI OCR Auto-Fill started!
+              🎉 <strong>New Guest Upload Received!</strong> Mobile document received from ({qrDropAlert.guest}). Auto-Fill complete.
             </span>
           </div>
           <button
             type="button"
             onClick={() => setQrDropAlert(null)}
-            className="text-emerald-700 hover:text-emerald-950 font-bold px-2 py-0.5 text-[11px] rounded bg-emerald-100 hover:bg-emerald-200"
+            className="text-emerald-700 hover:text-emerald-950 font-bold px-2 py-0.5 text-xs rounded bg-emerald-200/60 cursor-pointer"
           >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Main Registration Form */}
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs space-y-6">
+      {/* Main Form Container */}
+      <form onSubmit={handleSubmit} className="rounded-3xl border border-slate-200/90 bg-white p-6 sm:p-8 shadow-xs space-y-8">
+        
         {/* Section 1: Primary Guest Details */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-4">
-          <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-            <User className="h-4 w-4 text-indigo-600" /> Primary Guest Details (Mandatory for Police Register)
-          </h3>
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <User className="h-4 w-4 text-[#0b3c33]" />
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-heading">
+              Primary Guest Information
+            </h3>
+          </div>
 
-          {/* Document Photo Upload & OCR Scanner Zone (2 Photos: Front & Back) */}
+          {/* Document Upload & OCR Zone */}
           <DocumentScannerZone
             key={`primary-${resetKey}`}
-            label="Primary Guest Document — Auto Scan & Fill"
+            label="Primary Guest ID Document — Auto OCR Scan"
             targetGuestName="Primary Guest"
-            accentColor="indigo"
+            accentColor="emerald"
             incomingFiles={incomingPrimaryFiles}
             onApplyExtractedData={handlePrimaryOcrExtract}
             onDocumentsChange={(docs) => setPrimaryDocs(docs)}
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Full Name *</label>
-              <Input
+              <label className="text-xs font-bold text-slate-700">Full Name *</label>
+              <input
                 type="text"
-                className="h-9 text-xs"
+                className="w-full h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
                 placeholder="e.g. Rahul Sharma"
                 value={primaryName}
                 onChange={(e) => setPrimaryName(e.target.value)}
@@ -356,10 +322,10 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Mobile Number *</label>
-              <Input
+              <label className="text-xs font-bold text-slate-700">Mobile Number *</label>
+              <input
                 type="tel"
-                className="h-9 text-xs"
+                className="w-full h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
                 placeholder="e.g. 9876543210"
                 value={primaryPhone}
                 onChange={(e) => setPrimaryPhone(e.target.value)}
@@ -368,17 +334,17 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Age & Gender</label>
+              <label className="text-xs font-bold text-slate-700">Age & Gender</label>
               <div className="flex gap-2">
-                <Input
+                <input
                   type="number"
-                  className="h-9 text-xs w-24"
+                  className="w-24 h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
                   placeholder="Age"
                   value={primaryAge}
                   onChange={(e) => setPrimaryAge(e.target.value)}
                 />
                 <select
-                  className="flex-1 h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-600"
+                  className="flex-1 h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                   value={primaryGender}
                   onChange={(e) => setPrimaryGender(e.target.value)}
                 >
@@ -390,11 +356,11 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Govt ID Proof Type *</label>
+              <label className="text-xs font-bold text-slate-700">Govt ID Proof Type *</label>
               <select
-                className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-600"
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                 value={primaryIdType}
                 onChange={(e) => setPrimaryIdType(e.target.value)}
               >
@@ -407,55 +373,35 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">ID Document Number *</label>
-              <Input
+              <label className="text-xs font-bold text-slate-700">ID Document Number *</label>
+              <input
                 type="text"
-                className="h-9 text-xs"
+                className="w-full h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs font-mono"
                 placeholder="e.g. 4532 8910 2241"
                 value={primaryIdNumber}
                 onChange={(e) => setPrimaryIdNumber(e.target.value)}
                 required
               />
             </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">ID Photo Status</label>
-              <Button
-                type="button"
-                variant={idScanUploaded ? 'emerald' : 'outline'}
-                className="w-full h-9 text-xs"
-                onClick={() => setIdScanUploaded(!idScanUploaded)}
-              >
-                {idScanUploaded ? (
-                  <>
-                    <Check className="h-4 w-4" /> ID Photo Uploaded
-                  </>
-                ) : (
-                  <>
-                    <Camera className="h-4 w-4" /> Capture / Upload
-                  </>
-                )}
-              </Button>
-            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Permanent Address</label>
-              <Input
+              <label className="text-xs font-bold text-slate-700">Address</label>
+              <input
                 type="text"
-                className="h-9 text-xs"
-                placeholder="Flat/House No, Street, Landmark"
+                className="w-full h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
+                placeholder="Street address, House No"
                 value={primaryAddress}
                 onChange={(e) => setPrimaryAddress(e.target.value)}
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">City & State</label>
-              <Input
+              <label className="text-xs font-bold text-slate-700">City & State</label>
+              <input
                 type="text"
-                className="h-9 text-xs"
+                className="w-full h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
                 placeholder="e.g. New Delhi, Delhi"
                 value={primaryCity}
                 onChange={(e) => setPrimaryCity(e.target.value)}
@@ -465,40 +411,43 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
         </div>
 
         {/* Section 2: Accompanying Partner Details */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <Users className="h-4 w-4 text-emerald-600" /> Partner B / Accompanying Person Details
-            </h3>
+        <div className="space-y-4 pt-4 border-t border-slate-100">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-[#0b3c33]" />
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-heading">
+                Accompanying Guest / Partner
+              </h3>
+            </div>
             <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
               <input
                 type="checkbox"
-                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-600"
+                className="rounded border-slate-300 text-[#0b3c33] focus:ring-[#0b3c33]"
                 checked={hasAccompanying}
                 onChange={(e) => setHasAccompanying(e.target.checked)}
               />
-              Couple / Partner B Present
+              <span>Add Second Guest / Partner</span>
             </label>
           </div>
 
           {hasAccompanying && (
             <div className="space-y-4 pt-2">
-              {/* Document Photo Upload & OCR Zone for Partner B */}
               <DocumentScannerZone
                 key={`partner-${resetKey}`}
-                label="Partner B Document — Auto Scan & Fill"
+                label="Partner B Document — Auto Scan"
                 targetGuestName="Partner B"
                 accentColor="emerald"
                 incomingFiles={incomingPartnerFiles}
                 onApplyExtractedData={handlePartnerOcrExtract}
                 onDocumentsChange={(docs) => setPartnerDocs(docs)}
               />
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Partner Name</label>
-                  <Input
+                  <label className="text-xs font-bold text-slate-700">Partner Full Name</label>
+                  <input
                     type="text"
-                    className="h-9 text-xs"
+                    className="w-full h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
                     placeholder="e.g. Priya Verma"
                     value={partnerName}
                     onChange={(e) => setPartnerName(e.target.value)}
@@ -506,17 +455,17 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Age & Gender</label>
+                  <label className="text-xs font-bold text-slate-700">Age & Gender</label>
                   <div className="flex gap-2">
-                    <Input
+                    <input
                       type="number"
-                      className="h-9 text-xs w-24"
+                      className="w-24 h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
                       placeholder="Age"
                       value={partnerAge}
                       onChange={(e) => setPartnerAge(e.target.value)}
                     />
                     <select
-                      className="flex-1 h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
+                      className="flex-1 h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                       value={partnerGender}
                       onChange={(e) => setPartnerGender(e.target.value)}
                     >
@@ -528,9 +477,9 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Relation / Category</label>
+                  <label className="text-xs font-bold text-slate-700">Relation</label>
                   <select
-                    className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
+                    className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                     value={partnerRelation}
                     onChange={(e) => setPartnerRelation(e.target.value)}
                   >
@@ -541,48 +490,24 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
                   </select>
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Partner ID Proof Type</label>
-                  <select
-                    className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
-                    value={partnerIdType}
-                    onChange={(e) => setPartnerIdType(e.target.value)}
-                  >
-                    <option value="Aadhaar Card">Aadhaar Card</option>
-                    <option value="Voter ID">Voter ID</option>
-                    <option value="Driving License">Driving License</option>
-                    <option value="Passport">Passport</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-700">Partner ID Number</label>
-                  <Input
-                    type="text"
-                    className="h-9 text-xs"
-                    placeholder="e.g. 7812 9043 1120"
-                    value={partnerIdNumber}
-                    onChange={(e) => setPartnerIdNumber(e.target.value)}
-                  />
-                </div>
-              </div>
             </div>
           )}
         </div>
 
         {/* Section 3: Room Assignment */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-4">
-          <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-emerald-600" /> Room Assignment & Tariff
-          </h3>
+        <div className="space-y-4 pt-4 border-t border-slate-100">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <Building2 className="h-4 w-4 text-[#0b3c33]" />
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-heading">
+              Room Assignment & Tariff
+            </h3>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Select Room *</label>
+              <label className="text-xs font-bold text-slate-700">Select Room *</label>
               <select
-                className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                 value={selectedRoomNumber}
                 onChange={(e) => handleRoomChange(e.target.value)}
                 required
@@ -596,9 +521,9 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Stay Package / Slot</label>
+              <label className="text-xs font-bold text-slate-700">Stay Package</label>
               <select
-                className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                 value={stayType}
                 onChange={(e) => setStayType(e.target.value)}
               >
@@ -610,10 +535,10 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700">Advance Received (₹)</label>
-              <Input
+              <label className="text-xs font-bold text-slate-700">Advance Paid (₹)</label>
+              <input
                 type="number"
-                className="h-9 text-xs"
+                className="w-full h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-mono font-bold shadow-2xs"
                 value={advancePaid}
                 onChange={(e) => setAdvancePaid(e.target.value)}
               />
@@ -622,86 +547,84 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
         </div>
 
         {/* Section 4: Digital Signature */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <PenTool className="h-4 w-4 text-indigo-600" /> Guest Digital Signature (Sign-on-Screen)
-            </h3>
-            {signatureData ? (
-              <Badge className="bg-emerald-600 text-white font-bold text-xs gap-1.5 px-3 py-1">
+        <div className="space-y-4 pt-4 border-t border-slate-100">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <PenTool className="h-4 w-4 text-[#0b3c33]" />
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-heading">
+                Digital Signature
+              </h3>
+            </div>
+            {signatureData && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
                 <Check className="h-3.5 w-3.5" /> Signature Recorded
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-slate-500 font-semibold text-xs">
-                Pending Signature
-              </Badge>
+              </span>
             )}
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-5 bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
             {signatureData ? (
-              <div className="relative group border-2 border-emerald-300 rounded-xl p-3 bg-emerald-50/20 shadow-xs">
+              <div className="border border-emerald-300 rounded-xl p-2 bg-white shadow-2xs">
                 <img
                   src={signatureData}
-                  alt="Guest Signature"
-                  className="h-24 max-w-[240px] object-contain"
+                  alt="Signature"
+                  className="h-20 max-w-[200px] object-contain"
                 />
               </div>
             ) : (
-              <div className="h-24 w-56 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 text-xs bg-slate-50/60">
-                <PenTool className="h-6 w-6 mb-1.5 opacity-40 text-slate-500" />
-                <span className="font-medium">No signature captured</span>
+              <div className="h-20 w-48 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 text-xs bg-white">
+                <PenTool className="h-5 w-5 mb-1 opacity-50 text-slate-400" />
+                <span className="font-medium text-[11px]">No signature</span>
               </div>
             )}
 
-            <div className="space-y-2 text-center sm:text-left flex-1">
-              <p className="text-sm font-bold text-slate-800">
-                {signatureData ? 'Digital signature is successfully recorded and linked' : 'Tap below to open signature window for guest'}
+            <div className="flex-1 space-y-1.5 text-center sm:text-left">
+              <p className="text-xs font-bold text-slate-800">
+                {signatureData ? 'Digital signature captured' : 'Guest signs on screen or mobile tablet'}
               </p>
-              <p className="text-xs text-slate-500">
-                The guest can sign using touch on mobile/tablet or mouse on computer. The digital signature is stored directly with their ID proof in the sequential hotel database.
-              </p>
-              <div className="flex gap-2.5 pt-1 justify-center sm:justify-start">
-                <Button
+              <div className="flex gap-2 justify-center sm:justify-start">
+                <button
                   type="button"
                   onClick={() => setIsSignatureModalOpen(true)}
-                  variant="outline"
-                  className="gap-2 border-indigo-300 text-indigo-700 hover:bg-indigo-50 font-bold px-4 py-2"
+                  className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold cursor-pointer transition-colors"
                 >
-                  <PenTool className="h-4 w-4" />
-                  {signatureData ? '✍️ Re-sign / Modify Signature' : '✍️ Open Signature Window'}
-                </Button>
+                  {signatureData ? '✍️ Re-Sign' : '✍️ Open Signature Pad'}
+                </button>
                 {signatureData && (
-                  <Button
+                  <button
                     type="button"
                     onClick={() => setSignatureData(null)}
-                    variant="ghost"
-                    className="text-xs text-rose-600 hover:bg-rose-50"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 cursor-pointer"
                   >
-                    Clear Signature
-                  </Button>
+                    Clear
+                  </button>
                 )}
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-          <Button
+        {/* Submit Bar */}
+        <div className="flex items-center justify-between pt-6 border-t border-slate-100">
+          <button
             type="button"
-            variant="outline"
-            className="text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 border-slate-300 gap-1.5"
             onClick={resetForm}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
           >
-            <RotateCcw className="h-4 w-4" /> Clear / Reset Form
-          </Button>
-          <Button type="submit" variant="emerald" size="lg" className="px-6 font-extrabold shadow-sm">
-            <Check className="h-4 w-4" /> Save Registration & Check In
-          </Button>
+            <RotateCcw className="h-3.5 w-3.5" /> Clear Form
+          </button>
+          
+          <button 
+            type="submit" 
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#0b3c33] hover:bg-[#072620] text-white font-extrabold text-xs transition-all cursor-pointer shadow-xs active:scale-95 font-heading"
+          >
+            <Check className="h-4 w-4 text-emerald-300" />
+            <span>Save Registration & Check-In</span>
+          </button>
         </div>
       </form>
 
-      {/* Interactive Digital Signature Modal Window */}
+      {/* Signature Modal */}
       <SignatureModal
         isOpen={isSignatureModalOpen}
         onClose={() => setIsSignatureModalOpen(false)}

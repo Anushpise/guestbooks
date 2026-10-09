@@ -13,8 +13,8 @@ import {
   MapPin,
   ExternalLink
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 
 export default function DocumentViewerModal({ isOpen, onClose, request }) {
   if (!isOpen || !request) return null;

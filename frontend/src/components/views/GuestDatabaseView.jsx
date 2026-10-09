@@ -4,10 +4,10 @@ import {
   PenTool, Download, Calendar, User, Phone, MapPin, Building2, RefreshCw,
   Users, ZoomIn, ShieldCheck, LogOut, Image as ImageIcon, Printer
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
-import { hotelService } from '../services/hotelService';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
+import { hotelService } from '../../services/hotelService';
 
 export default function GuestDatabaseView({ hotelId = null }) {
   const [records, setRecords] = useState([]);
@@ -99,158 +99,118 @@ export default function GuestDatabaseView({ hotelId = null }) {
   const partnerDocBack = selectedRecord?.partner_document_back || partner?.documentBack || partner?.document_back || null;
 
   return (
-    <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl">
-              <Database className="h-6 w-6" />
+    <div className="space-y-5 font-sans">
+      {/* Executive Header & Control Bar */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-[#0b3c33]/10 text-[#0b3c33] rounded-xl border border-[#0b3c33]/20">
+                <Database className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="font-heading text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  Sequential Guest Database & Archive
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">
+                  Permanent register storing sequential reg numbers, ID photo proofs, and digital signatures.
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-heading text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                Sequential Guest Database & Archive
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                Permanent SQLite database storing sequential registration numbers, primary & partner ID photos, and digital signatures.
-              </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchRecords(search)}
+              className="text-xs gap-1.5 font-semibold border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+
+            <Button
+              type="button"
+              onClick={() => window.print()}
+              className="bg-[#0b3c33] hover:bg-[#082e27] text-white gap-2 font-bold text-xs px-4 shadow-xs transition-all cursor-pointer"
+            >
+              <Printer className="h-4 w-4" />
+              Print Register Sheet ({filteredRecords.length})
+            </Button>
+
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <Input
+                type="text"
+                className="pl-9 h-9 text-xs bg-slate-50/60 border-slate-200 focus:bg-white focus:ring-[#0b3c33]"
+                placeholder="Search Reg #, Name, Phone, Room..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchRecords(search)}
-            className="text-xs gap-1.5 font-semibold"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+        {/* Date Filter & Quick Stats Row */}
+        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-slate-400" />
+            <span className="text-xs font-bold text-slate-600">Period:</span>
+            <div className="flex flex-wrap gap-1">
+              {[
+                { key: 'all', label: 'All Records' },
+                { key: 'today', label: 'Today' },
+                { key: '3days', label: 'Last 3 Days' },
+                { key: '7days', label: 'Last 7 Days' },
+                { key: '15days', label: 'Last 15 Days' },
+              ].map((f) => {
+                const count = records.filter(r => {
+                  if (f.key === 'all') return true;
+                  const now = new Date();
+                  const rawDate = r.check_in_at || r.created_at;
+                  const recTime = new Date(rawDate).getTime();
+                  if (isNaN(recTime)) return true;
+                  if (f.key === 'today') {
+                    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                    return recTime >= todayStart;
+                  }
+                  let days = f.key === '3days' ? 3 : f.key === '7days' ? 7 : 15;
+                  return recTime >= (now.getTime() - days * 24 * 60 * 60 * 1000);
+                }).length;
 
-          <Button
-            type="button"
-            onClick={() => window.print()}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-bold shadow-xs text-xs px-3.5"
-          >
-            <Printer className="h-4 w-4" />
-            Print Register Sheet ({filteredRecords.length})
-          </Button>
+                const isActive = dateFilter === f.key;
 
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <Input
-              type="text"
-              className="pl-9 h-9 text-xs"
-              placeholder="Search Reg #, Name, Phone, Room..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setDateFilter(f.key)}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      isActive
+                        ? 'bg-[#0b3c33] text-white font-bold shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
+                    }`}
+                  >
+                    {f.label}
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Date Filter Pills Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-1.5">
-          <Calendar className="h-4 w-4 text-slate-400 ml-1 mr-1" />
-          <span className="text-xs font-bold text-slate-600 mr-1">Time Period:</span>
-          <div className="flex flex-wrap gap-1">
-            {[
-              { key: 'all', label: 'All Records' },
-              { key: 'today', label: 'Today' },
-              { key: '3days', label: 'Last 3 Days' },
-              { key: '7days', label: 'Last 7 Days' },
-              { key: '15days', label: 'Last 15 Days' },
-            ].map((f) => {
-              const count = records.filter(r => {
-                if (f.key === 'all') return true;
-                const now = new Date();
-                const rawDate = r.check_in_at || r.created_at;
-                const recTime = new Date(rawDate).getTime();
-                if (isNaN(recTime)) return true;
-                if (f.key === 'today') {
-                  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-                  return recTime >= todayStart;
-                }
-                let days = f.key === '3days' ? 3 : f.key === '7days' ? 7 : 15;
-                return recTime >= (now.getTime() - days * 24 * 60 * 60 * 1000);
-              }).length;
-
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => setDateFilter(f.key)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    dateFilter === f.key
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-                  }`}
-                >
-                  {f.label}
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                    dateFilter === f.key
-                      ? 'bg-white/20 text-white'
-                      : 'bg-slate-200 text-slate-700'
-                  }`}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="text-xs text-slate-500 font-medium">
-          Showing <strong className="text-slate-900 font-bold">{filteredRecords.length}</strong> of {records.length} records • Filter: <strong className="text-indigo-700">{getFilterLabel(dateFilter)}</strong>
-        </div>
-      </div>
-
-      {/* Database Stats Pills */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Filtered Records</p>
-            <p className="text-2xl font-black text-slate-900 mt-1">{filteredRecords.length}</p>
-          </div>
-          <div className="p-3 bg-emerald-50 text-emerald-700 rounded-xl">
-            <Database className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Latest Sequence</p>
-            <p className="text-2xl font-black text-indigo-700 mt-1">{filteredRecords[0]?.reg_no || 'REG-0001'}</p>
-          </div>
-          <div className="p-3 bg-indigo-50 text-indigo-700 rounded-xl">
-            <FileText className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Partner IDs Captured</p>
-            <p className="text-2xl font-black text-purple-700 mt-1">
-              {filteredRecords.filter(r => r.has_partner_doc === 1 || r.partner_document_front || r.accompanying_guest?.documentFront).length}
-            </p>
-          </div>
-          <div className="p-3 bg-purple-50 text-purple-700 rounded-xl">
-            <Users className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Signatures Attached</p>
-            <p className="text-2xl font-black text-emerald-800 mt-1">
-              {filteredRecords.filter(r => r.has_signature === 1 || r.has_checkout_signature === 1 || r.signature).length}
-            </p>
-          </div>
-          <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl">
-            <PenTool className="h-5 w-5" />
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-1.5 bg-emerald-50 text-[#0b3c33] px-3 py-1 rounded-lg border border-emerald-200/60 font-medium">
+              <span>Total: <strong className="font-extrabold">{filteredRecords.length}</strong></span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-slate-50 text-slate-700 px-3 py-1 rounded-lg border border-slate-200 font-medium">
+              <span>Latest: <strong className="font-bold font-mono text-[#0b3c33]">{filteredRecords[0]?.reg_no || 'REG-0001'}</strong></span>
+            </div>
           </div>
         </div>
       </div>
@@ -285,16 +245,16 @@ export default function GuestDatabaseView({ hotelId = null }) {
                   const hasCheckoutSig = (r.has_checkout_signature === 1) || !!r.checkout_signature;
 
                   return (
-                    <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                    <tr key={r.id} className="hover:bg-emerald-50/20 transition-colors">
                       <td className="px-4 py-3.5">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-black bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-emerald-50 text-[#0b3c33] border border-emerald-200/80">
                           {r.reg_no}
                         </span>
                       </td>
 
                       <td className="px-4 py-3.5">
                         <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                          <Building2 className="h-3.5 w-3.5 text-slate-400" /> Room {r.room_number}
+                          <Building2 className="h-3.5 w-3.5 text-[#0b3c33]" /> Room {r.room_number}
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
                           {new Date(r.created_at).toLocaleDateString('en-IN', {
@@ -313,8 +273,8 @@ export default function GuestDatabaseView({ hotelId = null }) {
                           <Phone className="h-3 w-3 text-slate-400" /> {r.phone}
                         </div>
                         {rPartner && (
-                          <div className="mt-1 flex items-center gap-1 text-[10px] text-indigo-700 bg-indigo-50/80 border border-indigo-200 px-1.5 py-0.5 rounded w-fit font-medium">
-                            <Users className="h-2.5 w-2.5" /> Partner: {rPartner.name}
+                          <div className="mt-1 flex items-center gap-1 text-[10px] text-[#0b3c33] bg-emerald-50/80 border border-emerald-200/80 px-1.5 py-0.5 rounded w-fit font-medium">
+                            <Users className="h-2.5 w-2.5 text-[#0b3c33]" /> Partner: {rPartner.name}
                           </div>
                         )}
                       </td>
@@ -338,13 +298,13 @@ export default function GuestDatabaseView({ hotelId = null }) {
                             </span>
                           )}
                           {r.has_doc_back === 1 && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
                               Primary Back
                             </span>
                           )}
                           {hasPartnerDoc && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-0.5">
-                              Partner ID Photo
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-[#0b3c33] border border-emerald-200 flex items-center gap-0.5">
+                              Partner Photo
                             </span>
                           )}
                         </div>
@@ -353,16 +313,16 @@ export default function GuestDatabaseView({ hotelId = null }) {
                       <td className="px-4 py-3.5 text-center">
                         <div className="flex flex-col items-center gap-1">
                           {r.has_signature === 1 || r.signature ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                              <CheckCircle2 className="h-3 w-3" /> Check-In Signed
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#0b3c33] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              <CheckCircle2 className="h-3 w-3 text-[#0b3c33]" /> Check-In Signed
                             </span>
                           ) : (
                             <span className="text-[10px] text-slate-400 italic">No in-sig</span>
                           )}
 
                           {hasCheckoutSig ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-800 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
-                              <PenTool className="h-3 w-3" /> Check-Out Signed
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-900 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                              <PenTool className="h-3 w-3" /> Departure Signed
                             </span>
                           ) : r.status === 'CHECKED_OUT' ? (
                             <span className="text-[9px] text-slate-400">Departed</span>
@@ -372,11 +332,11 @@ export default function GuestDatabaseView({ hotelId = null }) {
 
                       <td className="px-4 py-3.5 text-center">
                         {r.status === 'CHECKED_IN' ? (
-                          <Badge className="bg-emerald-600 text-white font-bold text-[10px]">
+                          <Badge className="bg-[#0b3c33] text-white font-bold text-[10px] hover:bg-[#0b3c33]">
                             Active Stay
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="text-slate-500 font-bold text-[10px]">
+                          <Badge variant="outline" className="text-slate-500 font-bold text-[10px] border-slate-200">
                             Checked Out
                           </Badge>
                         )}
@@ -387,7 +347,7 @@ export default function GuestDatabaseView({ hotelId = null }) {
                           size="sm"
                           variant="outline"
                           onClick={() => handleViewDetails(r.id)}
-                          className="h-8 gap-1.5 text-xs text-indigo-700 border-indigo-200 hover:bg-indigo-50 font-bold"
+                          className="h-8 gap-1.5 text-xs text-[#0b3c33] border-[#0b3c33]/30 hover:bg-[#0b3c33] hover:text-white font-bold transition-all cursor-pointer"
                         >
                           <Eye className="h-3.5 w-3.5" /> View Record
                         </Button>

@@ -10,10 +10,10 @@ import {
   X,
   UserPlus 
 } from 'lucide-react';
-import { hotelService } from '../services/hotelService';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
+import { hotelService } from '../../services/hotelService';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 
 export default function ExpressCheckInModal({ 
   isOpen, 

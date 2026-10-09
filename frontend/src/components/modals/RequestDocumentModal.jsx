@@ -10,9 +10,9 @@ import {
   CheckCircle2,
   BadgeAlert
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 
 export default function RequestDocumentModal({ isOpen, onClose, guestLog, officerUser, onSubmitSuccess }) {
   if (!isOpen || !guestLog) return null;

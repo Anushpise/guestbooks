@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Zap, Search, Star, CheckCircle2, User, Users, Building2, UserPlus } from 'lucide-react';
-import { hotelService } from '../services/hotelService';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { Input } from './ui/input';
+import { hotelService } from '../../services/hotelService';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 
 export default function ExpressCheckInView({ vacantRooms, onCheckInComplete, switchToNewGuest }) {
   const [searchQuery, setSearchQuery] = useState('');

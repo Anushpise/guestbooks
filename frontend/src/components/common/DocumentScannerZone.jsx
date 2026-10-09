@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle2, Loader2, Upload, Trash2, Clipboard, X, ScanLine, Zap } from 'lucide-react';
-import { scanDocumentWithOCR, parseIndianIDText } from '../lib/ocrUtils';
-import { compressImageForOCR } from '../lib/imageCompressor';
+import { scanDocumentWithOCR, parseIndianIDText } from '../../lib/ocrUtils';
+import { compressImageForOCR } from '../../lib/imageCompressor';
 
 export default function DocumentScannerZone({
   label = "Guest Document",

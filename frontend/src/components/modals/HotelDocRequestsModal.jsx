@@ -12,9 +12,9 @@ import {
   Filter,
   AlertCircle
 } from 'lucide-react';
-import { hotelService } from '../services/hotelService';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+import { hotelService } from '../../services/hotelService';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 
 export default function HotelDocRequestsModal({ isOpen, onClose, onViewDocument }) {
   if (!isOpen) return null;

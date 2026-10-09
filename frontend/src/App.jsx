@@ -1,26 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import LandingPage from './components/LandingPage';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
-import Dashboard from './components/Dashboard';
-import GuestLedger from './components/GuestLedger';
-import PoliceReportView from './components/PoliceReportView';
-import BillingArchiveView from './components/BillingArchiveView';
-import RoomManagementView from './components/RoomManagementView';
-import ExpressCheckInView from './components/ExpressCheckInView';
-import NewCheckInView from './components/NewCheckInView';
-import AdminDashboard from './components/AdminDashboard';
-import PolicePortalView from './components/PolicePortalView';
-import GuestDatabaseView from './components/GuestDatabaseView';
-import AuthPage from './components/AuthPage';
+import LandingPage from './components/views/LandingPage';
+import Sidebar from './components/layout/Sidebar';
+import Header from './components/layout/Header';
+import Dashboard from './components/views/Dashboard';
+import GuestLedger from './components/views/GuestLedger';
+import PoliceReportView from './components/views/PoliceReportView';
+import BillingArchiveView from './components/views/BillingArchiveView';
+import RoomManagementView from './components/views/RoomManagementView';
+import ExpressCheckInView from './components/views/ExpressCheckInView';
+import NewCheckInView from './components/views/NewCheckInView';
+import AdminDashboard from './components/views/AdminDashboard';
+import PolicePortalView from './components/views/PolicePortalView';
+import GuestDatabaseView from './components/views/GuestDatabaseView';
+import AuthPage from './components/views/AuthPage';
 
-import ExpressCheckInModal from './components/ExpressCheckInModal';
-import NewCheckInForm from './components/NewCheckInForm';
-import PoliceReportModal from './components/PoliceReportModal';
-import GuestReceiptModal from './components/GuestReceiptModal';
-import CheckOutModal from './components/CheckOutModal';
-import CounterQRModal from './components/CounterQRModal';
-import GuestUploadPortal from './components/GuestUploadPortal';
+import ExpressCheckInModal from './components/modals/ExpressCheckInModal';
+import NewCheckInForm from './components/modals/NewCheckInForm';
+import PoliceReportModal from './components/modals/PoliceReportModal';
+import GuestReceiptModal from './components/modals/GuestReceiptModal';
+import CheckOutModal from './components/modals/CheckOutModal';
+import CounterQRModal from './components/modals/CounterQRModal';
+import GuestUploadPortal from './components/views/GuestUploadPortal';
 import { hotelService } from './services/hotelService';
 import { authService } from './services/authService';
 
@@ -392,7 +392,7 @@ export default function App() {
       />
 
       {/* Main Right Layout */}
-      <div className="flex-1 pl-64 flex flex-col min-h-screen">
+      <div className="flex-1 pl-72 flex flex-col min-h-screen">
         <Header 
           user={currentUser}
           hotel={currentHotel}
