@@ -2,6 +2,7 @@
  * imageCompressor.js
  *
  * Ultra-fast client-side image compression (<30ms).
+ * Corrects EXIF camera orientation natively on mobile devices.
  * Scales down large mobile camera photos (4000x3000px, 8MB-15MB)
  * to an optimal OCR resolution (max 1400px, ~150KB - 250KB)
  * while preserving crystal-clear text sharpness.
@@ -10,45 +11,73 @@
  * and ensures sub-second OCR inference.
  */
 
-export async function compressImageForOCR(fileOrBlob, maxDimension = 1600, quality = 0.92) {
+export async function compressImageForOCR(fileOrBlob, maxDimension = 1400, quality = 0.92) {
   if (!fileOrBlob) return null;
 
-  return new Promise((resolve) => {
-    // If already very small (< 200KB) and an image, we can still ensure it's within bounds
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(fileOrBlob);
-    img.src = objectUrl;
+  try {
+    let sourceWidth, sourceHeight, drawSource;
+    let bitmap = null;
 
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      let { width, height } = img;
-
-      // Calculate new dimensions preserving aspect ratio
-      if (width > maxDimension || height > maxDimension) {
-        if (width > height) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        } else {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
-        }
+    // Use createImageBitmap with native EXIF orientation if available (modern mobile Safari & Chrome)
+    if (typeof createImageBitmap === 'function') {
+      try {
+        bitmap = await createImageBitmap(fileOrBlob, { imageOrientation: 'from-image' });
+        sourceWidth = bitmap.width;
+        sourceHeight = bitmap.height;
+        drawSource = bitmap;
+      } catch (_) {
+        // Fallback to standard Image if imageOrientation option not supported
       }
+    }
 
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+    if (!bitmap) {
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(fileOrBlob);
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = objectUrl;
+      });
+      URL.revokeObjectURL(objectUrl);
+      sourceWidth = img.width;
+      sourceHeight = img.height;
+      drawSource = img;
+    }
 
-      // High quality bicubic downscaling
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+    let width = sourceWidth;
+    let height = sourceHeight;
 
-      // Fill white background in case of transparent PNGs
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, width, height);
+    // Calculate new dimensions preserving aspect ratio
+    if (width > maxDimension || height > maxDimension) {
+      if (width > height) {
+        height = Math.round((height * maxDimension) / width);
+        width = maxDimension;
+      } else {
+        width = Math.round((width * maxDimension) / height);
+        height = maxDimension;
+      }
+    }
 
-      ctx.drawImage(img, 0, 0, width, height);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
 
+    // High quality bicubic downscaling
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // Fill white background in case of transparent PNGs
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.drawImage(drawSource, 0, 0, width, height);
+
+    if (bitmap && typeof bitmap.close === 'function') {
+      bitmap.close();
+    }
+
+    return new Promise((resolve) => {
       canvas.toBlob(
         (blob) => {
           if (!blob) {
@@ -66,14 +95,11 @@ export async function compressImageForOCR(fileOrBlob, maxDimension = 1600, quali
         'image/jpeg',
         quality
       );
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      // Fallback to original file if decoding fails
-      resolve(fileOrBlob);
-    };
-  });
+    });
+  } catch (err) {
+    console.warn('Compression fallback to original file:', err);
+    return fileOrBlob;
+  }
 }
 
 /**

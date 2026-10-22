@@ -34,3 +34,15 @@ __pycache__/
 *.njsproj
 *.sln
 *.sw?
+
+# Sensitive Documents & KYC / Aadhaar Test Data (Never commit to GitHub)
+hotel adharcards/
+*adharcards*/
+*aadharcards*/
+hotel aadhar cards/
+hotel adhar cards/
+
+# Temporary OCR Crops & Debug Images
+backend/back_crop.png
+backend/qr_box.png
+
