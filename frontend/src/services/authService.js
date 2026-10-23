@@ -76,28 +76,70 @@ const initialPoliceAccounts = [
   },
 ];
 
-// Helper to make API calls to the central backend (with multi-PC IP fallback)
-const apiFetch = async (path, options = {}) => {
+// Dynamic Multi-PC / Server Backend URL Resolver
+export const getBackendBaseUrl = () => {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, '');
+  }
+  return '';
+};
+
+export const getBackendDirectUrl = (path) => {
+  const host = (typeof window !== 'undefined' && window.location && window.location.hostname)
+    ? window.location.hostname
+    : '127.0.0.1';
+  const proto = (typeof window !== 'undefined' && window.location && window.location.protocol)
+    ? window.location.protocol
+    : 'http:';
+  return `${proto}//${host}:8008${path}`;
+};
+
+// Robust Helper to make API calls to central backend with dual fallback across multi-device LAN/Server
+export const apiFetch = async (path, options = {}) => {
+  const base = getBackendBaseUrl();
+  const primaryUrl = base ? `${base}${path}` : path;
+  const directFallbackUrl = getBackendDirectUrl(path);
+
+  let res = null;
+
+  // 1. Try primary URL (Vite proxy / Nginx reverse proxy / base API)
   try {
-    const res = await fetch(path, options);
-    if (res.ok) {
-      return await res.json();
-    }
+    res = await fetch(primaryUrl, options);
   } catch (err) {
-    // If relative proxy failed and hostname is defined, try direct port 8008 on the host machine
-    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    // Network failure on primary
+  }
+
+  // 2. If primary failed or returned an error status (404/500/502/504), try direct backend port 8008
+  if ((!res || !res.ok) && primaryUrl !== directFallbackUrl) {
+    const isHttps = typeof window !== 'undefined' && window.location && window.location.protocol === 'https:';
+    if (!isHttps || directFallbackUrl.startsWith('https:')) {
       try {
-        const directUrl = `http://${window.location.hostname}:8008${path}`;
-        const directRes = await fetch(directUrl, options);
-        if (directRes.ok) {
-          return await directRes.json();
+        const fallbackRes = await fetch(directFallbackUrl, options);
+        if (fallbackRes && (fallbackRes.ok || !res)) {
+          res = fallbackRes;
         }
       } catch (fallbackErr) {
-        // Quiet fail, fallback gracefully
+        // Direct backend also unreachable
       }
     }
   }
-  return null;
+
+  // 3. Parse JSON response if available
+  if (res) {
+    try {
+      const data = await res.json();
+      return data;
+    } catch (e) {
+      if (res.ok) return { success: true };
+      return { success: false, status: res.status, message: `Server error (${res.status})` };
+    }
+  }
+
+  return {
+    success: false,
+    networkError: true,
+    message: 'Could not connect to central database server. Please ensure backend is running.'
+  };
 };
 
 // Initialize Storage & Ensure Demo Credentials Always Exist
@@ -265,9 +307,9 @@ export const authService = {
     return { success: true, user };
   },
 
-  // Hotel Self-Registration (Saves directly to Central DB so all PCs see it immediately)
+  // Hotel Self-Registration (Strictly persists to central SQLite/Postgres DB)
   registerHotel: async (hotelData) => {
-    // 1. Submit to central backend DB
+    // 1. Submit directly to central backend DB
     const backendRes = await apiFetch('/api/auth/register-hotel', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -292,71 +334,11 @@ export const authService = {
       };
     }
 
-    if (backendRes && !backendRes.success) {
-      return { success: false, message: backendRes.message || 'Hotel registration rejected.' };
-    }
-
-    // 2. Offline Fallback
-    initAuthStorage();
-    const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY)) || initialUsers;
-    const hotels = JSON.parse(localStorage.getItem(HOTELS_STORAGE_KEY)) || initialHotels;
-
-    const cleanEmail = hotelData.email.trim().toLowerCase();
-    const existingUser = users.find((u) => u.email && u.email.toLowerCase() === cleanEmail);
-    if (existingUser) {
-      return { success: false, message: 'An account with this email address already exists.' };
-    }
-
-    const hotelId = `HTL-${Math.floor(1000 + Math.random() * 9000)}`;
-    const userId = `USR-HTL-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const newHotelRecord = {
-      id: hotelId,
-      name: hotelData.hotelName,
-      hotelName: hotelData.hotelName,
-      ownerName: hotelData.ownerName,
-      email: cleanEmail,
-      phone: hotelData.phone,
-      address: hotelData.address || 'Address provided during registration',
-      area: hotelData.area || 'Metro Division Sector 4',
-      propertyType: hotelData.propertyType || 'Hotel / Lodge Stay',
-      subscriptionPlan: hotelData.subscriptionPlan || 'Guestbooks Standard Plan (₹499/month)',
-      subscriptionAmount: hotelData.subscriptionAmount || 499,
-      status: 'PENDING',
-      regNumber: `REG-${Date.now().toString().slice(-6)}`,
-      totalRooms: Number(hotelData.totalRooms) || 15,
-      occupiedRooms: 0,
-      documents: hotelData.documents && hotelData.documents.length > 0 ? hotelData.documents : [
-        { name: `${hotelData.hotelName.replace(/\s+/g, '_')}_Trade_License.pdf`, size: '1.4 MB', type: 'PDF' },
-        { name: 'Owner_Aadhaar_Verification.pdf', size: '920 KB', type: 'PDF' },
-      ],
-      registeredAt: new Date().toISOString(),
-      guestCount: 0,
-    };
-
-    const newUserRecord = {
-      id: userId,
-      email: cleanEmail,
-      password: hotelData.password,
-      name: hotelData.hotelName,
-      role: 'HOTEL',
-      hotelId: hotelId,
-    };
-
-    hotels.unshift(newHotelRecord);
-    users.push(newUserRecord);
-
-    localStorage.setItem(HOTELS_STORAGE_KEY, JSON.stringify(hotels));
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
-
-    try {
-      window.dispatchEvent(new CustomEvent('guestbooks_hotel_registered', { detail: newHotelRecord }));
-    } catch (e) {}
-
+    // Backend returned validation error or connection error
+    const errMessage = backendRes?.message || 'Could not connect to the database server. Hotel registration was NOT saved. Please ensure the server backend is running.';
     return {
-      success: true,
-      message: 'Hotel registration submitted successfully! Awaiting Super Admin document approval.',
-      hotel: newHotelRecord,
+      success: false,
+      message: errMessage
     };
   },
 

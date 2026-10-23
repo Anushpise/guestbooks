@@ -14,7 +14,10 @@ export const getBackendFallbackUrl = (path) => {
   const host = (typeof window !== 'undefined' && window.location && window.location.hostname) 
     ? window.location.hostname 
     : '127.0.0.1';
-  return `http://${host}:8008${path}`;
+  const proto = (typeof window !== 'undefined' && window.location && window.location.protocol)
+    ? window.location.protocol
+    : 'http:';
+  return `${proto}//${host}:8008${path}`;
 };
 
 // ── Initialize LocalStorage if empty ─────────────────────────────────────────
