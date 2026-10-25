@@ -10,10 +10,23 @@ const POLICE_LOGS_STORAGE_KEY = 'staylog_police_logs_v1';
 const generateId = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
 // ── Multi-PC Dynamic Backend URL Helper ──────────────────────────────────────
+const isLocalOrLanHost = (host) => {
+  if (!host) return false;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') return true;
+  if (/^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(host)) return true;
+  return false;
+};
+
 export const getBackendFallbackUrl = (path) => {
   const host = (typeof window !== 'undefined' && window.location && window.location.hostname) 
     ? window.location.hostname 
     : '127.0.0.1';
+
+  // On public production domains (e.g. guestbooks.in), do not route to port 8008
+  if (!isLocalOrLanHost(host)) {
+    return path;
+  }
+
   const proto = (typeof window !== 'undefined' && window.location && window.location.protocol)
     ? window.location.protocol
     : 'http:';

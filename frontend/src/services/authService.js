@@ -84,10 +84,25 @@ export const getBackendBaseUrl = () => {
   return '';
 };
 
+export const isLocalOrLanHost = (host) => {
+  if (!host) return false;
+  if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') return true;
+  // Match private IPv4 address patterns (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+  if (/^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(host)) return true;
+  return false;
+};
+
 export const getBackendDirectUrl = (path) => {
   const host = (typeof window !== 'undefined' && window.location && window.location.hostname)
     ? window.location.hostname
     : '127.0.0.1';
+
+  // NEVER append port 8008 on public domains (e.g. guestbooks.in)
+  // On production domains, all traffic MUST route through the domain reverse proxy (/api)
+  if (!isLocalOrLanHost(host)) {
+    return null;
+  }
+
   const proto = (typeof window !== 'undefined' && window.location && window.location.protocol)
     ? window.location.protocol
     : 'http:';
@@ -109,8 +124,8 @@ export const apiFetch = async (path, options = {}) => {
     // Network failure on primary
   }
 
-  // 2. If primary failed or returned an error status (404/500/502/504), try direct backend port 8008
-  if ((!res || !res.ok) && primaryUrl !== directFallbackUrl) {
+  // 2. If primary failed or returned an error status (404/500/502/504), only try direct port 8008 on Local/LAN
+  if ((!res || !res.ok) && directFallbackUrl && primaryUrl !== directFallbackUrl) {
     const isHttps = typeof window !== 'undefined' && window.location && window.location.protocol === 'https:';
     if (!isHttps || directFallbackUrl.startsWith('https:')) {
       try {
@@ -126,6 +141,20 @@ export const apiFetch = async (path, options = {}) => {
 
   // 3. Parse JSON response if available
   if (res) {
+    if (res.status === 502) {
+      return {
+        success: false,
+        status: 502,
+        message: 'Server Backend Offline (502 Bad Gateway): The Python backend process is stopped or not running on the server.'
+      };
+    }
+    if (res.status === 504) {
+      return {
+        success: false,
+        status: 504,
+        message: 'Server Timeout (504 Gateway Timeout): The backend server took too long to respond.'
+      };
+    }
     try {
       const data = await res.json();
       return data;
