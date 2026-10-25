@@ -477,6 +477,12 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
             cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O|[iIl1\|\*#]|oil|ol|oll|oill|all|mr|ms|mrs|smt|shri|dr|ta|to)\s*[:\-]?\s*', '', raw_back, flags=re.I).strip()
             cl = re.sub(r'[^A-Za-z\s\.]', '', cl).strip()
             cl = re.sub(r'^[A-Za-z]\s+', '', cl).strip()
+            
+            # Extract clean 2-4 word TitleCase name cluster if line contains surrounding OCR noise
+            m_sub = re.search(r'\b([A-Z][a-z]{2,15}(?:\s+[A-Z][a-z]{2,15}){1,3})\b', cl)
+            if m_sub and is_valid_name(m_sub.group(1)):
+                cl = m_sub.group(1)
+
             if is_valid_name(cl) and len(cl.split()) >= 2:
                 words_cnt = len(cl.split())
                 dist = anchor_idx - back

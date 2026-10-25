@@ -303,9 +303,17 @@ class MultiOCREngine:
         except Exception:
             pass
 
-        # 2. Test initial OCR pass on oriented image
+        # 2. Test initial OCR pass on oriented image (with adaptive filtration if blurry)
         tess_text = self._run_tesseract(oriented_gray)
         current_score = score_text(tess_text)
+
+        if current_score < 70:
+            bin_test = filter_adaptive_binarize(oriented_gray)
+            bin_txt = self._run_tesseract(bin_test)
+            bin_sc = score_text(bin_txt)
+            if bin_sc > current_score:
+                current_score = bin_sc
+                tess_text = bin_txt
 
         # High confidence threshold: return immediately
         if current_score >= 80:
@@ -323,17 +331,26 @@ class MultiOCREngine:
         else:
             cand_rotations = [cv2.ROTATE_180, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE]
 
-        for rot in cand_rotations:
-            test_img = cv2.rotate(oriented_gray, rot)
-            test_txt = self._run_tesseract(test_img)
-            test_sc = score_text(test_txt)
-            if test_sc > best_score:
-                best_score = test_sc
-                best_text = test_txt
-                best_gray = test_img
-                logger.info(f"Rotation improved OCR score from {current_score} to {best_score}")
-                if best_score >= 80:
-                    break
+        # Candidate rotation evaluation with adaptive filtration for blurry images
+        eval_proc = [lambda img: img]
+        if current_score < 70:
+            eval_proc.append(filter_adaptive_binarize)
+
+        for proc in eval_proc:
+            proc_base = proc(oriented_gray)
+            for rot in cand_rotations:
+                test_img = cv2.rotate(proc_base, rot)
+                test_txt = self._run_tesseract(test_img)
+                test_sc = score_text(test_txt)
+                if test_sc > best_score:
+                    best_score = test_sc
+                    best_text = test_txt
+                    best_gray = cv2.rotate(oriented_gray, rot)
+                    logger.info(f"Rotation with filtration improved OCR score to {best_score}")
+                    if best_score >= 80:
+                        break
+            if best_score >= 80:
+                break
 
         return best_gray, best_text, best_score
 
