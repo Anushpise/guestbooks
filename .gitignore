@@ -45,4 +45,6 @@ hotel adhar cards/
 # Temporary OCR Crops & Debug Images
 backend/back_crop.png
 backend/qr_box.png
+backend/benchmark_report.json
+
 

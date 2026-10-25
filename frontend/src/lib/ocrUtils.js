@@ -371,6 +371,13 @@ function isReadable(line) {
 }
 
 /** Convert string to Title Case */
+function normalizeName(str) {
+  if (!str) return '';
+  let n = str.replace(/^(?:oil|ol|oll|oill|all|mr|ms|mrs|smt|shri|dr|ta|to)\s*[:\-]?\s*/i, '').trim();
+  n = n.replace(/\b([A-Za-z]{3,15})rag\b/gi, '$1rao');
+  return titleCase(n);
+}
+
 function titleCase(str) {
   return str
     .split(/\s+/)
@@ -392,6 +399,7 @@ const STOP_WORDS = new Set([
   'DISTRICT','TEHSIL','MANDAL','STATE','HOUSE','FLAT',
   'NEAR','BEHIND','OPPOSITE','NEXT','ABOVE','BELOW','VIA',
   'POST','OFFICE','POLICE','STATION','WARD','SECTOR','BLOCK',
+  'SCENE','OFIINDI','OFIIND','OFINDIA','OFINDI','EMBLEM','ENROLLMENT','ENROLMENT',
   'MALE','FEMALE','GENDER','OTHER','YEAR','MONTH','AGE',
   'THE','AND','FOR','WITH','FROM','THAT','THIS','YOUR',
 ]);
@@ -472,22 +480,45 @@ export function parseIndianIDText(rawText) {
 
   let dob = '';
   let age = '';
+  const curYear = new Date().getFullYear();
 
-  const dobFullRx = /\b(\d{2}[\/\.\-]\d{2}[\/\.\-]\d{4})\b/;
-  const yobRx     = /(?:Year of Birth|YOB|Date of Birth|DOB)[:\s\/\-]*(\d{4})/i;
-  const curYear   = new Date().getFullYear();
+  // A. Labeled DOB (highest priority)
+  const labeledDobRx = /(?:DOB|D\.?O\.?B\.?|Dog|Doe|Dae|D0B|DO8|DOA|Date\s*of\s*Birth|जन्म\s*(?:तिथि|तारीख|मिति)|Born)[:\|\.\-\s\/]*(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})/i;
+  const lDobM = text.match(labeledDobRx);
+  if (lDobM) {
+    const dVal = lDobM[1].padStart(2, '0');
+    const mVal = lDobM[2].padStart(2, '0');
+    const yVal = +lDobM[3];
+    if (yVal > 1900 && yVal <= curYear) {
+      dob = `${dVal}/${mVal}/${yVal}`;
+      age = String(curYear - yVal);
+    }
+  }
 
-  const dobM = text.match(dobFullRx);
-  const yobM = text.match(yobRx);
+  // B. Labeled Year of Birth
+  if (!dob) {
+    const yobRx = /(?:Year\s*of\s*Birth|YOB|जन्म\s*का\s*वर्ष)[:;\-\.\/\s]*(\d{4})/i;
+    const yobM = text.match(yobRx);
+    if (yobM) {
+      const y = +yobM[1];
+      if (y > 1900 && y <= curYear) { dob = `01/01/${y}`; age = String(curYear - y); }
+    }
+  }
 
-  if (dobM) {
-    dob = dobM[1].replace(/[.\-]/g, '/');
-    const [, , yr] = dob.split('/');
-    const y = +yr;
-    if (y > 1900 && y <= curYear) age = String(curYear - y);
-  } else if (yobM) {
-    const y = +yobM[1];
-    if (y > 1900 && y <= curYear) { dob = `01/01/${y}`; age = String(curYear - y); }
+  // C. Unlabeled Date fallback (excludes future or print dates)
+  if (!dob) {
+    const dobFullRx = /\b(\d{2}[\/\.\-]\d{2}[\/\.\-]\d{4})\b/g;
+    let m;
+    while ((m = dobFullRx.exec(text)) !== null) {
+      const cand = m[1].replace(/[.\-]/g, '/');
+      const [, , yr] = cand.split('/');
+      const y = +yr;
+      if (y > 1920 && y <= (curYear - 5)) {
+        dob = cand;
+        age = String(curYear - y);
+        break;
+      }
+    }
   }
 
   // ── 3. Gender ─────────────────────────────────────────────────────────────
@@ -658,5 +689,14 @@ export function parseIndianIDText(rawText) {
     if (cityM) city = cityM[1];
   }
 
-  return { idType, idNumber, name, dob, age, gender, address, city, pincode: pinM ? pinM[1] : '', rawText };
+    // ── 7. Mobile Phone Extraction ───────────────────────────────────────────
+  let phone = '';
+  const phoneM = text.match(/(?:Mobile|Mob|Phone|Cell|मोबाईल|दूरध्वनी|संपर्क)\s*(?:No\.?|Number)?\s*[:\-\s\|]*([6-9]\d{9})\b/i) || text.match(/(?<![\d\/\-\.\w])([6-9]\d{9})(?![\d\/\-\.\w])/);
+  if (phoneM) {
+    phone = phoneM[1];
+  }
+
+  if (name) name = normalizeName(name);
+
+  return { idType, idNumber, name, dob, age, gender, address, city, pincode: pinM ? pinM[1] : '', phone, rawText };
 }

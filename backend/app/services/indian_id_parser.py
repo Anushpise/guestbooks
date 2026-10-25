@@ -22,6 +22,7 @@ logger = logging.getLogger("indian_id_parser")
 OCR_DIGIT_FIXES = {
     'O': '0', 'o': '0', 'D': '0', 'Q': '0',
     'I': '1', 'l': '1', '|': '1', '!': '1', 'i': '1',
+    ':': '1', ';': '1',
     'Z': '2', 'z': '2',
     'E': '3',
     'A': '4',
@@ -79,6 +80,9 @@ STOP_WORDS = {
     'EDIT', 'ANNOTATE', 'FILL', 'SIGN', 'CONVERT', 'SHARE', 'VIEW', 'MOBILE',
     'BATTERY', 'SCREENSHOT', 'WHATSAPP', 'ADOBE', 'ACROBAT', 'READER', 'DRIVE',
     'SCANNER', 'CAMSCANNER', 'CANCEL', 'DONE', 'SUBMIT', 'CLEAR',
+    # Emblem & Noise Words
+    'SCENE', 'OFIINDI', 'OFIIND', 'OFINDIA', 'OFINDI', 'EMBLEM', 'LION', 'ASHOKA',
+    'SATYAMEVA', 'JAYATE', 'ENROLLMENT', 'ENROLMENT',
     # Address Markers
     'DIST', 'DISTRICT', 'TEHSIL', 'TALUKA', 'TALUK', 'LAYOUT', 'COLONY', 'MARG'
 }
@@ -109,6 +113,8 @@ def is_relative_line(line: str) -> bool:
 def clean_text(raw: str) -> str:
     """Standardizes text, cleans non-alphanumeric noise while retaining Devanagari."""
     text = raw
+    # Strip stray backslashes before numbers, e.g. '\0/01/1998' -> '01/01/1998'
+    text = re.sub(r'\\(?=\d)', '', text)
     text = re.sub(r'\|', ' ', text)
     text = re.sub(r'[£¥€©®™°~`_"]', '', text)
     text = re.sub(r'[^\x00-\x7F\u0900-\u097F\n]', ' ', text)
@@ -140,7 +146,8 @@ def is_valid_name(s: str) -> bool:
                  r'MALE|FEMALE|GENDER|SEX|DOB|BIRTH|YEAR|DATE|DIST|DISTRICT|TEHSIL|TALUKA|'
                  r'NAGPUR|WARDHA|MAHARASHTRA|MUMBAI|PUNE|DELHI|STREET|ROAD|MARG|POST|PO|'
                  r'VILLAGE|HOUSE|PLOT|FLAT|SECTOR|BLOCK|COLONY|LAYOUT|'
-                 r'SEE|SEES|SAW|SEEN|ALL|EDIT|ANNOTATE|FILL|SIGN|CONVERT|VIEW|MOBILE|BATTERY|WHATSAPP|ACROBAT|READER|PDF|JPG|JPEG|PNG)\b', upper):
+                 r'SEE|SEES|SAW|SEEN|ALL|EDIT|ANNOTATE|FILL|SIGN|CONVERT|VIEW|MOBILE|BATTERY|WHATSAPP|ACROBAT|READER|PDF|JPG|JPEG|PNG|'
+                 r'SCENE|OFIINDI|OFIIND|OFINDIA|OFINDI|EMBLEM|LION|ASHOKA|SATYAMEV|SATYAMEVA|JAYATE|ENROLLMENT|ENROLMENT|REF|SERIAL)\b', upper):
         return False
 
     # Reject permutations and OCR misreads of EPIC (e.g. IEPI, EPI, OEPIC, BPIC, 1EEPIC)
@@ -231,6 +238,17 @@ def fix_dl_ocr(s: str) -> str:
     return re.sub(r'[^A-Z0-9\-]', '', s.upper())
 
 
+def normalize_name(n: str) -> str:
+    """Cleans OCR artifacts and normalizes regional name suffixes."""
+    if not n:
+        return ''
+    # Strip leading noise words
+    n = re.sub(r'^(?:oil|ol|oll|oill|all|mr|ms|mrs|smt|shri|dr|ta|to)\s*[:\-]?\s*', '', n, flags=re.I).strip()
+    # Normalize OCR misread Maharashtra 'rag' -> 'rao' (e.g. Diliprag -> Diliprao, Arunrag -> Arunrao)
+    n = re.sub(r'\b([A-Za-z]{3,15})rag\b', r'\1rao', n, flags=re.I)
+    return title_case(n)
+
+
 # ─── Name Extraction Strategies ───────────────────────────────────────────────
 
 def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number: str = '') -> str:
@@ -246,19 +264,44 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
         r'uidai\.gov|1947|help@uidai|Your\s*A[ea]dhaar)\b|'
         r'\b(?:So|Do|Wo|Co)\s*[:\-]',
         full_text, re.I
-    )) or ('--- BACK DOCUMENT ---' in full_text and '--- FRONT DOCUMENT ---' not in full_text)
-    has_front_markers = bool(re.search(r'\b(?:DOB|Birth|जन्म|Male|Female|पुरुष|महिला|Transgender|Gender|Given Name|Surname|Elector|Permanent Account)\b', full_text, re.I)) or ('--- FRONT DOCUMENT ---' in full_text)
+    ))
+    has_front_markers = bool(re.search(r'\b(?:DOB|Birth|जन्म|Male|Female|पुरुष|महिला|Transgender|Gender|Given Name|Surname|Elector|Permanent Account)\b', full_text, re.I))
     
     is_back_only = has_back_markers and not has_front_markers
 
-    # If both Front and Back are present, focus name extraction strictly on the FRONT document lines
+    # Evaluate front document lines first, handling potential reverse uploads (back uploaded before front)
     eval_lines = lines
     if any('--- BACK DOCUMENT ---' in l for l in lines) and any('--- FRONT DOCUMENT ---' in l for l in lines):
-        eval_lines = []
+        doc1_lines = []
+        doc2_lines = []
+        target = doc1_lines
         for l in lines:
             if '--- BACK DOCUMENT ---' in l:
-                break
-            eval_lines.append(l)
+                target = doc2_lines
+                continue
+            if '--- FRONT DOCUMENT ---' in l:
+                target = doc1_lines
+                continue
+            target.append(l)
+
+        doc1_text = ' '.join(doc1_lines)
+        doc2_text = ' '.join(doc2_lines)
+
+        doc1_has_front = bool(re.search(r'\b(?:DOB|Birth|जन्म|Male|Female|पुरुष|महिला|Gender|Cardholder|Permanent Account)\b', doc1_text, re.I))
+        doc2_has_front = bool(re.search(r'\b(?:DOB|Birth|जन्म|Male|Female|पुरुष|महिला|Gender|Cardholder|Permanent Account)\b', doc2_text, re.I))
+
+        doc1_has_back = bool(re.search(r'\b(?:Address|Adress|Addr|पत्ता|पता|ठेगाना|C\/O|S\/O|D\/O|W\/O|Care\s*of)\b', doc1_text, re.I))
+        doc2_has_back = bool(re.search(r'\b(?:Address|Adress|Addr|पत्ता|पता|ठेगाना|C\/O|S\/O|D\/O|W\/O|Care\s*of)\b', doc2_text, re.I))
+
+        # If doc2 is the front side (or doc1 is back side), evaluate doc2 lines first!
+        if doc2_has_front and not doc1_has_front:
+            eval_lines = doc2_lines + doc1_lines
+        elif doc1_has_back and not doc2_has_back and doc2_has_front:
+            eval_lines = doc2_lines + doc1_lines
+        elif doc1_has_front:
+            eval_lines = doc1_lines
+        else:
+            eval_lines = doc1_lines + doc2_lines
 
     # Strategy 1: Passport MRZ (Machine Readable Zone - 100% ground truth)
     mrz_m = re.search(r'P<([A-Z]{3})([A-Z0-9<]+)', full_text)
@@ -274,7 +317,7 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
             given = given[:-1]
         name_cand = f"{given} {surname}".strip()
         if is_valid_name(name_cand):
-            return title_case(name_cand)
+            return normalize_name(name_cand)
 
     # Strategy 1B: Passport Labeled Surname & Given Name (Standard & International/Nepal Passports)
     if id_type == 'Passport' or re.search(r'\b(?:Surname|Given\s*Names?|थर|नाम)\b', full_text, re.I):
@@ -285,11 +328,11 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
             sn = re.sub(r'\b(?:Given|Nationality|Sex|DOB|Date|Place|Country).*$', '', sur_m.group(1), flags=re.I).strip()
             full_n = f"{gn} {sn}".strip()
             if is_valid_name(full_n):
-                return title_case(full_n)
+                return normalize_name(full_n)
         elif giv_m:
             gn = re.sub(r'\b(?:Nationality|Sex|DOB|Date|Place|Country|Personal).*$', '', giv_m.group(1), flags=re.I).strip()
             if is_valid_name(gn):
-                return title_case(gn)
+                return normalize_name(gn)
 
     # Strategy 2A: Explicit "Holder's Name:" / "Name:" label patterns (same-line or next-line)
     for i, line in enumerate(eval_lines):
@@ -306,7 +349,7 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
             cand = m_same.group(1).strip()
             cand = re.sub(r'\b(?:DOB|Date|Birth|Father|Mother|Husband|Spouse|Son|Daughter|Sex|Gender|Male|Female|Valid|Blood|Issue|Expiry|S\/O|D\/O|W\/O|C\/O|Age|House|PIN|EPIC).*$', '', cand, flags=re.I).strip()
             if is_valid_name(cand):
-                return title_case(cand)
+                return normalize_name(cand)
 
         # Next-line: "Name" on one line, name on next
         if re.match(r'^(?:Name|Full Name|Holder\'?s?\s*Name|Elector\'?s?\s*Name|Cardholder(?:\'s)?\s*Name|Applicant\'?s?\s*Name|नाम|Naam)\s*[:\-]?$', line.strip(), re.I):
@@ -314,7 +357,7 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
                 cand = eval_lines[i + 1].strip()
                 cand = re.sub(r'\b(?:DOB|Date|Birth|Father|Mother|Husband|Spouse|Son|Daughter|Sex|Gender|Male|Female|Valid|Blood|Issue|Expiry|S\/O|D\/O|W\/O|C\/O|Age|House|PIN|EPIC).*$', '', cand, flags=re.I).strip()
                 if is_valid_name(cand) and not re.search(r'Father|Mother|DOB|Birth|Gender|India|Tax|Driving|Transport|EPIC|VOTER|Election', cand, re.I):
-                    return title_case(cand)
+                    return normalize_name(cand)
 
     # If document is exclusively back-side, DO NOT extract un-labeled names (prevents address fragments from becoming names)
     if is_back_only:
@@ -337,7 +380,7 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
             if name_parts:
                 combined = ' '.join(name_parts).strip()
                 if is_valid_name(combined):
-                    return title_case(combined)
+                    return normalize_name(combined)
 
     # Strategy 3B: Regex search across full text for Voter Name
     voter_name_rx = re.search(
@@ -349,7 +392,7 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
         cand = re.sub(r'\b(?:DOB|Date|Birth|Father|Mother|Husband|Spouse|Son|Daughter|Sex|Gender|Male|Female|Valid|Blood|Issue|Expiry|S\/O|D\/O|W\/O|C\/O|Age|House|PIN|EPIC).*$', '', cand, flags=re.I).strip()
         cand = re.sub(r'[^A-Za-z\s\.\'].*$', '', cand).strip()
         if is_valid_name(cand):
-            return title_case(cand)
+            return normalize_name(cand)
 
     # Strategy 3C: Driving License — "Name of Holder" or applicant name
     dl_name_rx = re.search(
@@ -361,7 +404,7 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
         cand = re.sub(r'\b(?:DOB|Date|Birth|Father|Mother|Husband|Spouse|Son|Daughter|Sex|Gender|Male|Female|Valid|Blood|Issue|Expiry|S\/O|D\/O|W\/O|C\/O|Age|House|PIN|EPIC).*$', '', cand, flags=re.I).strip()
         cand = re.sub(r'[^A-Za-z\s\.\'].*$', '', cand).strip()
         if is_valid_name(cand):
-            return title_case(cand)
+            return normalize_name(cand)
 
     # Strategy 4: PAN Card Layout (Classic without labels)
     # Header -> Guest Name -> Father's Name -> DOB -> PAN No
@@ -376,7 +419,7 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
             if id_number and cl.upper() == re.sub(r'[^A-Z]', '', id_number):
                 continue
             if is_valid_name(cl) and len(cl.split()) >= 2:
-                candidates.append(title_case(cl))
+                candidates.append(normalize_name(cl))
         if candidates:
             return candidates[0]  # First multi-word name is cardholder
 
@@ -385,10 +428,10 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
     for line in eval_lines:
         if is_relative_line(line):
             continue
-        cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O)\s*[:\-]?\s*', '', line, flags=re.I).strip()
+        cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O|[iIl1\|\*#]|oil|ol|oll|oill|all|mr|ms|mrs|smt|shri|dr|ta|to)\s*[:\-]?\s*', '', line, flags=re.I).strip()
         cl = re.sub(r'[^A-Za-z\s\.]', '', cl).strip()
         if is_valid_name(cl) and len(cl.split()) >= 2 and not re.search(r'\b(?:Road|Marg|Nagar|Mandir|Wardha|Sub|Dist|Post|PO|VTC|Sector|Plot|House)\b', cl, re.I):
-            tc = title_case(cl)
+            tc = normalize_name(cl)
             name_counts[tc] = name_counts.get(tc, 0) + 1
     if name_counts:
         sorted_names = sorted(name_counts.items(), key=lambda x: x[1], reverse=True)
@@ -402,9 +445,10 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
                 raw_cand = eval_lines[next_idx]
                 if is_relative_line(raw_cand):
                     continue
-                cl = re.sub(r'[^A-Za-z\s\.]', '', raw_cand).strip()
+                cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O|[iIl1\|\*#]|oil|ol|oll|oill|all|mr|ms|mrs|smt|shri|dr|ta|to)\s*[:\-]?\s*', '', raw_cand, flags=re.I).strip()
+                cl = re.sub(r'[^A-Za-z\s\.]', '', cl).strip()
                 if is_valid_name(cl) and len(cl.split()) >= 2 and not re.search(r'\b(?:Road|Marg|Nagar|Mandir|Wardha|Sub|Dist|Post|PO|VTC|Sector|Plot|House)\b', cl, re.I):
-                    return title_case(cl)
+                    return normalize_name(cl)
 
     # Strategy 6: Aadhaar / Voter ID / DL — Line preceding DOB or Gender landmark
     anchor_idx = -1
@@ -429,8 +473,8 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
             raw_back = eval_lines[back]
             if is_relative_line(raw_back):
                 continue
-            # Strip leading label or single stray OCR characters (e.g. 'i Vivek Satish' -> 'Vivek Satish')
-            cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O|[iIl1\|])\s*[:\-]?\s*', '', raw_back, flags=re.I).strip()
+            # Strip leading label or single stray OCR characters (e.g. 'i Vivek Satish' -> 'Vivek Satish', 'oil : Ravina Vilas' -> 'Ravina Vilas')
+            cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O|[iIl1\|\*#]|oil|ol|oll|oill|all|mr|ms|mrs|smt|shri|dr|ta|to)\s*[:\-]?\s*', '', raw_back, flags=re.I).strip()
             cl = re.sub(r'[^A-Za-z\s\.]', '', cl).strip()
             cl = re.sub(r'^[A-Za-z]\s+', '', cl).strip()
             if is_valid_name(cl) and len(cl.split()) >= 2:
@@ -462,10 +506,10 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
                         break
 
                 # Severe penalty for known OCR pseudo-English noise generated from Devanagari script
-                if re.search(r'\b(?:wheter|whether|batt|ara|fetta|apt|bess|bos|tene|sew|aga|arta|shous|shou|irre|oee|eoe)\b', cl, re.I):
+                if re.search(r'\b(?:wheter|whether|batt|ara|fetta|apt|bess|bos|tene|sew|aga|arta|shous|shou|irre|oee|eoe|scene|ofiindi)\b', cl, re.I):
                     score -= 150
 
-                cands.append((score, title_case(cl)))
+                cands.append((score, normalize_name(cl)))
 
         if cands:
             cands.sort(key=lambda x: x[0], reverse=True)
@@ -476,10 +520,10 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
     for line in eval_lines:
         if is_relative_line(line):
             continue
-        cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O)\s*[:\-]?\s*', '', line, flags=re.I).strip()
+        cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O|[iIl1\|\*#]|oil|ol|oll|oill|all|mr|ms|mrs|smt|shri|dr|ta|to)\s*[:\-]?\s*', '', line, flags=re.I).strip()
         cl = re.sub(r'[^A-Za-z\s\.]', '', cl).strip()
         if is_valid_name(cl) and len(cl.split()) >= 2:
-            return title_case(cl)
+            return normalize_name(cl)
 
     return ''
 
@@ -599,7 +643,7 @@ def parse_indian_id_text(text: str) -> dict:
     elif id_type == 'Aadhaar Card':
         # Check standalone lines first (most accurate for printed ID cards)
         aadh_candidates = []
-        standalone_rx = re.compile(r'^\s*([2-9][0-9OIl]{3})[\s\-]([0-9OIl]{4})[\s\-]([0-9OIl]{4})\s*$')
+        standalone_rx = re.compile(r'^\s*([2-9][0-9OIl]{3})[\s\-]([0-9OIl]{4})[\s\-]([0-9OIl:;]{3,4}[:;]?)\s*$')
         for l in all_lines:
             m = standalone_rx.match(l)
             if m:
@@ -609,7 +653,7 @@ def parse_indian_id_text(text: str) -> dict:
 
         # Fallback: search with negative lookbehind against date prefixes (/ or -)
         if not aadh_candidates:
-            inline_rx = re.compile(r'(?<![\d\/\-\.])\b([2-9][0-9OIl]{3})[\s\-]?([0-9OIl]{4})[\s\-]?([0-9OIl]{4})\b(?![\d\/\-\.])')
+            inline_rx = re.compile(r'(?<![\d\/\-\.])\b([2-9][0-9OIl]{3})[\s\-]?([0-9OIl]{4})[\s\-]?([0-9OIl:;]{3,4}[:;]?)\b(?![\d\/\-\.])')
             for m in inline_rx.finditer(text):
                 d = fix_aadhaar_ocr(m.group(1) + m.group(2) + m.group(3))
                 if len(d) == 12:
@@ -771,8 +815,8 @@ def parse_indian_id_text(text: str) -> dict:
                     age = str(current_year - yr)
 
     if not dob:
-        # Year of Birth fallback
-        yob_m = re.search(r'(?:Year of Birth|YOB|जन्म\s*का\s*वर्ष)\s*[:\-\/]?\s*(\d{4})', full_text, re.I)
+        # Year of Birth fallback (handles 'Year of Birth : 1998', 'Year of Birth ; 1998')
+        yob_m = re.search(r'(?:Year\s*of\s*Birth|YOB|जन्म\s*का\s*वर्ष)\s*[:;\-\.\/]?\s*(\d{4})', full_text, re.I)
         if yob_m:
             yr = int(yob_m.group(1))
             if 1900 < yr <= current_year:
@@ -848,11 +892,12 @@ def parse_indian_id_text(text: str) -> dict:
 
     # ── 6. Address & Pincode ──────────────────────────────────────────────────
 
-    # ── 6. Address, Pincode & City Extraction ─────────────────────────────────
+    # ── 6. Address, Pincode, City & Phone Extraction ─────────────────────────
 
     pincode = ''
     address = ''
     city = ''
+    phone = ''
 
     MAHA_DISTRICTS = [
         'NAGPUR', 'WARDHA', 'WASHIM', 'AMRAVATI', 'GONDIYA', 'GONDIA', 'BHANDARA', 
@@ -871,6 +916,20 @@ def parse_indian_id_text(text: str) -> dict:
     ]
     STATES_SET = set(INDIAN_STATES) | {'MH', 'UP', 'MP', 'GJ', 'RJ', 'DL', 'HR', 'PB', 'TN', 'KA', 'KL', 'WB', 'TS', 'AP', 'INDIA', 'NEPAL', 'महाराष्ट्र'}
 
+    # Helper: extracts genuine postal pincode (excludes Ref numbers like / 103053 /)
+    def extract_postal_pincode(target_text: str) -> str:
+        # First try pincode directly following a state name (e.g. Maharashtra 442001)
+        st_rx = re.search(r'\b(?:' + '|'.join(INDIAN_STATES) + r')\s*[\-,]?\s*([1-9]\d{5})\b', target_text, re.I)
+        if st_rx:
+            return st_rx.group(1)
+        # Search all 6-digit sequences that are NOT surrounded by slashes
+        for m in re.finditer(r'(?<![\d\/\-\.])\b([1-9]\d{5})\b(?![\d\/\-\.])', target_text):
+            val = m.group(1)
+            # Exclude if surrounded by / in the full text (e.g. / 103053 / or / 177814 /)
+            if not re.search(r'\/\s*' + val + r'\s*\/', full_text):
+                return val
+        return ''
+
     # Strategy A: Explicit English Address Block Detection (Standard Aadhaar Back Side)
     # The English block starts at 'Address:' / 'Addr:' and continues until 12-digit ID or helpdesk
     addr_block_m = re.search(
@@ -882,12 +941,12 @@ def parse_indian_id_text(text: str) -> dict:
     if addr_block_m:
         raw_block = addr_block_m.group(1).strip()
         # 1. Pincode from English block
-        pin_m = re.search(r'\b([1-9]\d{5})\b', raw_block)
-        if pin_m:
-            pincode = pin_m.group(1)
-            # Truncate raw_block immediately at the 6-digit pincode to eliminate trailing barcodes/noise
-            end_idx = pin_m.end()
-            raw_block = raw_block[:end_idx].strip()
+        cand_pin = extract_postal_pincode(raw_block)
+        if cand_pin:
+            pincode = cand_pin
+            pin_idx = raw_block.find(pincode)
+            if pin_idx > 0:
+                raw_block = raw_block[:pin_idx + len(pincode)].strip()
 
         # 2. City from known districts in English block
         raw_block_upper = raw_block.upper()
@@ -935,24 +994,72 @@ def parse_indian_id_text(text: str) -> dict:
             if name and len(name) >= 3:
                 address = re.sub(r'^\b' + re.escape(name) + r'\b[\s,:\-]*', '', address, flags=re.I).strip(' ,-.')
 
-    # Strategy B: Fallback if no explicit Address: label (e.g. e-Aadhaar sheets or unlabeled back scans)
+    # Strategy E-Aadhaar: e-Aadhaar letter "To," Recipient & Address Block
+    # On e-Aadhaar letter sheets, the address block starts at 'To,'
+    to_block_m = re.search(
+        r'\bTo\s*,\s*(.*?)(?=\bRef:|\bRef\b|\bYour\s*A[ea]dhaar|\b[2-9]\d{3}\s*\d{4}\s*\d{4}\b|---\s*BACK|$)',
+        text,
+        re.I | re.DOTALL
+    )
+    if to_block_m and (not address or len(address) < 15):
+        raw_to = to_block_m.group(1).strip()
+        lines_to = [re.sub(r'\s+', ' ', l.strip(' ,-.')) for l in raw_to.split('\n') if l.strip(' ,-.')]
+        
+        to_addr_lines = []
+        name_passed = False
+        for l in lines_to:
+            # Mobile number in e-Aadhaar address block
+            if re.match(r'^[6-9]\d{9}$', l.strip()):
+                if not phone:
+                    phone = l.strip()
+                continue
+            if re.match(r'^\d{2}[\/\.\-]\d{2}[\/\.\-]\d{4}$', l.strip()):
+                continue
+            if re.search(r'\b(?:Enrollment|Enrolment|Ref|Serial|Valid|Date)\b', l, re.I):
+                continue
+            # Check for recipient name
+            cl_name = re.sub(r'[^A-Za-z\s\.]', '', l).strip()
+            if not name_passed:
+                if is_valid_name(cl_name) and len(cl_name.split()) >= 2:
+                    name_passed = True
+                    fuller_n = normalize_name(cl_name)
+                    if not name or (len(fuller_n.split()) > len(name.split()) and name in fuller_n):
+                        name = fuller_n
+                continue  # Skip Devanagari name line / noise before recipient name
+
+            # Address line (only after recipient name has passed)
+            if len(l) >= 3 and not re.match(r'^[A-Za-z0-9=\-\)\(]{1,2}$', l):
+                pin_in_line = re.search(r'\b([1-9]\d{5})\b', l)
+                if pin_in_line and not pincode:
+                    cand_p = pin_in_line.group(1)
+                    if not re.search(r'\/\s*' + cand_p + r'\s*\/', full_text):
+                        pincode = cand_p
+                to_addr_lines.append(l)
+
+        if to_addr_lines:
+            cand_to_addr = ', '.join(to_addr_lines)
+            cand_to_addr = re.sub(r'\s*,\s*', ', ', cand_to_addr)
+            cand_to_addr = re.sub(r'(?:,\s*){2,}', ', ', cand_to_addr).strip(' ,-.')
+            if len(cand_to_addr) >= 15:
+                address = cand_to_addr
+
+    # Strategy B: Fallback if no explicit Address: label (unlabeled back scans or regional labels)
     if not address or len(address) < 10:
-        pin_m = re.search(r'\b([1-9][0-9]{5})\b', full_text)
-        if pin_m:
-            pincode = pin_m.group(1)
+        if not pincode:
+            pincode = extract_postal_pincode(full_text)
 
         addr_start_rx = re.compile(
             r'\b(?:Address|Adress|Addr|पत्ता|पता|ठेगाना|आत्मज|पत्नी|मुलगा|मुलगी|पुत्र|पुत्री|'
             r'S\/O|W\/O|D\/O|C\/O|S\/o|W\/o|D\/o|C\/o|Care of|Son of|Daughter of|Wife of|'
             r'House|H\.?No\.?|H-No|Flat|Plot|Door|Bldg|Apartment|Room|Survey|Gat|'
-            r'Village|Vill\.|Post|P\.O\.|मु\.पो|मु\. पो|मुकाम|पोस्ट|तहसील|तालुका|जिल्हा|'
+            r'Village|Vill\.|Post|P\.O\.|मु\.पो|मु\. पो|मुकाम|पोस्ट|तहसील|तालुका|जिल्हा|ta\.|tq\.|ta\s+|tq\s+|at post|at\/post|'
             r'Dist|District|Ward|Block|Sector|Floor|Near|Beside|Opposite|Behind|Adjacent|'
             r'Gali|Mohalla|Chowk|Street|Road|Lane|Nagar|Colony|Park|Marg|Layout|Vihar|Enclave)\b',
             re.I
         )
         addr_stop_rx = re.compile(
             r'\b(?:Date of Issue|Valid Upto|Validity|Signature|UIDAI Help|Toll Free|Email|www\.|'
-            r'http|Mobile|Phone|Tel|Telephone|टेलिफोन|1947|help@|uidai\.gov|Badge|Hazardous|Blood\s*Group|'
+            r'http|Telephone|टेलिफोन|1947|help@|uidai\.gov|Badge|Hazardous|Blood\s*Group|'
             r'Class of Vehicle|Licence Class|EPIC\s*No|ELECTOR|ELECTORAL|Passport\s*No|राहदानी|प्रकार|नेपाल|मुलुक|'
             r'DL\s*No|Licence\s*No|License\s*No|Enrolment\s*No|VID\s*No|विधानसभा|Assembly\s*Constituency)\b',
             re.I
@@ -1051,7 +1158,6 @@ def parse_indian_id_text(text: str) -> dict:
     # Global City & District Matching across the entire document if not yet identified
     if not city or len(city) < 3:
         search_target = (address + ' ' + full_text).upper()
-        # 1. Check known districts
         for dist in MAHA_DISTRICTS:
             if re.search(r'\b' + dist + r'\b', search_target):
                 city = dist.capitalize()
@@ -1060,7 +1166,7 @@ def parse_indian_id_text(text: str) -> dict:
     if not city or len(city) < 3:
         dist_m = re.search(r'\b(?:Dist(?:rict|rici)?|जिल्हा)\s*[\-:;]\s*([A-Za-z]{3,20})', full_text, re.I)
         if dist_m:
-            cand_dist = dist_lbl_m.group(1).capitalize() if dist_lbl_m else dist_m.group(1).capitalize()
+            cand_dist = dist_lbl_m.group(1).capitalize() if 'dist_lbl_m' in locals() and dist_lbl_m else dist_m.group(1).capitalize()
             if cand_dist.upper() not in STATES_SET and not re.search(r'\b(?:CODE|PIN|POST|MAIL)\b', cand_dist, re.I):
                 city = cand_dist
 
@@ -1070,6 +1176,19 @@ def parse_indian_id_text(text: str) -> dict:
             cand_pob = pob_m.group(1).capitalize()
             if cand_pob.upper() not in STATES_SET and cand_pob.upper() not in ('PLACE', 'BIRTH', 'ISSUE', 'DATE', 'NAME', 'SURNAME'):
                 city = cand_pob
+
+    # ── 7. Mobile / Phone Number Extraction ────────────────────────────────────
+    if not phone:
+        phone_lbl_m = re.search(r'(?:Mobile|Mob|Phone|Cell|मोबाईल|दूरध्वनी|संपर्क)\s*(?:No\.?|Number)?\s*[:\-\s\|]*([6-9]\d{9})\b', full_text, re.I)
+        if phone_lbl_m:
+            phone = phone_lbl_m.group(1)
+        else:
+            cand_phones = re.findall(r'(?<![\d\/\-\.])\b([6-9]\d{9})\b(?![\d\/\-\.])', full_text)
+            for cand in cand_phones:
+                if id_number and cand in id_number.replace(' ', ''):
+                    continue
+                phone = cand
+                break
 
     return {
         "idType":   id_type,
@@ -1081,5 +1200,6 @@ def parse_indian_id_text(text: str) -> dict:
         "address":  address,
         "city":     city,
         "pincode":  pincode,
+        "phone":    phone,
         "rawText":  raw_text,
     }

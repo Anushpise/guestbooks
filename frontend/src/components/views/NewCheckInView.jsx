@@ -165,6 +165,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     if (parsed.idNumber) setPrimaryIdNumber(parsed.idNumber);
     if (parsed.age) setPrimaryAge(parsed.age);
     if (parsed.gender) setPrimaryGender(parsed.gender);
+    if (parsed.phone) setPrimaryPhone(parsed.phone);
     if (parsed.address) setPrimaryAddress(parsed.address);
     if (parsed.city) setPrimaryCity(parsed.city);
     setIdScanUploaded(true);
