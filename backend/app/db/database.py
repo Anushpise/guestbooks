@@ -64,6 +64,21 @@ def execute_query(conn, db_type, query, params=()):
         cursor.execute(query, params)
     return cursor
 
+
+def get_first_val(row, default=0):
+    """Safely extracts the first column value from either a tuple row or RealDictRow."""
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        try:
+            return list(row.values())[0]
+        except Exception:
+            return default
+    try:
+        return row[0]
+    except Exception:
+        return default
+
 def init_db():
     """Initializes the database tables if they do not exist."""
     conn, db_type = get_db_connection()
@@ -106,6 +121,7 @@ def init_db():
                 checkout_signature TEXT
             )
         """)
+        conn.commit()
         for col_def in [
             ("hotel_id", "VARCHAR(100) DEFAULT 'HTL-101'"),
             ("partner_document_front", "TEXT"),
@@ -113,9 +129,10 @@ def init_db():
             ("checkout_signature", "TEXT")
         ]:
             try:
-                execute_query(conn, db_type, f"ALTER TABLE guest_records ADD COLUMN {col_def[0]} {col_def[1]}")
+                execute_query(conn, db_type, f"ALTER TABLE guest_records ADD COLUMN IF NOT EXISTS {col_def[0]} {col_def[1]}")
+                conn.commit()
             except Exception:
-                pass
+                conn.rollback()
 
         # PostgreSQL: Hotels Table
         cursor.execute("""
@@ -315,7 +332,7 @@ def _seed_default_data(conn, db_type):
     """Seeds default admin, initial hotel, and police station if not present."""
     # Seed default Admin
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM users WHERE email = ?", ("admin@guestbooks.com",))
-    if c.fetchone()[0] == 0:
+    if get_first_val(c.fetchone()) == 0:
         execute_query(conn, db_type, """
             INSERT INTO users (id, email, username, password, name, role, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -331,7 +348,7 @@ def _seed_default_data(conn, db_type):
 
     # Seed default Hotel
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM hotels WHERE id = ?", ("HTL-101",))
-    if c.fetchone()[0] == 0:
+    if get_first_val(c.fetchone()) == 0:
         docs = json.dumps([
             {"name": "Trade_License_2026.pdf", "size": "1.2 MB", "type": "PDF"},
             {"name": "Owner_Aadhaar_Scan.pdf", "size": "850 KB", "type": "PDF"}
@@ -366,7 +383,7 @@ def _seed_default_data(conn, db_type):
 
     # Seed default Hotel user
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM users WHERE email = ?", ("hotel@guestbooks.com",))
-    if c.fetchone()[0] == 0:
+    if get_first_val(c.fetchone()) == 0:
         execute_query(conn, db_type, """
             INSERT INTO users (id, email, username, password, name, role, hotel_id, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -383,7 +400,7 @@ def _seed_default_data(conn, db_type):
 
     # Seed default Police user & police account
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM users WHERE email = ?", ("police@station.gov.in",))
-    if c.fetchone()[0] == 0:
+    if get_first_val(c.fetchone()) == 0:
         execute_query(conn, db_type, """
             INSERT INTO users (id, email, username, password, name, role, station_name, jurisdiction, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -415,7 +432,7 @@ def _seed_default_data(conn, db_type):
 
     # Seed default Rooms for HTL-101 if missing
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM rooms WHERE hotel_id = ?", ("HTL-101",))
-    if c.fetchone()[0] == 0:
+    if get_first_val(c.fetchone()) == 0:
         room_types = [
             ("101", "Executive Deluxe", "1st Floor", 1800),
             ("102", "Executive Deluxe", "1st Floor", 1800),
@@ -979,16 +996,16 @@ def db_get_stats() -> dict:
     """Returns real-time system stats across all hotels, rooms and guests."""
     conn, db_type = get_db_connection()
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM hotels")
-    total_hotels = c.fetchone()[0]
+    total_hotels = get_first_val(c.fetchone())
 
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM hotels WHERE status = 'PENDING'")
-    pending_hotels = c.fetchone()[0]
+    pending_hotels = get_first_val(c.fetchone())
 
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM guest_records")
-    total_guests = c.fetchone()[0]
+    total_guests = get_first_val(c.fetchone())
 
     c = execute_query(conn, db_type, "SELECT COUNT(*) FROM guest_records WHERE status = 'CHECKED_IN'")
-    active_stays = c.fetchone()[0]
+    active_stays = get_first_val(c.fetchone())
 
     conn.close()
     return {
@@ -1013,7 +1030,7 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
 
     # Check if rooms exist for this hotel
     cursor = execute_query(conn, db_type, "SELECT COUNT(*) FROM rooms WHERE hotel_id = ?", (h_id,))
-    count = cursor.fetchone()[0]
+    count = get_first_val(cursor.fetchone())
 
     if count == 0:
         h_cur = execute_query(conn, db_type, "SELECT total_rooms FROM hotels WHERE id = ?", (h_id,))
