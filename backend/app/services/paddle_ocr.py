@@ -187,6 +187,47 @@ def deskew_slanted(gray: np.ndarray) -> np.ndarray:
         return gray
 
 
+def measure_blur(gray: np.ndarray) -> float:
+    """Computes the Laplacian variance to quantify blur (sharp text > 100, blurry < 80)."""
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def filter_deblur_high_boost(gray: np.ndarray, strength: float = 2.6) -> np.ndarray:
+    """
+    High-Boost Deblurring Filter for camera motion and defocus blur.
+    Restores blurred edges by amplifying high-frequency spatial gradients.
+    """
+    blurred = cv2.GaussianBlur(gray, (0, 0), sigmaX=3.0)
+    sharp = cv2.addWeighted(gray, strength, blurred, -(strength - 1.0), 0)
+    return np.clip(sharp, 0, 255).astype(np.uint8)
+
+
+def filter_adaptive_binarize(gray: np.ndarray) -> np.ndarray:
+    """
+    Intelligent Adaptive Binarization Filter.
+    Applies CLAHE histogram expansion followed by Gaussian local thresholding.
+    Eliminates mobile phone shadows, flash reflections, and converts blurry gray text
+    into crisp, high-contrast black text on pure white background.
+    """
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    cl = clahe.apply(gray)
+    bin_img = cv2.adaptiveThreshold(cl, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 25, 11)
+    return bin_img
+
+
+def filter_shadow_removal(gray: np.ndarray) -> np.ndarray:
+    """
+    Illumination Gradient Normalizer.
+    Estimates the background illumination using a 21px median blur and subtracts it,
+    completely removing diagonal phone shadows, ambient yellow casts, and corner gradients.
+    """
+    bg = cv2.medianBlur(gray, 21)
+    diff = 255 - cv2.absdiff(gray, bg)
+    norm = cv2.normalize(diff, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    lap_kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.float32)
+    return np.clip(cv2.filter2D(norm, -1, lap_kernel), 0, 255).astype(np.uint8)
+
+
 def enhance_contrast_and_sharpness(gray: np.ndarray) -> np.ndarray:
     """
     Applies Adaptive Histogram Equalization (CLAHE) and unsharp masking.
@@ -400,16 +441,53 @@ class MultiOCREngine:
                 best_text = nat_text
                 best_score = nat_score
 
+            # 5. Intelligent Multi-Stage Filtration Suite for Blurry / Low-Contrast Images
+            blur_var = measure_blur(opt_gray)
+            logger.info(f"Initial OCR Score: {best_score}, Blur Variance: {blur_var:.1f}")
+
+            # If score is suboptimal or image is blurry (< 80 variance), engage specialized filters
+            if best_score < 75 or blur_var < 80:
+                logger.info("Engaging Multi-Stage Filtration Suite for blur/lighting recovery...")
+
+                # Filter A: Adaptive Binarization (Handles motion blur, low contrast, and lighting shadows)
+                bin_img = filter_adaptive_binarize(opt_gray)
+                bin_text = self._run_tesseract(bin_img)
+                bin_score = score_text(bin_text)
+                if bin_score > best_score:
+                    logger.info(f"Adaptive Binarization improved OCR score: {best_score} -> {bin_score}")
+                    best_text = bin_text
+                    best_score = bin_score
+
+                # Filter B: High-Boost Edge Deblurring (Recovers defocused character strokes)
+                if best_score < 75:
+                    deblur_img = filter_deblur_high_boost(opt_gray)
+                    deblur_text = self._run_tesseract(deblur_img)
+                    deblur_score = score_text(deblur_text)
+                    if deblur_score > best_score:
+                        logger.info(f"High-Boost Deblurring improved OCR score: {best_score} -> {deblur_score}")
+                        best_text = deblur_text
+                        best_score = deblur_score
+
+                # Filter C: Illumination Gradient & Shadow Removal (Handles phone camera shadows)
+                if best_score < 75:
+                    shadow_img = filter_shadow_removal(opt_gray)
+                    shadow_text = self._run_tesseract(shadow_img)
+                    shadow_score = score_text(shadow_text)
+                    if shadow_score > best_score:
+                        logger.info(f"Shadow Removal filter improved OCR score: {best_score} -> {shadow_score}")
+                        best_text = shadow_text
+                        best_score = shadow_score
+
             t_tess = time.time() - t_start
-            logger.info(f"Tier-1 Tesseract completed in {t_tess:.3f}s (Score: {best_score})")
+            logger.info(f"Tier-1 Preprocessed Tesseract completed in {t_tess:.3f}s (Final Score: {best_score})")
 
             # High confidence threshold: return immediately (sub-second!)
             if best_score >= 70:
                 logger.info(f"Fast-First OCR Success: returning in {t_tess:.3f}s without EasyOCR")
                 return best_text
 
-            # 5. Tier 2 Fallback: EasyOCR (only if both Tesseract passes scored low)
-            logger.info("Tier-1 score below threshold, invoking EasyOCR fallback...")
+            # 6. Tier 2 Fallback: EasyOCR (only if all filtration passes scored low)
+            logger.info("All filtration passes below threshold, invoking EasyOCR fallback...")
             t_easy_start = time.time()
             oriented_bgr = cv2.cvtColor(opt_gray, cv2.COLOR_GRAY2BGR)
             easy_text = self._run_easyocr_geometric(oriented_bgr)
