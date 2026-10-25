@@ -469,7 +469,7 @@ def create_guest_record(data: dict) -> dict:
 
     cursor = execute_query(conn, db_type, "SELECT COALESCE(MAX(id), 0) + 1 FROM guest_records")
     row = cursor.fetchone()
-    next_id = int(row[0]) if row is not None else 1
+    next_id = int(get_first_val(row, 1))
     
     reg_no = f"REG-{next_id:04d}"
     created_at = datetime.now().isoformat()
@@ -872,7 +872,8 @@ def db_login_user(credential: str, password: str) -> dict:
         h_cur = execute_query(conn, db_type, "SELECT status, name FROM hotels WHERE id = ?", (h_id,))
         h_row = h_cur.fetchone()
         if h_row:
-            h_status = h_row[0]
+            h_dict = dict(h_row)
+            h_status = h_dict.get("status")
             if h_status == "PENDING":
                 conn.close()
                 return {
@@ -1035,7 +1036,7 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
     if count == 0:
         h_cur = execute_query(conn, db_type, "SELECT total_rooms FROM hotels WHERE id = ?", (h_id,))
         h_row = h_cur.fetchone()
-        tot_rooms = int(h_row[0]) if (h_row and h_row[0]) else 15
+        tot_rooms = int(get_first_val(h_row, 15))
         now_iso = datetime.now().isoformat()
         room_types = [
             ("Executive Deluxe", 1800),
@@ -1067,7 +1068,7 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
         WHERE status = 'CHECKED_IN' AND (hotel_id = ? OR hotel_id IS NULL)
     """, (h_id,))
     active_rows = active_cur.fetchall()
-    active_map = {str(r[0]): dict(r) for r in active_rows}
+    active_map = {str(dict(r).get("room_number")): dict(r) for r in active_rows}
 
     rooms = []
     for r in room_rows:
