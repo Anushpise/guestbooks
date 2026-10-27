@@ -156,7 +156,7 @@ def deskew_slanted(gray: np.ndarray) -> np.ndarray:
     """
     try:
         h, w = gray.shape[:2]
-        scale = min(1.0, 600.0 / float(max(h, w)))
+        scale = min(1.0, 900.0 / float(max(h, w)))
         small = cv2.resize(gray, (int(w * scale), int(h * scale))) if scale < 1.0 else gray
 
         edges = cv2.Canny(small, 50, 150, apertureSize=3)
@@ -286,7 +286,7 @@ class MultiOCREngine:
         h, w = gray.shape[:2]
 
         # 1. Downscale for ultra-fast candidate angle scoring (<200ms total for all 4 angles)
-        scale = min(1.0, 600.0 / float(max(h, w)))
+        scale = min(1.0, 900.0 / float(max(h, w)))
         small = cv2.resize(gray, (int(w * scale), int(h * scale))) if scale < 1.0 else gray
 
         best_rot_code = None
@@ -412,82 +412,79 @@ class MultiOCREngine:
             # 2. Normalize Resolution
             raw_bgr = normalize_resolution(raw_bgr, target_dim=1200)
 
-            # 3. Grayscale & Fast Deskew
+                        # 3. Grayscale
             raw_gray = cv2.cvtColor(raw_bgr, cv2.COLOR_BGR2GRAY)
-            deskewed_gray = deskew_slanted(raw_gray)
 
-            # 4. Auto-Orientation & Tier 1: Dual-Pass Natural & Enhanced Grayscale
-            opt_gray, nat_text, nat_score = self._detect_and_fix_orientation(deskewed_gray)
+            # 4. Auto-Orientation: Evaluates 4 candidate macro rotations on clean grayscale proxy
+            opt_gray, _, _ = self._detect_and_fix_orientation(raw_gray)
 
-            # Test CLAHE enhanced contrast on the oriented image
+            # Minor deskew once the document is upright (within -15° to +15°)
+            opt_gray = deskew_slanted(opt_gray)
+
+            # Tier 1: Dual-Pass Natural & Enhanced Grayscale on full-resolution upright image
+            nat_text = self._run_tesseract(opt_gray)
+            nat_score = score_text(nat_text)
+
             enh_gray = enhance_contrast_and_sharpness(opt_gray)
             enh_text = self._run_tesseract(enh_gray)
             enh_score = score_text(enh_text)
 
-            # Select the version with the highest genuine ID score
-            if enh_score > nat_score:
-                best_text = enh_text
-                best_score = enh_score
-            else:
-                best_text = nat_text
-                best_score = nat_score
+            collected_texts = [nat_text, enh_text]
+            best_score = max(nat_score, enh_score)
 
             # 5. Intelligent Multi-Stage Filtration Suite for Blurry / Low-Contrast Images
             blur_var = measure_blur(opt_gray)
             logger.info(f"Initial OCR Score: {best_score}, Blur Variance: {blur_var:.1f}")
 
             # If score is suboptimal or image is blurry (< 80 variance), engage specialized filters
-            if best_score < 75 or blur_var < 80:
+            if best_score < 180 or blur_var < 80:
                 logger.info("Engaging Multi-Stage Filtration Suite for blur/lighting recovery...")
 
                 # Filter A: Adaptive Binarization (Handles motion blur, low contrast, and lighting shadows)
                 bin_img = filter_adaptive_binarize(opt_gray)
                 bin_text = self._run_tesseract(bin_img)
                 bin_score = score_text(bin_text)
+                if bin_text:
+                    collected_texts.append(bin_text)
                 if bin_score > best_score:
-                    logger.info(f"Adaptive Binarization improved OCR score: {best_score} -> {bin_score}")
-                    best_text = bin_text
                     best_score = bin_score
 
                 # Filter B: High-Boost Edge Deblurring (Recovers defocused character strokes)
-                if best_score < 75:
+                if best_score < 120:
                     deblur_img = filter_deblur_high_boost(opt_gray)
                     deblur_text = self._run_tesseract(deblur_img)
                     deblur_score = score_text(deblur_text)
+                    if deblur_text:
+                        collected_texts.append(deblur_text)
                     if deblur_score > best_score:
-                        logger.info(f"High-Boost Deblurring improved OCR score: {best_score} -> {deblur_score}")
-                        best_text = deblur_text
                         best_score = deblur_score
 
                 # Filter C: Illumination Gradient & Shadow Removal (Handles phone camera shadows)
-                if best_score < 75:
+                if best_score < 120:
                     shadow_img = filter_shadow_removal(opt_gray)
                     shadow_text = self._run_tesseract(shadow_img)
                     shadow_score = score_text(shadow_text)
+                    if shadow_text:
+                        collected_texts.append(shadow_text)
                     if shadow_score > best_score:
-                        logger.info(f"Shadow Removal filter improved OCR score: {best_score} -> {shadow_score}")
-                        best_text = shadow_text
                         best_score = shadow_score
 
             t_tess = time.time() - t_start
             logger.info(f"Tier-1 Preprocessed Tesseract completed in {t_tess:.3f}s (Final Score: {best_score})")
 
-            # High confidence threshold: return immediately (sub-second!)
-            if best_score >= 70:
-                logger.info(f"Fast-First OCR Success: returning in {t_tess:.3f}s without EasyOCR")
-                return best_text
+            # Tier 2 Fallback: EasyOCR (only if all filtration passes scored low)
+            if best_score < 100:
+                logger.info("Filtration passes below threshold, invoking EasyOCR fallback...")
+                t_easy_start = time.time()
+                oriented_bgr = cv2.cvtColor(opt_gray, cv2.COLOR_GRAY2BGR)
+                easy_text = self._run_easyocr_geometric(oriented_bgr)
+                if easy_text:
+                    collected_texts.append(easy_text)
+                logger.info(f"Tier-2 EasyOCR fallback completed in {time.time() - t_easy_start:.3f}s")
 
-            # 6. Tier 2 Fallback: EasyOCR (only if all filtration passes scored low)
-            logger.info("All filtration passes below threshold, invoking EasyOCR fallback...")
-            t_easy_start = time.time()
-            oriented_bgr = cv2.cvtColor(opt_gray, cv2.COLOR_GRAY2BGR)
-            easy_text = self._run_easyocr_geometric(oriented_bgr)
-            logger.info(f"Tier-2 EasyOCR fallback completed in {time.time() - t_easy_start:.3f}s")
-
-            # Combine outputs for maximum extraction accuracy
-            if easy_text and best_text:
-                return f"{easy_text}\n{best_text}"
-            return easy_text or best_text
+            # Combine all extracted passes for maximum demographic and address extraction fidelity
+            combined_text = "\n".join(t.strip() for t in collected_texts if t and t.strip())
+            return combined_text
 
         except Exception as e:
             logger.error(f"OCR Pipeline execution failure: {e}", exc_info=True)
