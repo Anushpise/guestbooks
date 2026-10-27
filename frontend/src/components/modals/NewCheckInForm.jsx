@@ -190,8 +190,9 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
     if (parsed.name) setPrimaryName(parsed.name);
     if (parsed.idType) setPrimaryIdType(parsed.idType);
     if (parsed.idNumber) setPrimaryIdNumber(parsed.idNumber);
-    if (parsed.age) setPrimaryAge(parsed.age);
+    if (parsed.age) setPrimaryAge(String(parsed.age));
     if (parsed.gender) setPrimaryGender(parsed.gender);
+    if (parsed.phone) setPrimaryPhone(parsed.phone);
     if (parsed.address) setPrimaryAddress(parsed.address);
     if (parsed.city) setPrimaryCity(parsed.city);
     setIdScanUploaded(true);
@@ -201,7 +202,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
     if (parsed.name) setPartnerName(parsed.name);
     if (parsed.idType) setPartnerIdType(parsed.idType);
     if (parsed.idNumber) setPartnerIdNumber(parsed.idNumber);
-    if (parsed.age) setPartnerAge(parsed.age);
+    if (parsed.age) setPartnerAge(String(parsed.age));
     if (parsed.gender) setPartnerGender(parsed.gender);
   };
 

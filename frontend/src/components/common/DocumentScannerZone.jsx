@@ -397,22 +397,31 @@ export default function DocumentScannerZone({
                 <span className="font-mono font-bold text-slate-900">{extractedResult.idNumber}</span>
               </div>
             )}
-            {extractedResult.dob && (
+            {(extractedResult.dob || extractedResult.age) && (
               <div>
-                <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wide">DOB</span>
-                <span className="text-slate-900">{extractedResult.dob}{extractedResult.age ? ` (${extractedResult.age} yrs)` : ''}</span>
+                <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wide">DOB / Age</span>
+                <span className="text-slate-900 font-bold">
+                  {extractedResult.dob ? extractedResult.dob : ''}
+                  {extractedResult.age ? (extractedResult.dob ? ` (${extractedResult.age} yrs)` : `${extractedResult.age} yrs`) : ''}
+                </span>
               </div>
             )}
             {extractedResult.gender && (
               <div>
                 <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wide">Gender</span>
-                <span className="text-slate-900">{extractedResult.gender}</span>
+                <span className="text-slate-900 font-bold">{extractedResult.gender}</span>
+              </div>
+            )}
+            {extractedResult.phone && (
+              <div>
+                <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wide">Phone</span>
+                <span className="font-mono font-bold text-slate-900">{extractedResult.phone}</span>
               </div>
             )}
             {extractedResult.address && (
               <div className="col-span-2">
                 <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wide">Address</span>
-                <span className="text-slate-900">{extractedResult.address}</span>
+                <span className="text-slate-900 font-medium">{extractedResult.address}</span>
               </div>
             )}
           </div>

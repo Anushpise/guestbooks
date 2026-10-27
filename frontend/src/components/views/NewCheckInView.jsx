@@ -163,7 +163,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     if (parsed.name) setPrimaryName(parsed.name);
     if (parsed.idType) setPrimaryIdType(parsed.idType);
     if (parsed.idNumber) setPrimaryIdNumber(parsed.idNumber);
-    if (parsed.age) setPrimaryAge(parsed.age);
+    if (parsed.age) setPrimaryAge(String(parsed.age));
     if (parsed.gender) setPrimaryGender(parsed.gender);
     if (parsed.phone) setPrimaryPhone(parsed.phone);
     if (parsed.address) setPrimaryAddress(parsed.address);
@@ -175,7 +175,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     if (parsed.name) setPartnerName(parsed.name);
     if (parsed.idType) setPartnerIdType(parsed.idType);
     if (parsed.idNumber) setPartnerIdNumber(parsed.idNumber);
-    if (parsed.age) setPartnerAge(parsed.age);
+    if (parsed.age) setPartnerAge(String(parsed.age));
     if (parsed.gender) setPartnerGender(parsed.gender);
   };
 
