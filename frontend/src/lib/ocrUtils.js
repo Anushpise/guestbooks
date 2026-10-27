@@ -461,11 +461,23 @@ export function parseIndianIDText(rawText) {
     idNumber = aadM[1].replace(/[\s\-]/g,'').replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
   } else if (pasM) { idType = 'Passport'; idNumber = pasM[1].toUpperCase(); }
   else {
-    const digits = text.replace(/\D/g, '');
-    const m = digits.match(/([2-9]\d{11})/);
-    if (m) {
-      idType = 'Aadhaar Card';
-      idNumber = m[1].replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
+    // Check lines for 12 digits directly
+    for (const l of allLines) {
+      if (/VID|1947|help@|uidai\.gov/i.test(l)) continue;
+      const digits = l.replace(/\D/g, '');
+      if (digits.length === 12 && /^[2-9]/.test(digits)) {
+        idType = 'Aadhaar Card';
+        idNumber = digits.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
+        break;
+      }
+    }
+    if (!idNumber) {
+      const digits = text.replace(/\D/g, '');
+      const m = digits.match(/([2-9]\d{11})/);
+      if (m) {
+        idType = 'Aadhaar Card';
+        idNumber = m[1].replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3');
+      }
     }
   }
 
@@ -594,10 +606,30 @@ export function parseIndianIDText(rawText) {
   const addrStopRx  = /\b(?:Date of Issue|Valid Upto|Signature|UIDAI Help|Toll Free|Email|www\.|http|Mobile|Phone|Tel|1947|help@|uidai\.gov)\b/i;
   const headerRx    = /\b(?:AADHAAR|GOVERNMENT OF INDIA|ELECTION COMMISSION|INCOME TAX DEPT|UNIQUE IDENTIFICATION|REPUBLIC OF INDIA|भारत सरकार)\b/i;
 
+  // Back Document Dedicated Address Priority
+  if (/---\s*BACK\s*DOCUMENT\s*---/i.test(rawText)) {
+    const backPart = rawText.split(/---\s*BACK\s*DOCUMENT\s*---/i)[1].split(/---\s*[A-Z]+\s*---/)[0];
+    const backRawLines = backPart.split('\n').map(l => l.trim()).filter(l => l.length >= 3);
+    const candBack = [];
+    for (const bl of backRawLines) {
+      if (/VID|1947|help@|uidai\.gov|www\.uidai/i.test(bl)) break;
+      if (/^[2-9]\d{3}\s*\d{4}\s*\d{4}$/.test(bl)) continue;
+      if (/Government of India|भारत सरकार|Unique Identification Authority/i.test(bl)) continue;
+      let cl = bl.replace(/^(?:Address|Adress|Addr|पत्ता|पता)\s*[:\-]\s*/i, '').trim();
+      if (!/[A-Za-z]/.test(cl) || cl.length < 3) continue;
+      candBack.push(cl);
+      if (pinM && cl.includes(pinM[1])) break;
+    }
+    if (candBack.length > 0) {
+      address = titleCase(candBack.join(', ')).replace(/\s*,\s*/g, ', ').replace(/[,\s\.\-]+$/, '');
+    }
+  }
+
   const addrLines = [];
   let inAddr = false;
 
   for (const line of allLines) {
+    if (address && address.length >= 10) break;
     if (!line || line.length < 3) continue;
     if (/---\s*(?:BACK|FRONT|DOCUMENT|SCAN)/i.test(line)) continue;
     if (headerRx.test(line)) continue;

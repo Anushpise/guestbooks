@@ -473,8 +473,10 @@ def extract_name(lines: list, id_type: str, full_text: str, dob: str, id_number:
             raw_back = eval_lines[back]
             if is_relative_line(raw_back):
                 continue
-            # Strip leading label or single stray OCR characters (e.g. 'i Vivek Satish' -> 'Vivek Satish', 'oil : Ravina Vilas' -> 'Ravina Vilas')
+            # Strip leading label or single stray OCR characters (e.g. 'i Vivek Satish' -> 'Vivek Satish', '| Vijay' -> 'Vijay', 'IVijay' -> 'Vijay')
             cl = re.sub(r'^(?:Name|नाम|S\/O|D\/O|W\/O|C\/O|[iIl1\|\*#]|oil|ol|oll|oill|all|mr|ms|mrs|smt|shri|dr|ta|to)\s*[:\-]?\s*', '', raw_back, flags=re.I).strip()
+            cl = re.sub(r'^[iIl1\|\/\*\#\:\-]+(?=[A-Za-z])', '', cl).strip()
+            cl = re.sub(r'^I(?=[A-Z][a-z])', '', cl).strip()
             cl = re.sub(r'[^A-Za-z\s\.]', '', cl).strip()
             cl = re.sub(r'^[A-Za-z]\s+', '', cl).strip()
             
@@ -647,8 +649,18 @@ def parse_indian_id_text(text: str) -> dict:
 
     # E. Aadhaar Card
     elif id_type == 'Aadhaar Card':
-        # Check standalone lines first (most accurate for printed ID cards)
         aadh_candidates = []
+
+        # 1. Direct 12-digit number extraction from lines (robust against trailing quotes/symbols)
+        for l in all_lines:
+            if re.search(r'\b(?:VID|1947|help@|uidai\.gov|www\.uidai)\b', l, re.I):
+                continue
+            digits_in_l = re.sub(r'\D', '', l)
+            if len(digits_in_l) == 12 and digits_in_l[0] in '23456789':
+                if not re.search(r'\/\s*' + digits_in_l[:6] + r'\s*\/', l):
+                    aadh_candidates.append(digits_in_l)
+
+        # 2. Check standalone lines (most accurate for printed ID cards)
         standalone_rx = re.compile(r'^\s*([2-9][0-9OIl]{3})[\s\-]([0-9OIl]{4})[\s\-]([0-9OIl:;]{3,4}[:;]?)\s*$')
         for l in all_lines:
             m = standalone_rx.match(l)
@@ -657,11 +669,19 @@ def parse_indian_id_text(text: str) -> dict:
                 if len(d) == 12:
                     aadh_candidates.append(d)
 
-        # Fallback: search with negative lookbehind against date prefixes (/ or -)
+        # 3. Labeled Aadhaar: "Aadhaar No. : 2594 1897 9713"
+        lbl_aadh = re.search(r'(?:Aadhaar|Aadhar|Adhar|आधार)\s*(?:No\.?|Number|No|संख्या|क्र\.?)?\s*[:\|\-\s]*([2-9][0-9OIl\s\-]{11,16})', full_text, re.I)
+        if lbl_aadh:
+            cand_digits = re.sub(r'[^0-9OIl]', '', lbl_aadh.group(1))
+            cand_fixed = fix_aadhaar_ocr(cand_digits)
+            if len(cand_fixed) == 12:
+                aadh_candidates.append(cand_fixed)
+
+        # 4. Fallback: search with negative lookbehind against date prefixes (/ or -)
         if not aadh_candidates:
-            inline_rx = re.compile(r'(?<![\d\/\-\.])\b([2-9][0-9OIl]{3})[\s\-]?([0-9OIl]{4})[\s\-]?([0-9OIl:;]{3,4}[:;]?)\b(?![\d\/\-\.])')
+            inline_rx = re.compile(r'(?<![\d\/\-\.\b])([2-9][0-9OIl]{3})[\s\-]?[0-9OIl]{4}[\s\-]?[0-9OIl:;]{3,4}[:;]?(?![\d\/\-\.\b])')
             for m in inline_rx.finditer(text):
-                d = fix_aadhaar_ocr(m.group(1) + m.group(2) + m.group(3))
+                d = fix_aadhaar_ocr(re.sub(r'[^0-9OIl]', '', m.group(0)))
                 if len(d) == 12:
                     aadh_candidates.append(d)
 
@@ -755,8 +775,8 @@ def parse_indian_id_text(text: str) -> dict:
     if not dob:
         # Try labeled numeric DOB: "Date of Birth: 05/05/1997", "DOB: 27/04/2001", "DOA : 25/08/2008", "DOA : 2508/2008"
         dob_label_rx = re.compile(
-            r'(?:DOB|D\.?O\.?B\.?|DOA|D\.?O\.?A\.?|Date\s*of\s*Birth|जन्म\s*(?:तिथि|तारीख|मिति)|Born)\s*[:\|\.\-\s\/]*'
-            r'(\d{1,2})[\/\.\-]?(\d{1,2})[\/\.\-](\d{4})',
+            r'(?:DOB|D\.?O\.?B\.?|DOA|D\.?O\.?A\.?|Date\s*of\s*Birth|जन्म\s*(?:तिथि|तारीख|मिति)|तारीख|Born)\s*[:\|\.\-\s\/]*'
+            r'(\d{1,2})\s*[\/\.\-]\s*(\d{1,2})\s*[\/\.\-]\s*(\d{4})',
             re.I
         )
         dob_lbl_m = dob_label_rx.search(full_text)
@@ -836,8 +856,21 @@ def parse_indian_id_text(text: str) -> dict:
             cand_age = int(age_m.group(1))
             if 18 <= cand_age <= 110:
                 age = str(cand_age)
-                est_yr = current_year - cand_age
-                dob = f"01/01/{est_yr}"
+
+    # Guarantee age from DOB
+    if dob and not age:
+        m_yr = re.search(r'\b(19\d{2}|20\d{2})\b', dob)
+        if m_yr:
+            yr = int(m_yr.group(1))
+            if 1900 < yr <= current_year:
+                age = str(current_year - yr)
+
+    # Guarantee approximate DOB from age if DOB missing
+    if age and not dob and age.isdigit():
+        cand_a = int(age)
+        if 5 <= cand_a <= 120:
+            approx_yr = current_year - cand_a
+            dob = f"01/01/{approx_yr}"
 
     # Driving License: try valid-from/issue date as DOB if DOB field is labeled
     if not dob and id_type == 'Driving License':
@@ -887,7 +920,7 @@ def parse_indian_id_text(text: str) -> dict:
         r'uidai\.gov|1947|help@uidai|Your\s*A[ea]dhaar)\b|'
         r'\b(?:So|Do|Wo|Co)\s*[:\-]',
         full_text, re.I
-    )) or ('--- BACK DOCUMENT ---' in full_text and '--- FRONT DOCUMENT ---' not in full_text)) and not (bool(re.search(r'\b(?:DOB|Birth|जन्म|Male|Female|पुरुष|महिला|Transgender|Gender|Given Name|Surname|Elector|Permanent Account)\b', full_text, re.I)) or '--- FRONT DOCUMENT ---' in full_text)
+    )) or ('--- BACK DOCUMENT ---' in raw_text and '--- FRONT DOCUMENT ---' not in full_text)) and not (bool(re.search(r'\b(?:DOB|Birth|जन्म|Male|Female|पुरुष|महिला|Transgender|Gender|Given Name|Surname|Elector|Permanent Account)\b', full_text, re.I)) or '--- FRONT DOCUMENT ---' in full_text)
 
     if not gender and not is_back_only_doc:
         gender = 'Male'  # Default only for front documents
@@ -936,9 +969,49 @@ def parse_indian_id_text(text: str) -> dict:
                 return val
         return ''
 
+    # Strategy 0: Dedicated Back-Side Document Address Extraction
+    # When Front & Back documents are uploaded, the postal address resides exclusively on the back.
+    # Prevents front-side disclaimer text (e.g. Marathi Aadhaar info) from corrupting the address.
+    if '--- BACK DOCUMENT ---' in raw_text:
+        back_section = raw_text.split('--- BACK DOCUMENT ---')[1].split('---')[0].strip()
+        back_pin = extract_postal_pincode(back_section)
+        raw_b_lines = [re.sub(r'\s+', ' ', l.strip(' ,-.')) for l in back_section.split('\n') if l.strip(' ,-.')]
+        
+        cand_b_lines = []
+        for bl in raw_b_lines:
+            # Skip header lines
+            if re.search(r'\b(?:Government of India|भारत सरकार|Unique Identification Authority|भारतीय विशिष्ट पहचान प्राधिकरण)\b', bl, re.I):
+                continue
+            # Terminate on footer lines
+            if re.search(r'\b(?:VID|1947|help@|uidai\.gov|www\.uidai|Mera Aadhaar)\b', bl, re.I):
+                break
+            if re.match(r'^[2-9]\d{3}\s*\d{4}\s*\d{4}$', bl.strip()):
+                continue
+            # Strip address label prefix if present
+            clean_bl = re.sub(r'^(?:Address|Addr|पत्ता|पता|ठेगाना)\s*[:\|\-]?\s*', '', bl, flags=re.I).strip()
+            # Require at least one English letter and minimum length
+            if not clean_bl or not re.search(r'[A-Za-z]', clean_bl):
+                continue
+            if len(re.sub(r'[^A-Za-z0-9]', '', clean_bl)) < 3:
+                continue
+            cand_b_lines.append(clean_bl)
+            if back_pin and back_pin in clean_bl:
+                break
+        
+        if cand_b_lines:
+            formatted_back = ', '.join(cand_b_lines)
+            formatted_back = re.sub(r'\s*,\s*', ', ', formatted_back)
+            formatted_back = re.sub(r'(?:,\s*){2,}', ', ', formatted_back).strip(' ,-.')
+            if len(formatted_back) >= 10:
+                address = formatted_back
+                if back_pin:
+                    pincode = back_pin
+
     # Strategy A: Explicit English Address Block Detection (Standard Aadhaar Back Side)
     # The English block starts at 'Address:' / 'Addr:' and continues until 12-digit ID or helpdesk
-    addr_block_m = re.search(
+    addr_block_m = None
+    if not address:
+        addr_block_m = re.search(
         r'\b(?:Address|Adress|Addr|पत्ता|पता|ठेगाना)\s*[:\|\-]\s*(.*?)(?=\b[2-9]\d{3}\s*\d{4}\s*\d{4}\b|\bhelp@|\bwww\.|\b1947\b|---\s*FRONT|---\s*BACK|$)',
         text,
         re.I | re.DOTALL
@@ -1035,12 +1108,23 @@ def parse_indian_id_text(text: str) -> dict:
 
             # Address line (only after recipient name has passed)
             if len(l) >= 3 and not re.match(r'^[A-Za-z0-9=\-\)\(]{1,2}$', l):
+                # Filter out garbage lines with mixed alphanumeric noise (e.g. Kf897138046fi)
+                if re.search(r'\b[A-Za-z]+\d+[A-Za-z]+\b|\b\d+[A-Za-z]+\d+\b', l):
+                    continue
+                # Filter out lines composed mostly of short 2-3 letter noise fragments
+                words_in_l = l.split()
+                if len(words_in_l) >= 3 and sum(1 for w in words_in_l if len(w) <= 3) / len(words_in_l) > 0.7:
+                    continue
+
                 pin_in_line = re.search(r'\b([1-9]\d{5})\b', l)
                 if pin_in_line and not pincode:
                     cand_p = pin_in_line.group(1)
                     if not re.search(r'\/\s*' + cand_p + r'\s*\/', full_text):
                         pincode = cand_p
                 to_addr_lines.append(l)
+                # Terminate address extraction cleanly once the postal pincode line is reached
+                if pin_in_line:
+                    break
 
         if to_addr_lines:
             cand_to_addr = ', '.join(to_addr_lines)
@@ -1087,10 +1171,15 @@ def parse_indian_id_text(text: str) -> dict:
             re.I
         )
 
+        target_lines = all_lines
+        if '--- BACK DOCUMENT ---' in raw_text:
+            back_section = raw_text.split('--- BACK DOCUMENT ---')[1].split('---')[0].strip()
+            target_lines = [l.strip() for l in back_section.split('\n') if l.strip()]
+
         addr_lines = []
         in_addr = False
 
-        for line in all_lines:
+        for line in target_lines:
             if len(line) < 3 or re.search(r'---\s*(?:BACK|FRONT|DOCUMENT|SCAN)', line, re.I):
                 continue
             if header_rx.search(line):
