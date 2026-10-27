@@ -1,7 +1,6 @@
 import sys
 from pathlib import Path
 
-# Add backend directory to path
 backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
@@ -108,8 +107,32 @@ VID : 9199 6968 4475 3493
     assert r3['pincode'] == '442001', f"Pincode mismatch: {r3['pincode']}"
     print("TEST 3: PASS")
 
+def test_jagdish_patil_back():
+    t4 = """
+--- BACK DOCUMENT ---
+Unique Identification Authority of India
+q "os CARESS ec ccc, yosrao2s
+Address:
+S/O Jagdish Patil, AT-SHIRMI PO-
+KONDHALI TAH-KATOL, Kondhali, DIST: Nagpur,
+Maharashtra - 441103
+7462 7744 4947
+VID : 9187 6111 3305 5935
+Details as on: 11/06/2024
+"""
+    r4 = parse_indian_id_text(t4)
+    print("Jagdish Patil Back:", {k: v for k, v in r4.items() if k != 'rawText'})
+    assert r4['idNumber'] == '7462 7744 4947', f"ID mismatch: {r4['idNumber']}"
+    assert 'q "os CARESS' not in r4['address'], f"Garbage in address: {r4['address']}"
+    assert 'Details as on' not in r4['address'], f"Timestamp in address: {r4['address']}"
+    assert 'Jagdish Patil' in r4['address'], f"Missing name in address: {r4['address']}"
+    assert r4['city'] == 'Nagpur', f"City mismatch: {r4['city']}"
+    assert r4['pincode'] == '441103', f"Pincode mismatch: {r4['pincode']}"
+    print("TEST 4: PASS")
+
 if __name__ == '__main__':
     test_vijay_bhopalkar()
     test_shamal_bhongade()
     test_sandhya_barhane()
-    print("\nALL PRECISION TESTS PASSED PERFECTLY!")
+    test_jagdish_patil_back()
+    print("\nALL 4 PRECISION TESTS PASSED PERFECTLY!")

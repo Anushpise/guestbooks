@@ -977,8 +977,20 @@ def parse_indian_id_text(text: str) -> dict:
         back_pin = extract_postal_pincode(back_section)
         raw_b_lines = [re.sub(r'\s+', ' ', l.strip(' ,-.')) for l in back_section.split('\n') if l.strip(' ,-.')]
         
+        # If explicit English 'Address:' label exists, skip all regional language text before it
+        addr_start_idx = -1
+        for i, l in enumerate(raw_b_lines):
+            if re.search(r'\b(?:Address|Adress|Addr)\b', l, re.I):
+                addr_start_idx = i
+                break
+
+        eval_b_lines = raw_b_lines[addr_start_idx:] if addr_start_idx != -1 else raw_b_lines
+
         cand_b_lines = []
-        for bl in raw_b_lines:
+        for bl in eval_b_lines:
+            # Skip peripheral print timestamps or issue dates (e.g. Details as on: 11/06/2024)
+            if re.search(r'\b(?:Details as on|Date of Issue|Valid Upto|Print Date)\b', bl, re.I):
+                continue
             # Skip header lines
             if re.search(r'\b(?:Government of India|भारत सरकार|Unique Identification Authority|भारतीय विशिष्ट पहचान प्राधिकरण)\b', bl, re.I):
                 continue
@@ -988,7 +1000,7 @@ def parse_indian_id_text(text: str) -> dict:
             if re.match(r'^[2-9]\d{3}\s*\d{4}\s*\d{4}$', bl.strip()):
                 continue
             # Strip address label prefix if present
-            clean_bl = re.sub(r'^(?:Address|Addr|पत्ता|पता|ठेगाना)\s*[:\|\-]?\s*', '', bl, flags=re.I).strip()
+            clean_bl = re.sub(r'^(?:Address|Adress|Addr|पत्ता|पता|ठेगाना)\s*[:\|\-]?\s*', '', bl, flags=re.I).strip()
             # Require at least one English letter and minimum length
             if not clean_bl or not re.search(r'[A-Za-z]', clean_bl):
                 continue
