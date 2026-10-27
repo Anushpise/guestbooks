@@ -279,81 +279,55 @@ class MultiOCREngine:
 
     def _detect_and_fix_orientation(self, gray: np.ndarray) -> tuple[np.ndarray, str, int]:
         """
-        Robust 4-way rotation recovery (0°, 90°, 180°, 270°).
-        Uses Tesseract OSD and candidate angle scoring to guarantee upright orientation.
+        Robust 4-Way Rotation Recovery (0 deg, 90 deg, 180 deg, 270 deg).
+        Evaluates candidate angles across a downscaled thumbnail to guarantee true upright orientation.
+        Never exits prematurely on upside-down digit fragments.
         """
         h, w = gray.shape[:2]
 
-        # 1. Try fast OSD on small thumbnail
-        oriented_gray = gray
-        try:
-            scale = min(1.0, 500.0 / float(max(h, w)))
-            small = cv2.resize(gray, (int(w * scale), int(h * scale))) if scale < 1.0 else gray
-            osd = pytesseract.image_to_osd(small, output_type=pytesseract.Output.DICT)
-            rot = osd.get('rotate', 0)
-            conf = float(osd.get('orientation_conf', 0))
-            if conf >= 0.5 and rot in (90, 180, 270):
-                if rot == 90:
-                    oriented_gray = cv2.rotate(gray, cv2.ROTATE_90_CLOCKWISE)
-                elif rot == 180:
-                    oriented_gray = cv2.rotate(gray, cv2.ROTATE_180)
-                elif rot == 270:
-                    oriented_gray = cv2.rotate(gray, cv2.ROTATE_90_COUNTERCLOCKWISE)
-                logger.info(f"OSD detected {rot}° rotation. Applied correction.")
-        except Exception:
-            pass
+        # 1. Downscale for ultra-fast candidate angle scoring (<200ms total for all 4 angles)
+        scale = min(1.0, 600.0 / float(max(h, w)))
+        small = cv2.resize(gray, (int(w * scale), int(h * scale))) if scale < 1.0 else gray
 
-        # 2. Test initial OCR pass on oriented image (with adaptive filtration if blurry)
-        tess_text = self._run_tesseract(oriented_gray)
-        current_score = score_text(tess_text)
+        best_rot_code = None
+        best_deg = 0
+        best_sc = -1
+        best_txt = ""
 
-        if current_score < 70:
-            bin_test = filter_adaptive_binarize(oriented_gray)
-            bin_txt = self._run_tesseract(bin_test)
-            bin_sc = score_text(bin_txt)
-            if bin_sc > current_score:
-                current_score = bin_sc
-                tess_text = bin_txt
+        # Test all 4 standard orientations
+        rotations = [
+            (0, None),
+            (90, cv2.ROTATE_90_CLOCKWISE),
+            (180, cv2.ROTATE_180),
+            (270, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        ]
 
-        # High confidence threshold: return immediately
-        if current_score >= 80:
-            return oriented_gray, tess_text, current_score
+        for deg, code in rotations:
+            test_thumb = cv2.rotate(small, code) if code is not None else small
+            txt = self._run_tesseract(test_thumb)
+            sc = score_text(txt)
+            if sc > best_sc:
+                best_sc = sc
+                best_rot_code = code
+                best_deg = deg
+                best_txt = txt
 
-        # 3. Comprehensive Angle Evaluation:
-        # If card is in portrait (h > w), Indian landscape cards are rotated 90 or 270 degrees.
-        # Test candidate rotations to find the orientation with the highest genuine ID score.
-        best_gray = oriented_gray
-        best_text = tess_text
-        best_score = current_score
+        # 2. If initial scores are low or blurry, run secondary pass with adaptive local binarization
+        if best_sc < 70:
+            bin_small = filter_adaptive_binarize(small)
+            for deg, code in rotations:
+                test_thumb = cv2.rotate(bin_small, code) if code is not None else bin_small
+                txt = self._run_tesseract(test_thumb)
+                sc = score_text(txt)
+                if sc > best_sc:
+                    best_sc = sc
+                    best_rot_code = code
+                    best_deg = deg
+                    best_txt = txt
 
-        if h > w * 1.15:
-            cand_rotations = [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180]
-        else:
-            cand_rotations = [cv2.ROTATE_180, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE]
-
-        # Candidate rotation evaluation with adaptive filtration for blurry images
-        eval_proc = [lambda img: img]
-        if current_score < 70:
-            eval_proc.append(filter_adaptive_binarize)
-
-        for proc in eval_proc:
-            proc_base = proc(oriented_gray)
-            for rot in cand_rotations:
-                test_img = cv2.rotate(proc_base, rot)
-                test_txt = self._run_tesseract(test_img)
-                test_sc = score_text(test_txt)
-                if test_sc > best_score:
-                    best_score = test_sc
-                    best_text = test_txt
-                    best_gray = cv2.rotate(oriented_gray, rot)
-                    logger.info(f"Rotation with filtration improved OCR score to {best_score}")
-                    if best_score >= 80:
-                        break
-            if best_score >= 80:
-                break
-
-        return best_gray, best_text, best_score
-
+        winning_gray = cv2.rotate(gray, best_rot_code) if best_rot_code is not None else gray
+        logger.info(f"4-way orientation recovery selected rotation {best_deg} deg with score {best_sc}")
+        return winning_gray, best_txt, best_sc
     def _run_easyocr_geometric(self, img_bgr: np.ndarray) -> str:
         """
         Runs EasyOCR on a normalized image (max 900px for ~1.5s inference) and
