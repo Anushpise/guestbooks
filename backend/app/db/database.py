@@ -58,7 +58,8 @@ def execute_query(conn, db_type, query, params=()):
     """Executes query handling placeholder differences ('?' for SQLite vs '%s' for Postgres)."""
     cursor = conn.cursor()
     if db_type == "postgres":
-        pg_query = query.replace("?", "%s")
+        # First double any literal '%' in query so psycopg2 does not mistake them for format codes (e.g. %d)
+        pg_query = query.replace("%", "%%").replace("?", "%s")
         cursor.execute(pg_query, params)
     else:
         cursor.execute(query, params)
@@ -578,7 +579,7 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
                (CASE WHEN document_front IS NOT NULL AND document_front != '' THEN 1 ELSE 0 END) as has_doc_front,
                (CASE WHEN document_back IS NOT NULL AND document_back != '' THEN 1 ELSE 0 END) as has_doc_back,
                (CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END) as has_signature,
-               (CASE WHEN (partner_document_front IS NOT NULL AND partner_document_front != '') OR (accompanying_guest_json LIKE '%documentFront%') THEN 1 ELSE 0 END) as has_partner_doc,
+               (CASE WHEN partner_document_front IS NOT NULL AND partner_document_front != '' THEN 1 ELSE 0 END) as has_partner_doc,
                (CASE WHEN checkout_signature IS NOT NULL AND checkout_signature != '' THEN 1 ELSE 0 END) as has_checkout_signature
         FROM guest_records
         {where_clause}
@@ -602,6 +603,15 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
                 rec["partner_document_front"] = rec["accompanying_guest"].get("documentFront") or rec["accompanying_guest"].get("document_front")
             if not rec.get("partner_document_back"):
                 rec["partner_document_back"] = rec["accompanying_guest"].get("documentBack") or rec["accompanying_guest"].get("document_back")
+
+        has_partner = 1 if (
+            rec.get("has_partner_doc") == 1
+            or rec.get("partner_document_front")
+            or rec.get("partner_document_back")
+            or (rec.get("accompanying_guest") and (rec["accompanying_guest"].get("documentFront") or rec["accompanying_guest"].get("documentBack")))
+            or (rec.get("accompanying_guest_json") and "documentFront" in rec["accompanying_guest_json"])
+        ) else 0
+        rec["has_partner_doc"] = has_partner
         records.append(rec)
     conn.close()
     return records
