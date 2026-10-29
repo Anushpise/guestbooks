@@ -5,9 +5,34 @@ import base64
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime
+from pathlib import Path
 import httpx
+from dotenv import load_dotenv
 
 logger = logging.getLogger("gemini_extractor")
+
+# Multi-path .env loader to ensure credentials are found in Docker, local dev, or server root
+def _load_all_env():
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parent.parent.parent / ".env",
+        Path(__file__).resolve().parent.parent.parent.parent / ".env",
+        Path("/app/.env"),
+        Path("/app/data/.env"),
+    ]
+    try:
+        candidates.append(Path.home() / ".env")
+    except Exception:
+        pass
+
+    for c in candidates:
+        try:
+            if c.exists() and c.is_file():
+                load_dotenv(c, override=False)
+        except Exception:
+            pass
+
+_load_all_env()
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -15,6 +40,7 @@ GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 def is_gemini_configured() -> bool:
     """Checks if GEMINI_API_KEY environment variable is present and non-empty."""
+    _load_all_env()
     key = os.getenv("GEMINI_API_KEY", "").strip()
     return bool(key)
 
@@ -119,6 +145,7 @@ def extract_id_with_gemini(
     Calls Google Gemini Flash Vision API with Front and optional Back ID card photos.
     Returns structured ID dictionary on success, or None on failure/timeout.
     """
+    _load_all_env()
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     if not api_key:
         logger.info("GEMINI_API_KEY not configured. Skipping Gemini Vision AI.")
@@ -165,16 +192,17 @@ def extract_id_with_gemini(
             }
         }
 
-        url = f"{GEMINI_API_BASE}/{GEMINI_MODEL}:generateContent?key={api_key}"
+        model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+        url = f"{GEMINI_API_BASE}/{model}:generateContent?key={api_key}"
 
-        logger.info(f"Calling Gemini Flash Vision API ({GEMINI_MODEL}) with {1 if not back_bytes else 2} image(s)...")
+        logger.info(f"Calling Gemini Flash Vision API ({model}) with {1 if not back_bytes else 2} image(s)...")
         with httpx.Client(timeout=timeout_sec) as client:
             resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
 
         if resp.status_code != 200:
             logger.warning(f"Gemini API returned HTTP {resp.status_code}: {resp.text[:300]}")
             # Try fallback to gemini-1.5-flash if gemini-2.0-flash is not available in that project
-            if GEMINI_MODEL != "gemini-1.5-flash":
+            if model != "gemini-1.5-flash":
                 fallback_url = f"{GEMINI_API_BASE}/gemini-1.5-flash:generateContent?key={api_key}"
                 logger.info("Retrying with gemini-1.5-flash model...")
                 with httpx.Client(timeout=timeout_sec) as client:

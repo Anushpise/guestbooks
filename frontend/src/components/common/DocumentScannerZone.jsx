@@ -97,11 +97,23 @@ export default function DocumentScannerZone({
   }, []);
 
   const [activeEngine, setActiveEngine] = useState('');
+  const [isGeminiActive, setIsGeminiActive] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/ocr/status')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.geminiConfigured) {
+          setIsGeminiActive(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const runOCR = async (imgs) => {
     if (!imgs || imgs.length === 0) return;
     setIsScanning(true);
-    setScanStatus('AI OCR scanning & auto-fill in progress...');
+    setScanStatus(isGeminiActive ? 'Gemini Vision AI analyzing document (1–3s)...' : 'AI OCR scanning & auto-fill in progress...');
     setActiveEngine('');
 
     try {
@@ -137,7 +149,7 @@ export default function DocumentScannerZone({
           const result = await res.json();
           if (result.success && result.data && (result.data.name || result.data.idNumber || result.data.dob)) {
             parsed = result.data;
-            engineName = 'AI Neural OCR Engine';
+            engineName = result.engine || (isGeminiActive ? 'Gemini Multimodal Vision AI' : 'AI Neural OCR Engine');
           }
         }
       } catch (backendErr) {
@@ -250,6 +262,15 @@ export default function DocumentScannerZone({
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${accent.bg} text-white`}>
           {targetGuestName}
         </span>
+        {isGeminiActive ? (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200 flex items-center gap-1 shadow-2xs">
+            ⚡ Gemini AI Vision (Active)
+          </span>
+        ) : (
+          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200 flex items-center gap-1">
+            ⚙️ Local OCR Engine
+          </span>
+        )}
         <span className="text-[10px] text-slate-400 font-medium ml-auto">
           {images.length}/2 photos • 1 photo also works
         </span>
@@ -357,8 +378,10 @@ export default function DocumentScannerZone({
         <div className={`flex items-center gap-3 rounded-lg border ${accent.lightBorder} ${accent.light} p-3`}>
           <Loader2 className={`h-4 w-4 animate-spin ${accent.text} flex-shrink-0`} />
           <div>
-            <p className={`text-xs font-bold ${accent.text}`}>Auto-scanning document... (may take 5–15s)</p>
-            <p className="text-[11px] text-slate-500">{scanStatus}</p>
+            <p className={`text-xs font-bold ${accent.text}`}>
+              {isGeminiActive ? 'AI Vision scanning with Gemini... (1–3s)' : 'Auto-scanning document... (may take 5–15s)'}
+            </p>
+            <p className="text-[11px] text-slate-500 font-medium">{scanStatus || (isGeminiActive ? 'Gemini Vision AI analyzing document...' : 'AI OCR scanning & auto-fill in progress...')}</p>
           </div>
         </div>
       )}

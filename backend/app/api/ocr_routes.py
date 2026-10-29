@@ -5,9 +5,30 @@ from app.services.gemini_extractor import extract_id_with_gemini, is_gemini_conf
 import asyncio
 import logging
 import time
+import os
 
 logger = logging.getLogger("ocr_routes")
 router = APIRouter(prefix="/api/ocr", tags=["PaddleOCR"])
+
+@router.get("/status")
+def get_ocr_engine_status():
+    """
+    Returns the real-time operational status of the OCR subsystem.
+    Enables frontend and health checks to confirm whether Gemini Multimodal Vision AI is active.
+    """
+    gemini_active = is_gemini_configured()
+    masked_key = ""
+    if gemini_active:
+        key = os.getenv("GEMINI_API_KEY", "").strip()
+        masked_key = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
+
+    return {
+        "geminiConfigured": gemini_active,
+        "geminiModel": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        "maskedApiKey": masked_key,
+        "primaryEngine": "Gemini Multimodal Vision AI" if gemini_active else "Local Cascaded Neural OCR",
+        "fallbackEngine": "Local Cascaded Neural OCR" if gemini_active else "None"
+    }
 
 @router.post("/scan")
 async def scan_document_id(
