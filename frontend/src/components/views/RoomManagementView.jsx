@@ -61,8 +61,10 @@ export default function RoomManagementView({
     setTimeout(() => setToastMessage(''), 3500);
   };
 
-  const handleStatusChange = (roomId, roomNumber, newStatus) => {
-    onRoomStatusChange(roomId, newStatus);
+  const handleStatusChange = async (roomId, roomNumber, newStatus) => {
+    if (onRoomStatusChange) {
+      await onRoomStatusChange(roomId, newStatus);
+    }
     showNotification(`✓ Room RM-${roomNumber} changed to ${newStatus}. Live Occupancy updated!`);
   };
 
@@ -71,17 +73,17 @@ export default function RoomManagementView({
     setEditTariffValue(String(room.rate));
   };
 
-  const handleSaveTariff = (roomId, roomNumber) => {
+  const handleSaveTariff = async (roomId, roomNumber) => {
     if (editTariffValue && !isNaN(editTariffValue) && Number(editTariffValue) > 0) {
       if (onRoomTariffChange) {
-        onRoomTariffChange(roomId, Number(editTariffValue));
+        await onRoomTariffChange(roomId, Number(editTariffValue));
       }
       showNotification(`✓ Tariff for Room RM-${roomNumber} updated to ₹${editTariffValue}/night.`);
     }
     setEditingRoomId(null);
   };
 
-  const handleCreateRoom = (e) => {
+  const handleCreateRoom = async (e) => {
     e.preventDefault();
     setAddError('');
     if (!newRoomNumber.trim()) {
@@ -93,7 +95,7 @@ export default function RoomManagementView({
       return;
     }
     if (onAddRoom) {
-      const res = onAddRoom({
+      const res = await onAddRoom({
         number: newRoomNumber.trim(),
         type: newRoomType,
         floor: newRoomFloor,
@@ -110,9 +112,9 @@ export default function RoomManagementView({
     setNewRoomRate('2500');
   };
 
-  const handleConfirmDelete = (room) => {
+  const handleConfirmDelete = async (room) => {
     if (onDeleteRoom) {
-      const res = onDeleteRoom(room.id);
+      const res = await onDeleteRoom(room.id);
       if (res && !res.success) {
         showNotification(`⚠️ ${res.message}`);
         setDeleteConfirmId(null);

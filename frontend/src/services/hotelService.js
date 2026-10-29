@@ -91,9 +91,6 @@ export const hotelService = {
 
   getRoomsStorageKey: (hotelId = null) => {
     const hId = hotelId || hotelService.getCurrentHotelId();
-    if (hId === 'HTL-101') {
-      return ROOMS_STORAGE_KEY;
-    }
     return `staylog_rooms_${hId}`;
   },
 
@@ -133,10 +130,18 @@ export const hotelService = {
       if (stored) {
         return JSON.parse(stored);
       }
+      if (hId === 'HTL-101') {
+        const legacyStored = localStorage.getItem(ROOMS_STORAGE_KEY);
+        if (legacyStored) {
+          localStorage.setItem(storageKey, legacyStored);
+          return JSON.parse(legacyStored);
+        }
+      }
     } catch (e) {}
 
     // If it's the default demo hotel, use initialRooms
     if (hId === 'HTL-101') {
+      localStorage.setItem(storageKey, JSON.stringify(initialRooms));
       return initialRooms;
     }
 
@@ -177,7 +182,7 @@ export const hotelService = {
    * @param {string|null} targetHotelId
    * @returns {{ success: boolean, message: string, rooms: Array }}
    */
-  addRoom: (roomData, targetHotelId = null) => {
+  addRoom: async (roomData, targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const storageKey = hotelService.getRoomsStorageKey(hId);
     const rooms = hotelService.getRooms(hId);
@@ -189,7 +194,7 @@ export const hotelService = {
     }
 
     const newRoom = {
-      id: String(roomData.number),
+      id: `${hId}_${roomData.number}`,
       number: String(roomData.number),
       type: roomData.type || 'Standard Suite',
       floor: roomData.floor || '1st Floor',
@@ -197,22 +202,31 @@ export const hotelService = {
       status: 'VACANT',
     };
 
-    rooms.push(newRoom);
-    localStorage.setItem(storageKey, JSON.stringify(rooms));
-    syncHotelOccupancyStats(rooms, hId);
-
     // Sync room to Central Backend DB
-    fetch('/api/rooms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...roomData, hotel_id: hId })
-    }).catch(() => {
-      fetch(getBackendFallbackUrl('/api/rooms'), {
+    try {
+      let res = await fetch('/api/rooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...roomData, hotel_id: hId })
-      }).catch(() => {});
-    });
+      });
+      if (!res.ok) {
+        res = await fetch(getBackendFallbackUrl('/api/rooms'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...roomData, hotel_id: hId })
+        });
+      }
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        return { success: false, message: errJson.message || errJson.detail || 'Failed to add room to database.', rooms };
+      }
+    } catch (e) {
+      console.warn('Backend add room warning:', e);
+    }
+
+    rooms.push(newRoom);
+    localStorage.setItem(storageKey, JSON.stringify(rooms));
+    syncHotelOccupancyStats(rooms, hId);
 
     return { success: true, message: `Room ${newRoom.number} added successfully.`, rooms };
   },
@@ -223,7 +237,7 @@ export const hotelService = {
    * @param {string|null} targetHotelId
    * @returns {{ success: boolean, message: string, rooms: Array }}
    */
-  deleteRoom: (roomId, targetHotelId = null) => {
+  deleteRoom: async (roomId, targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const storageKey = hotelService.getRoomsStorageKey(hId);
     const rooms = hotelService.getRooms(hId);
@@ -236,7 +250,23 @@ export const hotelService = {
       return { success: false, message: `Room ${room.number} is currently OCCUPIED. Check out the guest first.`, rooms };
     }
 
-    const updatedRooms = rooms.filter(r => r.id !== room.id);
+    const roomNumber = String(room.number);
+    // Delete from central database
+    try {
+      const url = `/api/rooms/${encodeURIComponent(roomNumber)}?hotel_id=${encodeURIComponent(hId)}`;
+      let res = await fetch(url, { method: 'DELETE' });
+      if (!res.ok) {
+        res = await fetch(getBackendFallbackUrl(url), { method: 'DELETE' });
+      }
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        return { success: false, message: errJson.detail || 'Failed to delete room from central database.', rooms };
+      }
+    } catch (e) {
+      console.warn('Backend room delete error:', e);
+    }
+
+    const updatedRooms = rooms.filter(r => r.id !== room.id && String(r.number) !== roomNumber);
     localStorage.setItem(storageKey, JSON.stringify(updatedRooms));
     syncHotelOccupancyStats(updatedRooms, hId);
 
@@ -248,7 +278,7 @@ export const hotelService = {
    * IMPORTANT: When called with `_skipStaySync = true`, it will NOT auto-create
    * or remove active stays. This prevents circular loops when called from checkInGuest/checkOutGuest.
    */
-  updateRoomStatus: (roomId, status, _skipStaySync = false, targetHotelId = null) => {
+  updateRoomStatus: async (roomId, status, _skipStaySync = false, targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const storageKey = hotelService.getRoomsStorageKey(hId);
     const rooms = hotelService.getRooms(hId);
@@ -321,44 +351,59 @@ export const hotelService = {
 
     // Sync room status change to central DB
     const roomNoToUpdate = String(targetRoom.number);
-    fetch(`/api/rooms/${roomNoToUpdate}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hotel_id: hId, status })
-    }).catch(() => {
-      fetch(getBackendFallbackUrl(`/api/rooms/${roomNoToUpdate}/status`), {
+    try {
+      const url = `/api/rooms/${encodeURIComponent(roomNoToUpdate)}/status`;
+      let res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hotel_id: hId, status })
-      }).catch(() => {});
-    });
+      });
+      if (!res.ok) {
+        await fetch(getBackendFallbackUrl(url), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hotel_id: hId, status })
+        });
+      }
+    } catch (e) {
+      console.warn('Backend room status update error:', e);
+    }
 
     return updatedRooms;
   },
 
-  updateRoomTariff: (roomId, newRate, targetHotelId = null) => {
+  updateRoomTariff: async (roomId, newRate, targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const storageKey = hotelService.getRoomsStorageKey(hId);
     const rooms = hotelService.getRooms(hId);
+    const targetRoom = rooms.find(r => r.id === roomId || String(r.number) === String(roomId));
+    const roomNumber = targetRoom ? String(targetRoom.number) : String(roomId).split('_').pop();
+
     const updated = rooms.map(r =>
-      (r.id === roomId || String(r.number) === String(roomId))
+      (r.id === roomId || String(r.number) === String(roomId) || String(r.number) === roomNumber)
         ? { ...r, rate: Number(newRate) || r.rate }
         : r
     );
     localStorage.setItem(storageKey, JSON.stringify(updated));
 
     // Sync room tariff change to central DB
-    fetch(`/api/rooms/${roomId}/tariff`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hotel_id: hId, rate: Number(newRate) })
-    }).catch(() => {
-      fetch(getBackendFallbackUrl(`/api/rooms/${roomId}/tariff`), {
+    try {
+      const url = `/api/rooms/${encodeURIComponent(roomNumber)}/tariff`;
+      let res = await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hotel_id: hId, rate: Number(newRate) })
-      }).catch(() => {});
-    });
+      });
+      if (!res.ok) {
+        await fetch(getBackendFallbackUrl(url), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hotel_id: hId, rate: Number(newRate) })
+        });
+      }
+    } catch (e) {
+      console.warn('Backend room tariff update error:', e);
+    }
 
     return updated;
   },

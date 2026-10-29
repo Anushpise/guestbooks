@@ -1114,28 +1114,68 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
 def db_update_room_status(hotel_id: str, room_number: str, status: str) -> dict:
     """Updates status for a room in central DB."""
     h_id = hotel_id or "HTL-101"
+    clean_num = str(room_number).split("_")[-1]
     conn, db_type = get_db_connection()
     now_iso = datetime.now().isoformat()
     execute_query(conn, db_type, """
         UPDATE rooms SET status = ?, updated_at = ?
-        WHERE hotel_id = ? AND room_number = ?
-    """, (status, now_iso, h_id, str(room_number)))
+        WHERE hotel_id = ? AND (room_number = ? OR id = ?)
+    """, (status, now_iso, h_id, clean_num, str(room_number)))
     conn.commit()
     conn.close()
-    return {"success": True, "hotel_id": h_id, "room_number": str(room_number), "status": status}
+    return {"success": True, "hotel_id": h_id, "room_number": clean_num, "status": status}
 
 def db_update_room_tariff(hotel_id: str, room_number: str, rate: float) -> dict:
     """Updates room tariff rate in central DB."""
     h_id = hotel_id or "HTL-101"
+    clean_num = str(room_number).split("_")[-1]
     conn, db_type = get_db_connection()
     now_iso = datetime.now().isoformat()
     execute_query(conn, db_type, """
         UPDATE rooms SET rate = ?, updated_at = ?
-        WHERE hotel_id = ? AND room_number = ?
-    """, (float(rate), now_iso, h_id, str(room_number)))
+        WHERE hotel_id = ? AND (room_number = ? OR id = ?)
+    """, (float(rate), now_iso, h_id, clean_num, str(room_number)))
     conn.commit()
     conn.close()
-    return {"success": True, "hotel_id": h_id, "room_number": str(room_number), "rate": float(rate)}
+    return {"success": True, "hotel_id": h_id, "room_number": clean_num, "rate": float(rate)}
+
+def db_delete_room(hotel_id: str, room_identifier: str) -> dict:
+    """Deletes a room from hotel inventory in central DB if not currently occupied."""
+    h_id = hotel_id or "HTL-101"
+    clean_num = str(room_identifier).split("_")[-1]
+    conn, db_type = get_db_connection()
+
+    # 1. Check if room exists
+    c = execute_query(conn, db_type, """
+        SELECT room_number, status FROM rooms
+        WHERE hotel_id = ? AND (room_number = ? OR id = ?)
+    """, (h_id, clean_num, str(room_identifier)))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        raise ValueError(f"Room {clean_num} not found in hotel {h_id}.")
+
+    rec = dict(row)
+    actual_num = str(rec.get("room_number"))
+
+    # 2. Check if currently occupied in active guest_records
+    c_active = execute_query(conn, db_type, """
+        SELECT id, guest_name FROM guest_records
+        WHERE status = 'CHECKED_IN' AND (hotel_id = ? OR hotel_id IS NULL) AND room_number = ?
+    """, (h_id, actual_num))
+    active_guest = c_active.fetchone()
+    if active_guest:
+        conn.close()
+        raise ValueError(f"Cannot delete Room {actual_num}. It is currently OCCUPIED by {dict(active_guest).get('guest_name')}. Check out the guest first.")
+
+    # 3. Delete from rooms table
+    execute_query(conn, db_type, """
+        DELETE FROM rooms
+        WHERE hotel_id = ? AND (room_number = ? OR id = ?)
+    """, (h_id, actual_num, str(room_identifier)))
+    conn.commit()
+    conn.close()
+    return {"success": True, "message": f"Room {actual_num} deleted from hotel {h_id} inventory."}
 
 def db_add_room(hotel_id: str, room_data: dict) -> dict:
     """Adds a new room to hotel inventory in central DB."""

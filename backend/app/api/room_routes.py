@@ -12,7 +12,8 @@ from app.db.database import (
     db_get_rooms,
     db_update_room_status,
     db_update_room_tariff,
-    db_add_room
+    db_add_room,
+    db_delete_room
 )
 
 logger = logging.getLogger("room_routes")
@@ -80,4 +81,17 @@ def update_room_tariff_endpoint(room_number: str, payload: RoomTariffPayload):
         return res
     except Exception as e:
         logger.error(f"Error updating room tariff: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{room_identifier}")
+def delete_room_endpoint(room_identifier: str, hotel_id: Optional[str] = Query(None, description="Hotel ID")):
+    """Deletes a room from hotel inventory in central DB if not currently occupied."""
+    h_id = hotel_id or "HTL-101"
+    try:
+        res = db_delete_room(h_id, room_identifier)
+        return res
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error deleting room: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

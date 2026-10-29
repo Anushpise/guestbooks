@@ -325,17 +325,17 @@ export default function App() {
   };
 
   const handleRoomStatusChange = async (roomId, newStatus) => {
-    hotelService.updateRoomStatus(roomId, newStatus, false, currentUser?.hotelId);
+    await hotelService.updateRoomStatus(roomId, newStatus, false, currentHotel?.id || currentUser?.hotelId);
     await refreshData(currentUser);
   };
 
   const handleRoomTariffChange = async (roomId, newRate) => {
-    hotelService.updateRoomTariff(roomId, newRate, currentUser?.hotelId);
+    await hotelService.updateRoomTariff(roomId, newRate, currentHotel?.id || currentUser?.hotelId);
     await refreshData(currentUser);
   };
 
   const handleAddRoom = async (roomData) => {
-    const result = hotelService.addRoom(roomData, currentUser?.hotelId);
+    const result = await hotelService.addRoom(roomData, currentHotel?.id || currentUser?.hotelId);
     if (result.success) {
       await refreshData(currentUser);
     }
@@ -343,7 +343,7 @@ export default function App() {
   };
 
   const handleDeleteRoom = async (roomId) => {
-    const result = hotelService.deleteRoom(roomId, currentUser?.hotelId);
+    const result = await hotelService.deleteRoom(roomId, currentHotel?.id || currentUser?.hotelId);
     if (result.success) {
       await refreshData(currentUser);
     }
