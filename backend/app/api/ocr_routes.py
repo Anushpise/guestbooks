@@ -1,7 +1,12 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from app.services.paddle_ocr import get_paddle_engine
 from app.services.indian_id_parser import parse_indian_id_text
-from app.services.gemini_extractor import extract_id_with_gemini, is_gemini_configured
+from app.services.gemini_extractor import (
+    extract_id_with_gemini,
+    is_gemini_configured,
+    get_gemini_api_key,
+    test_gemini_connection,
+)
 import asyncio
 import logging
 import time
@@ -19,16 +24,23 @@ def get_ocr_engine_status():
     gemini_active = is_gemini_configured()
     masked_key = ""
     if gemini_active:
-        key = os.getenv("GEMINI_API_KEY", "").strip()
+        key = get_gemini_api_key()
         masked_key = key[:6] + "..." + key[-4:] if len(key) > 10 else "***"
 
     return {
         "geminiConfigured": gemini_active,
-        "geminiModel": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        "geminiModel": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
         "maskedApiKey": masked_key,
         "primaryEngine": "Gemini Multimodal Vision AI" if gemini_active else "Local Cascaded Neural OCR",
         "fallbackEngine": "Local Cascaded Neural OCR" if gemini_active else "None"
     }
+
+@router.get("/test-gemini")
+def test_gemini_endpoint():
+    """
+    Diagnostics endpoint to test live Gemini API credentials and model responsiveness.
+    """
+    return test_gemini_connection()
 
 @router.post("/scan")
 async def scan_document_id(
@@ -51,7 +63,12 @@ async def scan_document_id(
             logger.info("Attempting primary extraction via Gemini Multimodal Vision AI...")
             try:
                 gemini_data = await asyncio.to_thread(extract_id_with_gemini, front_bytes, back_bytes)
-                if gemini_data and (gemini_data.get("name") or gemini_data.get("idNumber") or gemini_data.get("dob")):
+                if gemini_data and (
+                    gemini_data.get("name")
+                    or gemini_data.get("idNumber")
+                    or gemini_data.get("dob")
+                    or gemini_data.get("address")
+                ):
                     total_duration = time.time() - t_start
                     logger.info(f"=== GEMINI EXTRACTED IN {total_duration:.3f}s ===\n{gemini_data}\n========================")
                     return {

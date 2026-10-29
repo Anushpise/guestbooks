@@ -126,5 +126,26 @@ class TestOcrRoutesIntegration(unittest.TestCase):
         self.assertIn("Local", data["engine"])
         self.assertEqual(data["data"]["name"], "Sandhya Diliprao Barhane")
 
+    def test_status_endpoint(self):
+        response = client.get("/api/ocr/status")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("geminiConfigured", data)
+        self.assertIn("primaryEngine", data)
+
+    @patch("app.api.ocr_routes.test_gemini_connection")
+    def test_gemini_diagnostic_endpoint(self, mock_test_conn):
+        mock_test_conn.return_value = {
+            "success": True,
+            "model": "gemini-1.5-flash",
+            "latencySec": 0.35,
+            "message": "Gemini API Key is valid and responding successfully!"
+        }
+        response = client.get("/api/ocr/test-gemini")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["message"], "Gemini API Key is valid and responding successfully!")
+
 if __name__ == '__main__':
     unittest.main()

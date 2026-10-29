@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger("gemini_extractor")
 
-# Multi-path .env loader to ensure credentials are found in Docker, local dev, or server root
 def _load_all_env():
     candidates = [
         Path.cwd() / ".env",
@@ -34,15 +33,19 @@ def _load_all_env():
 
 _load_all_env()
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
-def is_gemini_configured() -> bool:
-    """Checks if GEMINI_API_KEY environment variable is present and non-empty."""
+def get_gemini_api_key() -> str:
+    """Returns sanitized GEMINI_API_KEY stripping any extraneous quotes or whitespace."""
     _load_all_env()
-    key = os.getenv("GEMINI_API_KEY", "").strip()
-    return bool(key)
+    key = os.getenv("GEMINI_API_KEY", "").strip().strip("'\"")
+    return key
+
+
+def is_gemini_configured() -> bool:
+    """Checks if a non-empty GEMINI_API_KEY is present."""
+    return bool(get_gemini_api_key())
 
 
 def format_gemini_prompt() -> str:
@@ -72,7 +75,7 @@ Strict Extraction Rules:
    - Do NOT transcribe Devanagari words into English gibberish.
    - Stop cleanly at the postal pincode line; do NOT include print timestamps like 'Details as on: ...' or UIDAI helpdesk links.
 7. City: Extract the district or city (e.g. "Nagpur", "Wardha", "Yavatmal", "Chandrapur").
-8. Pincode: 6-digit Indian postal PIN code (e.g. "441103", "445402").
+8. Pincode: 6-digit Indian postal PIN code (e.g. "441103", "445402", "445308").
 9. Phone: 10-digit mobile number if printed on the card, else "".
 
 Return ONLY a valid JSON object matching this exact schema:
@@ -107,7 +110,6 @@ def parse_gemini_response(response_text: str) -> Dict[str, Any]:
         logger.error(f"Failed to parse Gemini JSON output: {e}. Raw text: {cleaned[:200]}")
         return {}
 
-    # Standardize dictionary fields
     res = {
         "idType": str(data.get("idType", "Aadhaar Card")).strip(),
         "idNumber": str(data.get("idNumber", "")).strip(),
@@ -121,12 +123,10 @@ def parse_gemini_response(response_text: str) -> Dict[str, Any]:
         "phone": str(data.get("phone", "")).strip(),
     }
 
-    # Format Aadhaar card 12 digits if contiguous
     if res["idType"] == "Aadhaar Card" and len(re.sub(r"\D", "", res["idNumber"])) == 12:
         d = re.sub(r"\D", "", res["idNumber"])
         res["idNumber"] = f"{d[:4]} {d[4:8]} {d[8:]}"
 
-    # Calculate age if DOB present but age missing
     if res["dob"] and not res["age"]:
         current_year = datetime.now().year
         m_yr = re.search(r"\b(19\d{2}|20\d{2})\b", res["dob"])
@@ -136,17 +136,63 @@ def parse_gemini_response(response_text: str) -> Dict[str, Any]:
     return res
 
 
+def test_gemini_connection() -> Dict[str, Any]:
+    """
+    Tests live connectivity and authentication with Google Gemini API.
+    Returns status, latency, and detailed error description if any.
+    """
+    api_key = get_gemini_api_key()
+    if not api_key:
+        return {
+            "success": False,
+            "error": "GEMINI_API_KEY is not set in environment or .env file."
+        }
+
+    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    url = f"{GEMINI_API_BASE}/{model}:generateContent?key={api_key}"
+    payload = {
+        "contents": [
+            {"role": "user", "parts": [{"text": "Reply with only: OK"}]}
+        ]
+    }
+
+    t0 = datetime.now()
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
+            latency_sec = (datetime.now() - t0).total_seconds()
+
+        if resp.status_code == 200:
+            return {
+                "success": True,
+                "model": model,
+                "latencySec": round(latency_sec, 3),
+                "message": "Gemini API Key is valid and responding successfully!"
+            }
+        else:
+            return {
+                "success": False,
+                "statusCode": resp.status_code,
+                "model": model,
+                "error": resp.text[:400]
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 def extract_id_with_gemini(
     front_bytes: bytes,
     back_bytes: Optional[bytes] = None,
     timeout_sec: float = 18.0
 ) -> Optional[Dict[str, Any]]:
     """
-    Calls Google Gemini Flash Vision API with Front and optional Back ID card photos.
+    Calls Google Gemini Flash Vision API using standard camelCase REST schema.
     Returns structured ID dictionary on success, or None on failure/timeout.
     """
-    _load_all_env()
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    api_key = get_gemini_api_key()
     if not api_key:
         logger.info("GEMINI_API_KEY not configured. Skipping Gemini Vision AI.")
         return None
@@ -155,26 +201,37 @@ def extract_id_with_gemini(
         return None
 
     try:
-        # Build multipart parts for Gemini
         parts = [
             {"text": format_gemini_prompt()}
         ]
 
-        # Add Front Image
+        # Detect MIME type for Front
+        front_mime = "image/jpeg"
+        if front_bytes.startswith(b"\x89PNG"):
+            front_mime = "image/png"
+        elif front_bytes.startswith(b"RIFF") and b"WEBP" in front_bytes[:16]:
+            front_mime = "image/webp"
+
         front_b64 = base64.b64encode(front_bytes).decode("utf-8")
         parts.append({
-            "inline_data": {
-                "mime_type": "image/jpeg",
+            "inlineData": {
+                "mimeType": front_mime,
                 "data": front_b64
             }
         })
 
-        # Add Back Image if present
+        # Detect MIME type for Back
         if back_bytes:
+            back_mime = "image/jpeg"
+            if back_bytes.startswith(b"\x89PNG"):
+                back_mime = "image/png"
+            elif back_bytes.startswith(b"RIFF") and b"WEBP" in back_bytes[:16]:
+                back_mime = "image/webp"
+
             back_b64 = base64.b64encode(back_bytes).decode("utf-8")
             parts.append({
-                "inline_data": {
-                    "mime_type": "image/jpeg",
+                "inlineData": {
+                    "mimeType": back_mime,
                     "data": back_b64
                 }
             })
@@ -188,30 +245,33 @@ def extract_id_with_gemini(
             ],
             "generationConfig": {
                 "temperature": 0.1,
-                "response_mime_type": "application/json"
+                "responseMimeType": "application/json"
             }
         }
 
-        model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
-        url = f"{GEMINI_API_BASE}/{model}:generateContent?key={api_key}"
+        # Try gemini-1.5-flash as default (broadest regional availability) and gemini-2.0-flash as alternate
+        configured_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        candidate_models = [configured_model]
+        if configured_model != "gemini-1.5-flash":
+            candidate_models.append("gemini-1.5-flash")
+        if configured_model != "gemini-2.0-flash":
+            candidate_models.append("gemini-2.0-flash")
 
-        logger.info(f"Calling Gemini Flash Vision API ({model}) with {1 if not back_bytes else 2} image(s)...")
+        resp = None
+        used_model = candidate_models[0]
         with httpx.Client(timeout=timeout_sec) as client:
-            resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
+            for m in candidate_models:
+                used_model = m
+                url = f"{GEMINI_API_BASE}/{m}:generateContent?key={api_key}"
+                logger.info(f"Calling Gemini Flash Vision API ({m})...")
+                resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                if resp.status_code == 200:
+                    break
+                logger.warning(f"Model {m} returned HTTP {resp.status_code}: {resp.text[:250]}")
 
-        if resp.status_code != 200:
-            logger.warning(f"Gemini API returned HTTP {resp.status_code}: {resp.text[:300]}")
-            # Try fallback to gemini-1.5-flash if gemini-2.0-flash is not available in that project
-            if model != "gemini-1.5-flash":
-                fallback_url = f"{GEMINI_API_BASE}/gemini-1.5-flash:generateContent?key={api_key}"
-                logger.info("Retrying with gemini-1.5-flash model...")
-                with httpx.Client(timeout=timeout_sec) as client:
-                    resp = client.post(fallback_url, json=payload, headers={"Content-Type": "application/json"})
-                if resp.status_code != 200:
-                    logger.warning(f"Gemini 1.5 fallback returned HTTP {resp.status_code}: {resp.text[:300]}")
-                    return None
-            else:
-                return None
+        if not resp or resp.status_code != 200:
+            logger.error(f"Gemini API all candidate models failed. Last response: {resp.text[:300] if resp else 'No response'}")
+            return None
 
         result_json = resp.json()
         candidates = result_json.get("candidates", [])
@@ -227,8 +287,8 @@ def extract_id_with_gemini(
         raw_text = content_parts[0].get("text", "")
         parsed = parse_gemini_response(raw_text)
 
-        if parsed and (parsed.get("name") or parsed.get("idNumber") or parsed.get("dob")):
-            logger.info(f"Successfully extracted ID using Gemini Vision AI: {parsed.get('name')} | {parsed.get('idNumber')}")
+        if parsed and (parsed.get("name") or parsed.get("idNumber") or parsed.get("dob") or parsed.get("address")):
+            logger.info(f"Successfully extracted ID using Gemini Vision AI ({used_model}): {parsed.get('name')} | {parsed.get('idNumber')}")
             return parsed
 
         return None
