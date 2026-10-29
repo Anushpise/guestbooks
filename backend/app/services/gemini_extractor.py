@@ -318,7 +318,6 @@ def extract_id_with_gemini(
             ],
             "generationConfig": {
                 "temperature": 0.1,
-                "maxOutputTokens": 350,
                 "responseMimeType": "application/json"
             }
         }
