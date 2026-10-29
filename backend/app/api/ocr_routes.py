@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from app.services.paddle_ocr import get_paddle_engine
 from app.services.indian_id_parser import parse_indian_id_text
+from app.services.gemini_extractor import extract_id_with_gemini, is_gemini_configured
 import asyncio
 import logging
 import time
@@ -14,19 +15,38 @@ async def scan_document_id(
     back_image: UploadFile = File(None)
 ):
     """
-    Accepts 2 document photos (Front & Back) of Indian IDs (Aadhaar, PAN, Voter ID, Passport, DL),
-    processes them concurrently in parallel via High-Speed Cascaded OCR with automatic orientation/deskew,
-    and extracts structured fields (Name, Document No, DOB, Address, PIN).
+    Accepts 2 document photos (Front & Back) of Indian IDs (Aadhaar, PAN, Voter ID, Passport, DL).
+    1. Primary: High-Accuracy Multimodal Gemini Vision AI (if GEMINI_API_KEY is configured).
+    2. Fallback: Local High-Speed Cascaded Neural OCR + Indian ID Parser (if Gemini unavailable/offline).
     """
     t_start = time.time()
     try:
-        paddle_service = get_paddle_engine()
-
         # 1. Read bytes asynchronously
         front_bytes = await front_image.read() if front_image else None
         back_bytes = await back_image.read() if back_image else None
 
-        # 2. Concurrent Parallel OCR Processing across threadpool
+        # 2. Try Multimodal Gemini Vision AI (Primary Engine)
+        if is_gemini_configured() and front_bytes:
+            logger.info("Attempting primary extraction via Gemini Multimodal Vision AI...")
+            try:
+                gemini_data = await asyncio.to_thread(extract_id_with_gemini, front_bytes, back_bytes)
+                if gemini_data and (gemini_data.get("name") or gemini_data.get("idNumber") or gemini_data.get("dob")):
+                    total_duration = time.time() - t_start
+                    logger.info(f"=== GEMINI EXTRACTED IN {total_duration:.3f}s ===\n{gemini_data}\n========================")
+                    return {
+                        "success": True,
+                        "engine": "Gemini Multimodal Vision AI",
+                        "executionTimeSec": round(total_duration, 3),
+                        "data": gemini_data
+                    }
+                logger.warning("Gemini Vision AI returned incomplete result. Falling back to local OCR...")
+            except Exception as gemini_err:
+                logger.warning(f"Gemini Vision call failed ({gemini_err}). Gracefully falling back to local OCR...")
+
+        # 3. Fallback: Local Cascaded OCR Processing
+        logger.info("Running Local Cascaded Neural OCR pipeline...")
+        paddle_service = get_paddle_engine()
+
         tasks = []
         if front_bytes:
             logger.info(f"Queuing Front Photo: {getattr(front_image, 'filename', 'front.jpg')} ({len(front_bytes)} bytes)")
@@ -50,14 +70,14 @@ async def scan_document_id(
 
         logger.info(f"=== OCR TEXT EXTRACTED IN {time.time() - t_start:.3f}s ===\n{combined_text}\n========================")
 
-        # 3. Parse Indian ID Fields
+        # 4. Parse Indian ID Fields with Local Parser
         extracted_data = parse_indian_id_text(combined_text)
         total_duration = time.time() - t_start
         logger.info(f"=== PARSED DATA ({total_duration:.3f}s total) ===\n{extracted_data}\n========================")
 
         return {
             "success": True,
-            "engine": "High-Speed Cascaded Neural OCR",
+            "engine": "High-Speed Cascaded Neural OCR (Local)",
             "executionTimeSec": round(total_duration, 3),
             "data": extracted_data
         }
