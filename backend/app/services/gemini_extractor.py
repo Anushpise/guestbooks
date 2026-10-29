@@ -51,8 +51,8 @@ def is_gemini_configured() -> bool:
 
 def get_candidate_models() -> List[str]:
     """
-    Returns prioritized list of Gemini models.
-    Filters out discontinued models like gemini-2.0-flash.
+    Returns prioritized list of Gemini Multimodal Vision models.
+    Filters out discontinued models and non-vision models.
     """
     _load_all_env()
     configured = os.getenv("GEMINI_MODEL", "").strip().strip("'\"")
@@ -60,19 +60,20 @@ def get_candidate_models() -> List[str]:
     candidates: List[str] = []
     # If cached working model exists, prioritize it
     global _CACHED_WORKING_MODEL
-    if _CACHED_WORKING_MODEL and _CACHED_WORKING_MODEL != "gemini-2.0-flash":
+    if _CACHED_WORKING_MODEL and _CACHED_WORKING_MODEL.startswith("gemini-") and _CACHED_WORKING_MODEL != "gemini-2.0-flash":
         candidates.append(_CACHED_WORKING_MODEL)
 
-    # If configured in .env and not deprecated, try it
-    if configured and configured != "gemini-2.0-flash" and configured not in candidates:
+    # If configured in .env and is a valid gemini model
+    if configured and configured.startswith("gemini-") and configured != "gemini-2.0-flash" and configured not in candidates:
         candidates.append(configured)
 
-    # Standard high-availability multimodal models
+    # Standard high-availability multimodal vision models
     defaults = [
+        "gemini-flash-latest",
         "gemini-2.5-flash",
         "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-flash-8b",
+        "gemini-flash-lite-latest",
+        "gemini-2.5-pro",
         "gemini-1.5-pro",
     ]
     for d in defaults:
@@ -88,7 +89,7 @@ def get_active_model_name() -> str:
     if _CACHED_WORKING_MODEL:
         return _CACHED_WORKING_MODEL
     candidates = get_candidate_models()
-    return candidates[0] if candidates else "gemini-1.5-flash"
+    return candidates[0] if candidates else "gemini-flash-latest"
 
 
 def format_gemini_prompt() -> str:
@@ -191,7 +192,7 @@ def test_gemini_connection() -> Dict[str, Any]:
             "error": "GEMINI_API_KEY is not set in environment or .env file."
         }
 
-    # Step 1: Discover available models for this specific API Key from Google
+    # Step 1: Discover available Multimodal Vision models for this specific API Key from Google
     available_from_google: List[str] = []
     try:
         with httpx.Client(timeout=8.0) as client:
@@ -203,25 +204,49 @@ def test_gemini_connection() -> Dict[str, Any]:
                     methods = m.get("supportedGenerationMethods", [])
                     if "generateContent" in methods:
                         m_name = m.get("name", "").replace("models/", "")
-                        if m_name and m_name != "gemini-2.0-flash":
+                        # Strictly accept only gemini vision models (exclude audio/tts, gemma, embeddings)
+                        if (
+                            m_name.startswith("gemini-")
+                            and "tts" not in m_name
+                            and "embedding" not in m_name
+                            and m_name != "gemini-2.0-flash"
+                        ):
                             available_from_google.append(m_name)
     except Exception as e:
         logger.warning(f"Could not list Gemini models from Google API: {e}")
 
-    # Step 2: Build candidate test list
-    candidates = get_candidate_models()
+    # Step 2: Build candidate test list (strictly gemini vision models)
+    candidates: List[str] = []
+    for c in get_candidate_models():
+        if c.startswith("gemini-") and c not in candidates:
+            candidates.append(c)
+
     for m in available_from_google:
-        if m not in candidates:
+        if m.startswith("gemini-") and m not in candidates:
             candidates.append(m)
 
+    # Multimodal test payload with a 1x1 test image to ensure vision is supported
+    tiny_png_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     payload = {
         "contents": [
-            {"role": "user", "parts": [{"text": "Reply with only: OK"}]}
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "Analyze image and reply with only OK"},
+                    {
+                        "inlineData": {
+                            "mimeType": "image/png",
+                            "data": tiny_png_b64
+                        }
+                    }
+                ]
+            }
         ]
     }
 
     last_error = None
     last_status = None
+    model_diagnostics = {}
     t0 = datetime.now()
 
     with httpx.Client(timeout=10.0) as client:
@@ -233,25 +258,30 @@ def test_gemini_connection() -> Dict[str, Any]:
                     latency_sec = (datetime.now() - t0).total_seconds()
                     global _CACHED_WORKING_MODEL
                     _CACHED_WORKING_MODEL = model
+                    model_diagnostics[model] = {"status": 200, "message": "OK"}
                     return {
                         "success": True,
                         "model": model,
                         "latencySec": round(latency_sec, 3),
-                        "availableModelsFound": available_from_google[:8],
-                        "message": f"Gemini API Key is valid and responding successfully using {model}!"
+                        "modelDiagnostics": model_diagnostics,
+                        "availableVisionModels": available_from_google[:8],
+                        "message": f"Gemini Vision API Key is valid and responding successfully using {model}!"
                     }
                 else:
                     last_status = resp.status_code
                     last_error = resp.text[:400]
+                    model_diagnostics[model] = {"status": resp.status_code, "error": resp.text[:200]}
                     logger.warning(f"Test model {model} returned HTTP {resp.status_code}: {resp.text[:200]}")
             except Exception as e:
                 last_error = str(e)
+                model_diagnostics[model] = {"error": str(e)}
 
     return {
         "success": False,
         "statusCode": last_status,
-        "attemptedModels": candidates[:5],
-        "availableModelsFound": available_from_google[:8],
+        "attemptedModels": candidates[:6],
+        "modelDiagnostics": model_diagnostics,
+        "availableVisionModels": available_from_google[:8],
         "error": last_error
     }
 
@@ -357,7 +387,14 @@ def extract_id_with_gemini(
         raw_text = content_parts[0].get("text", "")
         parsed = parse_gemini_response(raw_text)
 
-        if parsed and (parsed.get("name") or parsed.get("idNumber") or parsed.get("dob") or parsed.get("address")):
+        if parsed and (
+            parsed.get("name")
+            or parsed.get("idNumber")
+            or parsed.get("dob")
+            or parsed.get("address")
+            or parsed.get("city")
+            or parsed.get("pincode")
+        ):
             logger.info(f"Successfully extracted ID using Gemini Vision AI ({used_model}): {parsed.get('name')} | {parsed.get('idNumber')}")
             return parsed
 

@@ -69,6 +69,8 @@ async def scan_document_id(
                     or gemini_data.get("idNumber")
                     or gemini_data.get("dob")
                     or gemini_data.get("address")
+                    or gemini_data.get("city")
+                    or gemini_data.get("pincode")
                 ):
                     total_duration = time.time() - t_start
                     logger.info(f"=== GEMINI EXTRACTED IN {total_duration:.3f}s ===\n{gemini_data}\n========================")
