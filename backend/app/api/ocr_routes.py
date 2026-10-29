@@ -5,6 +5,7 @@ from app.services.gemini_extractor import (
     extract_id_with_gemini,
     is_gemini_configured,
     get_gemini_api_key,
+    get_active_model_name,
     test_gemini_connection,
 )
 import asyncio
@@ -29,7 +30,7 @@ def get_ocr_engine_status():
 
     return {
         "geminiConfigured": gemini_active,
-        "geminiModel": os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+        "geminiModel": get_active_model_name(),
         "maskedApiKey": masked_key,
         "primaryEngine": "Gemini Multimodal Vision AI" if gemini_active else "Local Cascaded Neural OCR",
         "fallbackEngine": "Local Cascaded Neural OCR" if gemini_active else "None"

@@ -33,7 +33,7 @@ services:
       - PORT=8000
       - DATABASE_URL=postgresql://postgres:postgrespassword@postgres_db:5432/guestbooks_pms
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
     depends_on:
       postgres_db:
         condition: service_healthy

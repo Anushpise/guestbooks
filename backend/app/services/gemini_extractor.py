@@ -3,7 +3,7 @@ import re
 import json
 import base64
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from pathlib import Path
 import httpx
@@ -34,6 +34,7 @@ def _load_all_env():
 _load_all_env()
 
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
+_CACHED_WORKING_MODEL: Optional[str] = None
 
 
 def get_gemini_api_key() -> str:
@@ -46,6 +47,48 @@ def get_gemini_api_key() -> str:
 def is_gemini_configured() -> bool:
     """Checks if a non-empty GEMINI_API_KEY is present."""
     return bool(get_gemini_api_key())
+
+
+def get_candidate_models() -> List[str]:
+    """
+    Returns prioritized list of Gemini models.
+    Filters out discontinued models like gemini-2.0-flash.
+    """
+    _load_all_env()
+    configured = os.getenv("GEMINI_MODEL", "").strip().strip("'\"")
+
+    candidates: List[str] = []
+    # If cached working model exists, prioritize it
+    global _CACHED_WORKING_MODEL
+    if _CACHED_WORKING_MODEL and _CACHED_WORKING_MODEL != "gemini-2.0-flash":
+        candidates.append(_CACHED_WORKING_MODEL)
+
+    # If configured in .env and not deprecated, try it
+    if configured and configured != "gemini-2.0-flash" and configured not in candidates:
+        candidates.append(configured)
+
+    # Standard high-availability multimodal models
+    defaults = [
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
+    ]
+    for d in defaults:
+        if d not in candidates:
+            candidates.append(d)
+
+    return candidates
+
+
+def get_active_model_name() -> str:
+    """Returns current active or most likely model name."""
+    global _CACHED_WORKING_MODEL
+    if _CACHED_WORKING_MODEL:
+        return _CACHED_WORKING_MODEL
+    candidates = get_candidate_models()
+    return candidates[0] if candidates else "gemini-1.5-flash"
 
 
 def format_gemini_prompt() -> str:
@@ -139,7 +182,7 @@ def parse_gemini_response(response_text: str) -> Dict[str, Any]:
 def test_gemini_connection() -> Dict[str, Any]:
     """
     Tests live connectivity and authentication with Google Gemini API.
-    Returns status, latency, and detailed error description if any.
+    Auto-discovers supported models and falls back cleanly if a model is deprecated.
     """
     api_key = get_gemini_api_key()
     if not api_key:
@@ -148,39 +191,69 @@ def test_gemini_connection() -> Dict[str, Any]:
             "error": "GEMINI_API_KEY is not set in environment or .env file."
         }
 
-    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    url = f"{GEMINI_API_BASE}/{model}:generateContent?key={api_key}"
+    # Step 1: Discover available models for this specific API Key from Google
+    available_from_google: List[str] = []
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            list_url = f"{GEMINI_API_BASE}?key={api_key}"
+            list_resp = client.get(list_url)
+            if list_resp.status_code == 200:
+                data = list_resp.json()
+                for m in data.get("models", []):
+                    methods = m.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods:
+                        m_name = m.get("name", "").replace("models/", "")
+                        if m_name and m_name != "gemini-2.0-flash":
+                            available_from_google.append(m_name)
+    except Exception as e:
+        logger.warning(f"Could not list Gemini models from Google API: {e}")
+
+    # Step 2: Build candidate test list
+    candidates = get_candidate_models()
+    for m in available_from_google:
+        if m not in candidates:
+            candidates.append(m)
+
     payload = {
         "contents": [
             {"role": "user", "parts": [{"text": "Reply with only: OK"}]}
         ]
     }
 
+    last_error = None
+    last_status = None
     t0 = datetime.now()
-    try:
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
-            latency_sec = (datetime.now() - t0).total_seconds()
 
-        if resp.status_code == 200:
-            return {
-                "success": True,
-                "model": model,
-                "latencySec": round(latency_sec, 3),
-                "message": "Gemini API Key is valid and responding successfully!"
-            }
-        else:
-            return {
-                "success": False,
-                "statusCode": resp.status_code,
-                "model": model,
-                "error": resp.text[:400]
-            }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+    with httpx.Client(timeout=10.0) as client:
+        for model in candidates:
+            url = f"{GEMINI_API_BASE}/{model}:generateContent?key={api_key}"
+            try:
+                resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                if resp.status_code == 200:
+                    latency_sec = (datetime.now() - t0).total_seconds()
+                    global _CACHED_WORKING_MODEL
+                    _CACHED_WORKING_MODEL = model
+                    return {
+                        "success": True,
+                        "model": model,
+                        "latencySec": round(latency_sec, 3),
+                        "availableModelsFound": available_from_google[:8],
+                        "message": f"Gemini API Key is valid and responding successfully using {model}!"
+                    }
+                else:
+                    last_status = resp.status_code
+                    last_error = resp.text[:400]
+                    logger.warning(f"Test model {model} returned HTTP {resp.status_code}: {resp.text[:200]}")
+            except Exception as e:
+                last_error = str(e)
+
+    return {
+        "success": False,
+        "statusCode": last_status,
+        "attemptedModels": candidates[:5],
+        "availableModelsFound": available_from_google[:8],
+        "error": last_error
+    }
 
 
 def extract_id_with_gemini(
@@ -249,13 +322,8 @@ def extract_id_with_gemini(
             }
         }
 
-        # Try gemini-1.5-flash as default (broadest regional availability) and gemini-2.0-flash as alternate
-        configured_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-        candidate_models = [configured_model]
-        if configured_model != "gemini-1.5-flash":
-            candidate_models.append("gemini-1.5-flash")
-        if configured_model != "gemini-2.0-flash":
-            candidate_models.append("gemini-2.0-flash")
+        # Dynamic candidate resolution with automated fallback
+        candidate_models = get_candidate_models()
 
         resp = None
         used_model = candidate_models[0]
@@ -266,6 +334,8 @@ def extract_id_with_gemini(
                 logger.info(f"Calling Gemini Flash Vision API ({m})...")
                 resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
                 if resp.status_code == 200:
+                    global _CACHED_WORKING_MODEL
+                    _CACHED_WORKING_MODEL = m
                     break
                 logger.warning(f"Model {m} returned HTTP {resp.status_code}: {resp.text[:250]}")
 

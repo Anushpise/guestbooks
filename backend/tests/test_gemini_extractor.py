@@ -12,7 +12,8 @@ from app.services.gemini_extractor import (
     extract_id_with_gemini,
     format_gemini_prompt,
     parse_gemini_response,
-    is_gemini_configured
+    is_gemini_configured,
+    get_candidate_models,
 )
 
 class TestGeminiExtractor(unittest.TestCase):
@@ -133,6 +134,13 @@ class TestGeminiExtractor(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             fake_img = b"\x89PNG\r\n\x1a\nfakeimagebytes"
             self.assertIsNone(extract_id_with_gemini(front_bytes=fake_img))
+
+    def test_get_candidate_models_filters_deprecated_models(self):
+        with patch.dict(os.environ, {"GEMINI_MODEL": "gemini-2.0-flash"}):
+            models = get_candidate_models()
+            self.assertNotIn("gemini-2.0-flash", models)
+            self.assertIn("gemini-2.5-flash", models)
+            self.assertIn("gemini-1.5-flash", models)
 
 if __name__ == '__main__':
     unittest.main()
