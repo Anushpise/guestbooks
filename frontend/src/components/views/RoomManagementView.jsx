@@ -6,18 +6,19 @@ import {
   Sparkles, 
   RefreshCw, 
   Edit2, 
-  ShieldAlert,
-  Check,
-  X,
-  TrendingUp,
-  Clock,
+  Check, 
+  X, 
+  Clock, 
+  Search, 
+  Plus, 
+  Trash2,
+  IndianRupee,
   Layers,
-  Search,
-  Plus,
-  Trash2
+  Building2
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 
 export default function RoomManagementView({ 
   rooms, 
@@ -157,163 +158,176 @@ export default function RoomManagementView({
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 font-sans">
       
-      {/* ── Top Header Banner ────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
-        <div>
+      {/* ── Top Header Banner (Unified Palette) ────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-200">
+            <div className="p-3 bg-[#0b3c33]/10 text-[#0b3c33] rounded-2xl border border-[#0b3c33]/20 shadow-2xs">
               <BedDouble className="h-6 w-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <Badge className="bg-indigo-50 text-indigo-800 border border-indigo-200 font-extrabold text-[10px]">
-                  Real-Time Inventory Master
-                </Badge>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Auto-Sync Active
+                </span>
                 {hotel?.id && (
-                  <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono font-extrabold text-[10px]">
+                  <Badge variant="outline" className="border-slate-200 font-mono font-bold text-[10px] text-slate-600">
                     {hotel.id}
                   </Badge>
                 )}
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Auto-Sync Active
-                </span>
               </div>
-              <h2 className="font-heading text-2xl font-black text-slate-900 tracking-tight mt-1">
-                {hotel?.name ? `${hotel.name} - Rooms & Tariffs` : 'Room Status & Tariffs Master'}
+              <h2 className="font-heading text-xl font-bold text-slate-900 tracking-tight mt-1 flex items-center gap-2">
+                {hotel?.name ? `${hotel.name} — Rooms & Tariffs` : 'Room Status & Tariffs Master'}
               </h2>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                Manage room inventory, custom tariffs, and housekeeping statuses for {hotel?.name || 'your property'}.
+              </p>
             </div>
           </div>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            Manage rooms, tariffs, and housekeeping for {hotel?.name || 'your property'} with instant synchronization across the PMS.
-          </p>
+
+          <div className="flex items-center gap-2.5">
+            <Button 
+              onClick={() => { setIsAddModalOpen(true); setAddError(''); }}
+              className="bg-[#0b3c33] hover:bg-[#082e27] text-white text-xs font-bold gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add New Room
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={refreshData} 
+              className="text-xs font-semibold border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="h-3.5 w-3.5 text-slate-500" /> Refresh
+            </Button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <Button 
-            onClick={() => { setIsAddModalOpen(true); setAddError(''); }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold gap-1.5 shadow-sm"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add New Room
-          </Button>
-          <Button variant="outline" size="sm" onClick={refreshData} className="text-xs font-bold gap-1.5">
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh Inventory
-          </Button>
+        {/* ── LIVE OCCUPANCY PIPELINE CARDS (Matching Theme) ─────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+          
+          {/* Card 1: Live Occupancy Rate */}
+          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-[#0b3c33] tracking-wider">
+              <span>Live Occupancy</span>
+              <span className="font-mono text-xs font-black text-[#0b3c33]">{occupancyPercentage}%</span>
+            </div>
+            <div className="mt-1 text-2xl font-black text-[#0b3c33] font-mono">
+              {occupiedCount} <span className="text-xs font-semibold text-[#0b3c33]/70">/ {totalRooms} Rooms</span>
+            </div>
+            <div className="mt-2 h-1.5 w-full rounded-full bg-emerald-200/80 overflow-hidden">
+              <div 
+                className={`h-full rounded-full transition-all duration-500 ${
+                  occupancyPercentage > 80 ? 'bg-rose-500' : occupancyPercentage > 50 ? 'bg-amber-500' : 'bg-[#0b3c33]'
+                }`}
+                style={{ width: `${occupancyPercentage}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Card 2: Vacant & Ready */}
+          <div className="bg-emerald-50/50 border border-emerald-200/80 rounded-xl p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-emerald-800 tracking-wider">
+              <span>Vacant & Ready</span>
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            </div>
+            <div className="mt-1 text-2xl font-black text-emerald-800 font-mono">
+              {vacantCount} <span className="text-xs font-semibold text-emerald-700">Rooms</span>
+            </div>
+            <p className="text-[10px] text-emerald-700/80 mt-1 font-medium">Ready for check-in</p>
+          </div>
+
+          {/* Card 3: Housekeeping Cleaning */}
+          <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-amber-800 tracking-wider">
+              <span>Housekeeping</span>
+              <Clock className="h-3.5 w-3.5 text-amber-600" />
+            </div>
+            <div className="mt-1 text-2xl font-black text-amber-900 font-mono">
+              {cleaningCount} <span className="text-xs font-semibold text-amber-800">Rooms</span>
+            </div>
+            <p className="text-[10px] text-amber-800/80 mt-1 font-medium">Undergoing cleaning</p>
+          </div>
+
+          {/* Card 4: Out of Order / Maintenance */}
+          <div className="bg-rose-50/60 border border-rose-200/80 rounded-xl p-3.5 shadow-2xs">
+            <div className="flex items-center justify-between text-[10px] font-extrabold uppercase text-rose-800 tracking-wider">
+              <span>Maintenance</span>
+              <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+            </div>
+            <div className="mt-1 text-2xl font-black text-rose-900 font-mono">
+              {maintenanceCount} <span className="text-xs font-semibold text-rose-800">Rooms</span>
+            </div>
+            <p className="text-[10px] text-rose-800/80 mt-1 font-medium">Under repair or blocked</p>
+          </div>
+
+        </div>
+
+        {/* ── Filters & Search Bar ───────────────────────────────────────── */}
+        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-bold text-slate-500 mr-1">Status:</span>
+            {['ALL', 'VACANT', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'].map((st) => (
+              <button
+                key={st}
+                onClick={() => setFilterStatus(st)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  filterStatus === st
+                    ? 'bg-[#0b3c33] text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                }`}
+              >
+                {st === 'ALL' ? 'All Rooms' : st}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-1 sm:flex-initial">
+            <div className="relative flex-1 sm:w-60">
+              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <Input
+                type="text"
+                className="pl-8 h-8 text-xs bg-slate-50 border-slate-200 focus:bg-white focus:ring-[#0b3c33]"
+                placeholder="Search room no, type..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <select
+              value={filterFloor}
+              onChange={(e) => setFilterFloor(e.target.value)}
+              className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 shadow-xs outline-none focus:ring-2 focus:ring-[#0b3c33] cursor-pointer"
+            >
+              <option value="ALL">All Floors</option>
+              {floorOptions.map(floor => (
+                <option key={floor} value={floor}>{floor}</option>
+              ))}
+            </select>
+
+            <span className="text-xs font-bold text-slate-400 whitespace-nowrap">
+              {filteredRooms.length} of {totalRooms}
+            </span>
+          </div>
+
         </div>
       </div>
 
-      {/* ── Toast Notification Banner ────────────────────────────────────── */}
+      {/* ── Toast Notification Banner ──────────────────────────────────── */}
       {toastMessage && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-extrabold text-emerald-900 flex items-center justify-between shadow-xs animate-in fade-in">
           <span>{toastMessage}</span>
-          <button onClick={() => setToastMessage('')} className="text-emerald-700 hover:text-emerald-950">
+          <button onClick={() => setToastMessage('')} className="text-emerald-700 hover:text-emerald-950 cursor-pointer">
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      {/* ── LIVE OCCUPANCY PIPELINE CARDS (AUTO RECALCULATING) ─────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        
-        {/* Card 1: Live Occupancy */}
-        <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/70 to-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-indigo-700">
-            <span>Live Occupancy</span>
-            <span className="font-mono text-xs font-black text-indigo-900">{occupancyPercentage}%</span>
-          </div>
-          <div className="mt-2 text-3xl font-black text-indigo-950 font-heading">
-            {occupiedCount} <span className="text-sm font-semibold text-indigo-600">/ {totalRooms} Rooms</span>
-          </div>
-          <div className="mt-2.5 h-2 w-full rounded-full bg-indigo-100 overflow-hidden">
-            <div 
-              className={`h-full rounded-full transition-all duration-500 ${
-                occupancyPercentage > 80 ? 'bg-rose-500' : occupancyPercentage > 50 ? 'bg-amber-500' : 'bg-indigo-600'
-              }`}
-              style={{ width: `${occupancyPercentage}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Card 2: Vacant & Ready */}
-        <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/60 to-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-emerald-700">
-            <span>Vacant & Ready</span>
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-          </div>
-          <div className="mt-2 text-3xl font-black text-emerald-700 font-heading">
-            {vacantCount} <span className="text-sm font-semibold text-emerald-600">Rooms</span>
-          </div>
-          <p className="text-[11px] text-emerald-600 mt-2 font-medium">Ready for instant guest check-in</p>
-        </div>
-
-        {/* Card 3: Housekeeping Cleaning */}
-        <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50/60 to-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-amber-700">
-            <span>Housekeeping</span>
-            <Clock className="h-4 w-4 text-amber-600" />
-          </div>
-          <div className="mt-2 text-3xl font-black text-amber-700 font-heading">
-            {cleaningCount} <span className="text-sm font-semibold text-amber-600">Rooms</span>
-          </div>
-          <p className="text-[11px] text-amber-600 mt-2 font-medium">Currently undergoing cleaning</p>
-        </div>
-
-        {/* Card 4: Out of Order / Maintenance */}
-        <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50/60 to-white p-5 shadow-2xs">
-          <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-rose-700">
-            <span>Maintenance</span>
-            <AlertTriangle className="h-4 w-4 text-rose-600" />
-          </div>
-          <div className="mt-2 text-3xl font-black text-rose-700 font-heading">
-            {maintenanceCount} <span className="text-sm font-semibold text-rose-600">Rooms</span>
-          </div>
-          <p className="text-[11px] text-rose-600 mt-2 font-medium">Under repair or blocked</p>
-        </div>
-
-      </div>
-
-      {/* ── Filters & Search Bar ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-        
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-slate-500 mr-1">Status:</span>
-          {['ALL', 'VACANT', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'].map((st) => (
-            <button
-              key={st}
-              onClick={() => setFilterStatus(st)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-                filterStatus === st
-                  ? 'bg-indigo-600 text-white shadow-2xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {st === 'ALL' ? 'All Rooms' : st}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <select
-            value={filterFloor}
-            onChange={(e) => setFilterFloor(e.target.value)}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-2xs outline-none focus:ring-2 focus:ring-indigo-600 cursor-pointer"
-          >
-            <option value="ALL">All Floors</option>
-            {floorOptions.map(floor => (
-              <option key={floor} value={floor}>{floor}</option>
-            ))}
-          </select>
-
-          <span className="text-xs font-bold text-slate-400">
-            {filteredRooms.length} of {totalRooms}
-          </span>
-        </div>
-
-      </div>
-
-      {/* ── Room Cards Grid ──────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {/* ── Room Cards Grid (Matching App Card Style) ─────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredRooms.map((room) => {
           const isOccupied = room.status === 'OCCUPIED';
           const isVacant = room.status === 'VACANT';
@@ -323,17 +337,17 @@ export default function RoomManagementView({
           return (
             <div 
               key={room.id}
-              className={`rounded-2xl border p-5 transition-all shadow-xs space-y-4 ${
-                isOccupied ? 'border-amber-300 bg-amber-50/40 ring-1 ring-amber-200' :
-                isCleaning ? 'border-orange-300 bg-orange-50/40 ring-1 ring-orange-200' :
-                isMaintenance ? 'border-rose-300 bg-rose-50/40 ring-1 ring-rose-200' :
-                'border-emerald-300 bg-emerald-50/30'
+              className={`rounded-2xl border p-5 transition-all shadow-xs space-y-3.5 ${
+                isOccupied ? 'border-amber-200/90 bg-amber-50/30' :
+                isCleaning ? 'border-orange-200/90 bg-orange-50/30' :
+                isMaintenance ? 'border-rose-200/90 bg-rose-50/30' :
+                'border-emerald-200/90 bg-emerald-50/20'
               }`}
             >
               {/* Room Top Bar */}
               <div className="flex items-center justify-between">
-                <span className="font-mono text-base font-black text-slate-900 bg-white px-3 py-1 rounded-xl border border-slate-200 shadow-2xs">
-                  RM-{room.number}
+                <span className="font-mono text-sm font-black text-[#0b3c33] bg-white px-3 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                  Room {room.number}
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{room.floor}</span>
@@ -342,7 +356,7 @@ export default function RoomManagementView({
                       onClick={() => setDeleteConfirmId(deleteConfirmId === room.id ? null : room.id)}
                       disabled={isOccupied}
                       title={isOccupied ? "Cannot delete occupied room" : "Delete Room"}
-                      className={`p-1.5 rounded-lg transition-colors ${
+                      className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                         isOccupied 
                           ? 'text-slate-300 cursor-not-allowed opacity-40' 
                           : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
@@ -363,13 +377,13 @@ export default function RoomManagementView({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleConfirmDelete(room)}
-                      className="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs"
+                      className="px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer"
                     >
                       Yes, Delete
                     </button>
                     <button
                       onClick={() => setDeleteConfirmId(null)}
-                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -379,12 +393,12 @@ export default function RoomManagementView({
 
               {/* Room Name & Type */}
               <div>
-                <div className="text-[10px] font-bold uppercase text-slate-400">Room Name & Type</div>
+                <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Room Name & Type</div>
                 {editingRoomNameId === room.id ? (
                   <div className="flex items-center gap-1.5 mt-1">
                     <input
                       type="text"
-                      className="flex-1 h-7 rounded border border-indigo-300 px-2 text-xs font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-600 bg-white"
+                      className="flex-1 h-8 rounded-lg border border-[#0b3c33]/40 px-2.5 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#0b3c33]/20 bg-white"
                       value={editRoomNameValue}
                       onChange={(e) => setEditRoomNameValue(e.target.value)}
                       placeholder="e.g. Deluxe AC Suite, Honeymoon Villa"
@@ -392,14 +406,14 @@ export default function RoomManagementView({
                     />
                     <button
                       onClick={() => handleSaveName(room.id, room.number)}
-                      className="h-7 w-7 rounded bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-2xs"
+                      className="h-8 w-8 rounded-lg bg-[#0b3c33] hover:bg-[#082e27] text-white flex items-center justify-center shadow-2xs cursor-pointer"
                       title="Save Room Name"
                     >
                       <Check className="h-3.5 w-3.5" />
                     </button>
                     <button
                       onClick={() => setEditingRoomNameId(null)}
-                      className="h-7 w-7 rounded bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center"
+                      className="h-8 w-8 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center cursor-pointer"
                       title="Cancel"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -407,10 +421,10 @@ export default function RoomManagementView({
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-base font-black text-slate-900">{room.type}</span>
+                    <span className="text-sm font-extrabold text-slate-900">{room.type}</span>
                     <button
                       onClick={() => handleStartEditName(room)}
-                      className="text-slate-400 hover:text-indigo-600 p-0.5 transition-colors"
+                      className="text-slate-400 hover:text-[#0b3c33] p-1 rounded hover:bg-white transition-colors cursor-pointer"
                       title="Edit Room Name / Type"
                     >
                       <Edit2 className="h-3.5 w-3.5" />
@@ -425,27 +439,27 @@ export default function RoomManagementView({
                 
                 {/* Tariff Price Edit Section */}
                 <div>
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Nightly Tariff</div>
+                  <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Nightly Tariff</div>
                   {editingRoomId === room.id ? (
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex items-center gap-1.5 mt-1">
                       <span className="text-xs font-bold text-slate-600">₹</span>
                       <input
                         type="number"
-                        className="w-20 h-7 rounded border border-indigo-300 px-1.5 text-xs font-mono font-bold text-indigo-900 outline-none focus:ring-2 focus:ring-indigo-600"
+                        className="w-20 h-8 rounded-lg border border-[#0b3c33]/40 px-2 text-xs font-mono font-bold text-slate-900 outline-none focus:ring-2 focus:ring-[#0b3c33]/20 bg-white"
                         value={editTariffValue}
                         onChange={(e) => setEditTariffValue(e.target.value)}
                         autoFocus
                       />
                       <button
                         onClick={() => handleSaveTariff(room.id, room.number)}
-                        className="h-7 w-7 rounded bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-2xs"
+                        className="h-8 w-8 rounded-lg bg-[#0b3c33] hover:bg-[#082e27] text-white flex items-center justify-center shadow-2xs cursor-pointer"
                         title="Save Tariff"
                       >
                         <Check className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => setEditingRoomId(null)}
-                        className="h-7 w-7 rounded bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center"
+                        className="h-8 w-8 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 flex items-center justify-center cursor-pointer"
                         title="Cancel"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -453,10 +467,10 @@ export default function RoomManagementView({
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-base font-black text-slate-900 font-mono">₹{room.rate}</span>
+                      <span className="text-base font-black text-[#0b3c33] font-mono">₹{room.rate}</span>
                       <button
                         onClick={() => handleStartEditTariff(room)}
-                        className="text-slate-400 hover:text-indigo-600 p-0.5 transition-colors"
+                        className="text-slate-400 hover:text-[#0b3c33] p-1 rounded hover:bg-white transition-colors cursor-pointer"
                         title="Edit Tariff Rate"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
@@ -467,12 +481,12 @@ export default function RoomManagementView({
 
                 {/* Status Badge */}
                 <div className="text-right">
-                  <div className="text-[10px] font-bold uppercase text-slate-400">Current Status</div>
-                  <span className={`inline-block text-xs font-black px-3 py-1 rounded-full mt-0.5 shadow-2xs ${
-                    isOccupied ? 'bg-amber-100 text-amber-900 border border-amber-300' :
-                    isCleaning ? 'bg-orange-100 text-orange-900 border border-orange-300' :
-                    isMaintenance ? 'bg-rose-100 text-rose-900 border border-rose-300' :
-                    'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                  <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Current Status</div>
+                  <span className={`inline-block text-[11px] font-extrabold px-3 py-0.5 rounded-full mt-0.5 border ${
+                    isOccupied ? 'bg-amber-100 text-amber-900 border-amber-300' :
+                    isCleaning ? 'bg-orange-100 text-orange-900 border-orange-300' :
+                    isMaintenance ? 'bg-rose-100 text-rose-900 border-rose-300' :
+                    'bg-emerald-100 text-emerald-900 border-emerald-300'
                   }`}>
                     {room.status}
                   </span>
@@ -483,11 +497,11 @@ export default function RoomManagementView({
               {/* Status Change Selector & Buttons */}
               <div className="pt-3 border-t border-slate-200/80 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-600">Change Room Status:</span>
+                  <span className="font-bold text-slate-600">Quick Status:</span>
                   <select
                     value={room.status}
                     onChange={(e) => handleStatusChange(room.id, room.number, e.target.value)}
-                    className="h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-extrabold text-slate-800 shadow-2xs outline-none focus:ring-2 focus:ring-indigo-600 cursor-pointer"
+                    className="h-7 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 shadow-2xs outline-none focus:ring-2 focus:ring-[#0b3c33] cursor-pointer"
                   >
                     <option value="VACANT">VACANT (Ready)</option>
                     <option value="OCCUPIED">OCCUPIED (Live Stay)</option>
@@ -497,11 +511,11 @@ export default function RoomManagementView({
                 </div>
 
                 {/* Quick 1-Click Action Buttons */}
-                <div className="flex flex-wrap gap-1.5 pt-1">
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
                   {!isVacant && (
                     <button
                       onClick={() => handleStatusChange(room.id, room.number, 'VACANT')}
-                      className="rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold px-2.5 py-1 transition-all shadow-2xs"
+                      className="rounded-lg bg-[#0b3c33] hover:bg-[#082e27] text-white text-[11px] font-bold px-2.5 py-1 transition-all shadow-2xs cursor-pointer"
                     >
                       ✓ Mark Vacant
                     </button>
@@ -510,7 +524,7 @@ export default function RoomManagementView({
                   {!isOccupied && (
                     <button
                       onClick={() => handleStatusChange(room.id, room.number, 'OCCUPIED')}
-                      className="rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-extrabold px-2.5 py-1 transition-all shadow-2xs"
+                      className="rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold px-2.5 py-1 transition-all shadow-2xs cursor-pointer"
                     >
                       Mark Occupied
                     </button>
@@ -519,7 +533,7 @@ export default function RoomManagementView({
                   {!isCleaning && !isOccupied && (
                     <button
                       onClick={() => handleStatusChange(room.id, room.number, 'CLEANING')}
-                      className="rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-900 border border-orange-300 text-[11px] font-bold px-2 py-1 transition-all"
+                      className="rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-900 border border-orange-300 text-[11px] font-bold px-2 py-1 transition-all cursor-pointer"
                     >
                       Housekeeping
                     </button>
@@ -528,7 +542,7 @@ export default function RoomManagementView({
                   {!isMaintenance && !isOccupied && (
                     <button
                       onClick={() => handleStatusChange(room.id, room.number, 'MAINTENANCE')}
-                      className="rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 text-[11px] font-bold px-2 py-1 transition-all"
+                      className="rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-900 border border-rose-300 text-[11px] font-bold px-2 py-1 transition-all cursor-pointer"
                     >
                       Out of Order
                     </button>
@@ -541,23 +555,23 @@ export default function RoomManagementView({
         })}
       </div>
 
-      {/* ── Add Room Modal Dialog ────────────────────────────────────────── */}
+      {/* ── Add Room Modal Dialog (Matching Brand Palette) ───────────────── */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-xs">
+                <div className="p-2.5 bg-[#0b3c33]/10 text-[#0b3c33] rounded-xl border border-[#0b3c33]/20 shadow-2xs">
                   <BedDouble className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-heading text-lg font-black text-slate-900">Add New Room</h3>
+                  <h3 className="font-heading text-lg font-bold text-slate-900">Add New Room</h3>
                   <p className="text-xs text-slate-500">Create a new room in hotel inventory</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -580,7 +594,7 @@ export default function RoomManagementView({
                   placeholder="e.g. 401, 305"
                   value={newRoomNumber}
                   onChange={(e) => setNewRoomNumber(e.target.value)}
-                  className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                  className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#0b3c33] focus:ring-2 focus:ring-[#0b3c33]/20"
                   required
                 />
               </div>
@@ -596,7 +610,7 @@ export default function RoomManagementView({
                     placeholder="e.g. Deluxe AC Suite, Executive King, Honeymoon Villa"
                     value={newRoomType}
                     onChange={(e) => setNewRoomType(e.target.value)}
-                    className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#0b3c33] focus:ring-2 focus:ring-[#0b3c33]/20"
                     required
                   />
                   <datalist id="room-type-options">
@@ -613,7 +627,7 @@ export default function RoomManagementView({
                         key={opt}
                         type="button"
                         onClick={() => setNewRoomType(opt)}
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 transition-colors"
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 hover:bg-emerald-50 hover:text-[#0b3c33] text-slate-600 transition-colors cursor-pointer"
                       >
                         + {opt}
                       </button>
@@ -630,7 +644,7 @@ export default function RoomManagementView({
                   <select
                     value={newRoomFloor}
                     onChange={(e) => setNewRoomFloor(e.target.value)}
-                    className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#0b3c33] focus:ring-2 focus:ring-[#0b3c33]/20 cursor-pointer"
                   >
                     <option value="1st Floor">1st Floor</option>
                     <option value="2nd Floor">2nd Floor</option>
@@ -650,26 +664,27 @@ export default function RoomManagementView({
                     placeholder="2500"
                     value={newRoomRate}
                     onChange={(e) => setNewRoomRate(e.target.value)}
-                    className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-mono font-semibold text-slate-900 outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                    className="w-full h-10 rounded-xl border border-slate-200 px-3 text-sm font-mono font-semibold text-slate-900 outline-none focus:border-[#0b3c33] focus:ring-2 focus:ring-[#0b3c33]/20"
                     required
                   />
                 </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-                <button
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:text-slate-800 rounded-xl hover:bg-slate-100 transition-colors"
+                  className="text-xs font-bold border-slate-200"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-200 transition-all"
+                  className="bg-[#0b3c33] hover:bg-[#082e27] text-white text-xs font-bold shadow-2xs"
                 >
                   Create Room
-                </button>
+                </Button>
               </div>
             </form>
           </div>
