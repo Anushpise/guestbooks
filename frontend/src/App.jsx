@@ -36,6 +36,18 @@ export default function App() {
   const [rooms, setRooms] = useState([]);
   const [activeStays, setActiveStays] = useState([]);
   const [dismissedOverdueIds, setDismissedOverdueIds] = useState([]);
+
+  // Responsive Navigation Sidebar States (Tablet / Mobile off-canvas drawer & Desktop focus toggle)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
+
+  const handleToggleSidebar = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsMobileSidebarOpen(prev => !prev);
+    } else {
+      setIsDesktopSidebarOpen(prev => !prev);
+    }
+  };
   const prevOverdueCountRef = React.useRef(0);
 
   // Real-time active stays and checkout expiration checker (polls every 5 seconds)
@@ -414,7 +426,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex">
-      {/* Left Sidebar Navigation */}
+      {/* Left Sidebar Navigation - Fully responsive on Tablet, Mobile & Desktop */}
       <Sidebar 
         user={currentUser}
         hotel={currentHotel}
@@ -426,10 +438,15 @@ export default function App() {
         occupiedCount={occupiedCount}
         totalRooms={rooms.length || 15}
         showPoliceOption={showPoliceOption}
+        isOpen={isMobileSidebarOpen}
+        onClose={() => setIsMobileSidebarOpen(false)}
+        desktopOpen={isDesktopSidebarOpen}
       />
 
-      {/* Main Right Layout */}
-      <div className="flex-1 pl-72 flex flex-col min-h-screen">
+      {/* Main Right Layout - Adapts to pl-0 on Tablet & Mobile, pl-72 on Desktop */}
+      <div className={`flex-1 flex flex-col min-h-screen min-w-0 transition-all duration-300 ease-in-out ${
+        isDesktopSidebarOpen ? 'lg:pl-72' : 'lg:pl-0'
+      }`}>
         <Header 
           user={currentUser}
           hotel={currentHotel}
@@ -443,6 +460,8 @@ export default function App() {
           showPoliceOption={showPoliceOption}
           activeStays={activeStays}
           onCheckOut={handleCheckOut}
+          onToggleSidebar={handleToggleSidebar}
+          isDesktopSidebarOpen={isDesktopSidebarOpen}
         />
 
         {/* Universal Top Checkout Expiry Alert Banner - Prominently visible on ALL pages */}
@@ -500,7 +519,7 @@ export default function App() {
           </div>
         )}
 
-        <main className="flex-1 p-8 max-w-7xl mx-auto w-full">
+        <main className="flex-1 p-3.5 sm:p-5 lg:p-8 max-w-7xl mx-auto w-full min-w-0">
           {/* SUPER ADMIN VIEW */}
           {activeTab === 'admin-approvals' && (
             <AdminDashboard />
