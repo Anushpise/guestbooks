@@ -5,7 +5,7 @@ from pathlib import Path
 backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db.database import init_db, get_all_guest_records, create_guest_record
+from app.db.database import init_db, get_all_guest_records, create_guest_record, checkout_guest_in_db
 
 class TestGuestRecords(unittest.TestCase):
     @classmethod
@@ -82,6 +82,17 @@ class TestGuestRecords(unittest.TestCase):
         self.assertEqual(found["partner_signature"], "data:image/png;base64,mockPartnerSignatureBase64")
         self.assertEqual(found["has_signature"], 1)
         self.assertEqual(found["has_partner_signature"], 1)
+
+        # Test checkout in DB
+        checkout_ok = checkout_guest_in_db("102", hotel_id="HTL-4541")
+        self.assertTrue(checkout_ok)
+
+        # Verify record is now CHECKED_OUT with IST checked_out_at
+        records_after = get_all_guest_records(hotel_id="HTL-4541")
+        found_after = next((r for r in records_after if r["id"] == rec["id"]), None)
+        self.assertEqual(found_after["status"], "CHECKED_OUT")
+        self.assertIsNotNone(found_after["checked_out_at"])
+        self.assertIn("+05:30", found_after["checked_out_at"])
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,8 +7,14 @@ Supports PostgreSQL (via DATABASE_URL environment variable) and fallback SQLite.
 import os
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import logging
+
+IST_TZ = timezone(timedelta(hours=5, minutes=30))
+
+def get_current_ist_iso() -> str:
+    """Returns ISO 8601 string formatted with Indian Standard Time (IST, UTC+5:30)."""
+    return datetime.now(IST_TZ).isoformat()
 
 logger = logging.getLogger("guestbooks_db")
 
@@ -481,7 +487,7 @@ def create_guest_record(data: dict) -> dict:
     next_id = int(get_first_val(row, 1))
     
     reg_no = f"REG-{next_id:04d}"
-    created_at = datetime.now().isoformat()
+    created_at = get_current_ist_iso()
 
     primary = data.get("primaryGuest", {})
     accompanying = data.get("accompanyingGuest")
@@ -664,18 +670,30 @@ def get_guest_record_by_id(record_id: int) -> dict:
             record["partner_signature"] = record["accompanying_guest"].get("signature") or record["accompanying_guest"].get("partnerSignature") or ""
     return record
 
-def checkout_guest_in_db(room_or_id: str, checkout_signature: str = None) -> bool:
-    """Marks a guest record as checked out, saving checkout signature if provided."""
+def checkout_guest_in_db(room_or_id: str, checkout_signature: str = None, hotel_id: str = None) -> bool:
+    """Marks a guest record as checked out in IST time, saving checkout signature if provided."""
     conn, db_type = get_db_connection()
-    now = datetime.now().isoformat()
-    if str(room_or_id).isdigit() and len(str(room_or_id)) > 3:
-        query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE id = ?"
-        params = (now, checkout_signature, int(room_or_id))
-    else:
-        query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE room_number = ? AND status = 'CHECKED_IN'"
-        params = (now, checkout_signature, str(room_or_id))
-    cursor = execute_query(conn, db_type, query, params)
-    affected = cursor.rowcount
+    now = get_current_ist_iso()
+    clean_val = str(room_or_id).strip()
+    clean_room = clean_val.split('_')[-1]
+
+    affected = 0
+    # Try updating by primary key ID first
+    if clean_val.isdigit():
+        c = execute_query(conn, db_type, "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE id = ?", (now, checkout_signature, int(clean_val)))
+        affected = c.rowcount
+
+    # If not affected by ID, update by room number for active check-in
+    if affected == 0:
+        if hotel_id:
+            query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE (room_number = ? OR room_number = ?) AND hotel_id = ? AND status = 'CHECKED_IN'"
+            params = (now, checkout_signature, clean_val, clean_room, hotel_id)
+        else:
+            query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN'"
+            params = (now, checkout_signature, clean_val, clean_room)
+        c = execute_query(conn, db_type, query, params)
+        affected = c.rowcount
+
     conn.commit()
     conn.close()
     return affected > 0

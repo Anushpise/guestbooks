@@ -66,6 +66,23 @@ export default function GuestDatabaseView({ hotelId = null }) {
     }
   };
 
+  const formatRegisterTime = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      let clean = String(dateStr).trim();
+      if (!clean.includes('Z') && !clean.includes('+') && clean.includes('T')) {
+        clean = clean + '+05:30';
+      }
+      const d = new Date(clean);
+      if (isNaN(d.getTime())) return String(dateStr);
+      const datePart = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+      const timePart = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      return `${datePart} ${timePart}`;
+    } catch (e) {
+      return String(dateStr);
+    }
+  };
+
   const handleViewDetails = async (recordId) => {
     try {
       const rec = await hotelService.getDatabaseRecordById(recordId);
@@ -257,13 +274,7 @@ export default function GuestDatabaseView({ hotelId = null }) {
                           <Building2 className="h-3.5 w-3.5 text-[#0b3c33]" /> Room {r.room_number}
                         </div>
                         <div className="text-[11px] text-slate-400 mt-0.5">
-                          {new Date(r.created_at).toLocaleDateString('en-IN', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                          {formatRegisterTime(r.created_at)}
                         </div>
                       </td>
 
@@ -314,19 +325,31 @@ export default function GuestDatabaseView({ hotelId = null }) {
                         <div className="flex flex-col items-center gap-1">
                           {r.has_signature === 1 || r.signature ? (
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#0b3c33] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                              <CheckCircle2 className="h-3 w-3 text-[#0b3c33]" /> Check-In Signed
+                              <CheckCircle2 className="h-3 w-3 text-[#0b3c33]" /> Guest 1 Signed
                             </span>
                           ) : (
                             <span className="text-[10px] text-slate-400 italic">No in-sig</span>
                           )}
 
-                          {hasCheckoutSig ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-900 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
-                              <PenTool className="h-3 w-3" /> Departure Signed
+                          {rPartner && (
+                            (r.has_partner_signature === 1 || r.partner_signature || rPartner?.signature) ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#0b3c33] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                <CheckCircle2 className="h-3 w-3 text-[#0b3c33]" /> Partner Signed
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                                Partner Sig Pending
+                              </span>
+                            )
+                          )}
+
+                          {r.status === 'CHECKED_OUT' || r.checked_out_at ? (
+                            <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                              <CheckCircle2 className="h-2.5 w-2.5 text-slate-500" /> Departure Cleared
                             </span>
-                          ) : r.status === 'CHECKED_OUT' ? (
-                            <span className="text-[9px] text-slate-400">Departed</span>
-                          ) : null}
+                          ) : (
+                            <span className="text-[9px] text-emerald-700 font-semibold">Active Stay</span>
+                          )}
                         </div>
                       </td>
 
@@ -572,31 +595,33 @@ export default function GuestDatabaseView({ hotelId = null }) {
                 )}
               </div>
 
-              {/* 3. Legally Verified Digital Signatures (Check-In & Check-Out) */}
+              {/* 3. Legally Verified Digital Signatures (Both Partners Check-In) */}
               <div className="border-t border-slate-200 pt-5">
                 <h4 className="font-extrabold uppercase text-[11px] tracking-wider text-slate-800 mb-2 flex items-center gap-1.5">
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Legally Verified Digital Signatures
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> Legally Verified Digital Signatures (Check-In)
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Check-In Signature */}
+                  {/* Primary Guest Check-In Signature */}
                   <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 flex flex-col items-center">
                     <div className="w-full flex items-center justify-between mb-2">
                       <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Check-In Signature
+                        <PenTool className="h-3 w-3 text-emerald-600" /> Primary Guest Digital Signature
                       </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {new Date(selectedRecord.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      {selectedRecord.created_at && (
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {formatRegisterTime(selectedRecord.created_at)}
+                        </span>
+                      )}
                     </div>
 
                     {selectedRecord.signature ? (
                       <div className="w-full flex flex-col items-center">
                         <img
                           src={selectedRecord.signature}
-                          alt="Check-In Signature"
-                          onClick={() => setLightboxImage({ url: selectedRecord.signature, title: `${selectedRecord.guest_name} - Check-In Signature` })}
-                          className="h-24 object-contain bg-white rounded border border-slate-200 w-full p-2 cursor-pointer hover:opacity-95"
+                          alt="Primary Check-In Signature"
+                          onClick={() => setLightboxImage({ url: selectedRecord.signature, title: `${selectedRecord.guest_name} - Primary Check-In Signature` })}
+                          className="h-24 object-contain bg-white rounded border border-emerald-200 w-full p-2 cursor-pointer hover:opacity-95"
                         />
                         <span className="text-[10px] font-bold text-emerald-800 mt-1.5 flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" /> Verified Check-In Consent
@@ -604,44 +629,72 @@ export default function GuestDatabaseView({ hotelId = null }) {
                       </div>
                     ) : (
                       <div className="h-24 w-full border border-dashed border-slate-200 rounded flex items-center justify-center text-slate-400 text-xs">
-                        No check-in signature on file
+                        No primary check-in signature on file
                       </div>
                     )}
                   </div>
 
-                  {/* Check-Out Signature */}
+                  {/* Accompanying Partner Check-In Signature */}
                   <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 flex flex-col items-center">
                     <div className="w-full flex items-center justify-between mb-2">
                       <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
-                        <LogOut className="h-3 w-3 text-rose-600" /> Check-Out Departure Signature
+                        <Users className="h-3 w-3 text-[#0b3c33]" /> Accompanying Partner Digital Signature
                       </span>
-                      {selectedRecord.checked_out_at && (
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {new Date(selectedRecord.checked_out_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {partner && (
+                        <span className="text-[10px] text-slate-500 font-medium truncate max-w-[120px]">
+                          {partner.name || 'Partner'}
                         </span>
                       )}
                     </div>
 
-                    {selectedRecord.checkout_signature ? (
+                    {(selectedRecord.partner_signature || partner?.signature) ? (
                       <div className="w-full flex flex-col items-center">
                         <img
-                          src={selectedRecord.checkout_signature}
-                          alt="Check-Out Signature"
-                          onClick={() => setLightboxImage({ url: selectedRecord.checkout_signature, title: `${selectedRecord.guest_name} - Check-Out Signature` })}
-                          className="h-24 object-contain bg-white rounded border border-purple-200 w-full p-2 cursor-pointer hover:opacity-95"
+                          src={selectedRecord.partner_signature || partner?.signature}
+                          alt="Partner Check-In Signature"
+                          onClick={() => setLightboxImage({
+                            url: selectedRecord.partner_signature || partner?.signature,
+                            title: `${partner?.name || 'Partner'} - Check-In Signature`
+                          })}
+                          className="h-24 object-contain bg-white rounded border border-emerald-200 w-full p-2 cursor-pointer hover:opacity-95"
                         />
-                        <span className="text-[10px] font-bold text-purple-800 mt-1.5 flex items-center gap-1">
-                          <ShieldCheck className="h-3 w-3" /> Verified Departure & Handover
+                        <span className="text-[10px] font-bold text-emerald-800 mt-1.5 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Verified Partner Check-In Consent
                         </span>
                       </div>
-                    ) : (
-                      <div className="h-24 w-full border border-dashed border-slate-200 rounded flex flex-col items-center justify-center text-slate-400 text-xs">
-                        {selectedRecord.status === 'CHECKED_OUT' ? (
-                          <span>Departure Cleared (Key Handover Confirmed)</span>
-                        ) : (
-                          <span className="italic text-amber-600">Active Stay — Departure signature pending checkout</span>
-                        )}
+                    ) : partner ? (
+                      <div className="h-24 w-full border border-dashed border-amber-200 bg-amber-50/50 rounded flex flex-col items-center justify-center text-amber-700 text-xs text-center p-2">
+                        <span>Partner: {partner.name || 'Second Guest'}</span>
+                        <span className="text-[10px] text-amber-600 mt-1">No digital signature uploaded</span>
                       </div>
+                    ) : (
+                      <div className="h-24 w-full border border-dashed border-slate-200 rounded flex flex-col items-center justify-center text-slate-400 text-xs text-center p-2">
+                        <span>Single Guest Check-In</span>
+                        <span className="text-[10px] text-slate-400 mt-1">No accompanying partner registered</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Stay Status & Check-Out Clearance */}
+                <div className="mt-3.5 p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-700">Stay Status:</span>
+                    {selectedRecord.status === 'CHECKED_OUT' ? (
+                      <span className="inline-flex items-center gap-1 font-bold text-slate-700 bg-slate-200/80 px-2.5 py-0.5 rounded-full text-[11px]">
+                        <CheckCircle2 className="h-3 w-3 text-slate-600" /> Checked Out (Departure Cleared)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full text-[11px]">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Active Stay
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-slate-500 font-mono text-[11px]">
+                    {selectedRecord.status === 'CHECKED_OUT' && selectedRecord.checked_out_at ? (
+                      <span>Checked Out: {formatRegisterTime(selectedRecord.checked_out_at)}</span>
+                    ) : (
+                      <span>Checked In: {formatRegisterTime(selectedRecord.created_at)}</span>
                     )}
                   </div>
                 </div>
@@ -802,11 +855,11 @@ export default function GuestDatabaseView({ hotelId = null }) {
                         {r.address ? `${r.address}${r.city ? `, ${r.city}` : ''}` : (r.city || '—')}
                       </td>
                       <td className="border border-black px-1.5 py-1 font-mono text-center whitespace-nowrap">
-                        {inTime ? new Date(inTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' ' + new Date(inTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
+                        {formatRegisterTime(inTime)}
                       </td>
                       <td className="border border-black px-1.5 py-1 font-mono text-center whitespace-nowrap">
-                        {outTime ? (
-                          new Date(outTime).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' ' + new Date(outTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        {r.status === 'CHECKED_OUT' || outTime ? (
+                          formatRegisterTime(outTime || inTime)
                         ) : (
                           <span className="font-sans font-bold text-gray-700">ACTIVE STAY</span>
                         )}
@@ -825,8 +878,8 @@ export default function GuestDatabaseView({ hotelId = null }) {
                         ₹{r.room_rate || 0} / ₹{r.advance_paid || 0}
                       </td>
                       <td className="border border-black px-1 py-1 text-center font-bold text-[9px]">
-                        {r.has_signature === 1 || r.signature ? 'IN:✓' : 'IN:—'}{' '}
-                        {r.has_checkout_signature === 1 || r.checkout_signature ? 'OUT:✓' : ''}
+                        <div>{r.has_signature === 1 || r.signature ? 'P1:✓' : 'P1:—'} {rPartner ? ((r.has_partner_signature === 1 || r.partner_signature || rPartner?.signature) ? 'P2:✓' : 'P2:—') : ''}</div>
+                        <div className="mt-0.5 text-[8.5px]">{r.status === 'CHECKED_OUT' || outTime ? 'OUT:✓' : 'ACTIVE'}</div>
                       </td>
                     </tr>
                   );

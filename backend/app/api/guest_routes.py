@@ -107,12 +107,16 @@ class CheckOutPayload(BaseModel):
     signature: Optional[str] = None
 
 @router.post("/checkout/{room_or_id}")
-def checkout_guest_endpoint(room_or_id: str, payload: Optional[CheckOutPayload] = None):
+def checkout_guest_endpoint(
+    room_or_id: str,
+    hotel_id: Optional[str] = Query(None),
+    payload: Optional[CheckOutPayload] = None
+):
     """Marks a guest record as checked out, saving digital checkout signature if provided."""
     sig = None
     if payload:
         sig = payload.checkout_signature or payload.signature
-    success = checkout_guest_in_db(room_or_id, checkout_signature=sig)
+    success = checkout_guest_in_db(room_or_id, checkout_signature=sig, hotel_id=hotel_id)
     if not success:
         return {"success": False, "message": "No active record found for checkout"}
     return {"success": True, "message": f"Guest {room_or_id} marked as checked out", "has_signature": bool(sig)}

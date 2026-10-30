@@ -736,7 +736,7 @@ export const hotelService = {
     const newStayRecord = {
       id: newStayId,
       regNo: regNo,
-      dbId: null,
+      dbId: dbId,
       hotelId: currentHotelId,
       roomNumber: roomNo,
       checkInTime: new Date().toISOString(),
@@ -821,15 +821,17 @@ export const hotelService = {
         checkout_signature: checkoutSignature,
         signature: checkoutSignature,
       };
+      const targetParam = stayToCheckout.dbId || stayToCheckout.roomNumber;
+      const checkoutUrl = `/api/guests/checkout/${encodeURIComponent(targetParam)}?hotel_id=${encodeURIComponent(stayHotelId)}`;
       let res = null;
       try {
-        res = await fetch(`/api/guests/checkout/${stayToCheckout.roomNumber}`, {
+        res = await fetch(checkoutUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(checkoutPayload)
         });
       } catch {
-        res = await fetch(getBackendFallbackUrl(`/api/guests/checkout/${stayToCheckout.roomNumber}`), {
+        res = await fetch(getBackendFallbackUrl(checkoutUrl), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(checkoutPayload)
@@ -1092,11 +1094,13 @@ export const hotelService = {
         checkout_signature: s.checkOutSignature || null,
         partner_document_front: partnerFront,
         partner_document_back: partnerBack,
+        partner_signature: partner?.signature || null,
         accompanying_guest: partner || null,
         has_doc_front: s.documentFront ? 1 : 0,
         has_doc_back: s.documentBack ? 1 : 0,
         has_signature: s.signature ? 1 : 0,
         has_partner_doc: (partnerFront || partnerBack) ? 1 : 0,
+        has_partner_signature: (partner?.signature) ? 1 : 0,
         has_checkout_signature: s.checkOutSignature ? 1 : 0,
       };
     });
