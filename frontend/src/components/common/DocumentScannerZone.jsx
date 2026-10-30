@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CheckCircle2, Loader2, Upload, Trash2, Clipboard, X, ScanLine, Zap } from 'lucide-react';
 import { scanDocumentWithOCR, parseIndianIDText } from '../../lib/ocrUtils';
-import { compressImageForOCR } from '../../lib/imageCompressor';
+import { compressImageForOCR, compressImageToBase64 } from '../../lib/imageCompressor';
 
 export default function DocumentScannerZone({
   label = "Guest Document",
@@ -31,14 +31,7 @@ export default function DocumentScannerZone({
       runOCR(images);
       if (onDocumentsChange) {
         Promise.all(
-          images.map((img) =>
-            new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.readAsDataURL(img.file);
-              reader.onload = () => resolve(reader.result);
-              reader.onerror = () => resolve('');
-            })
-          )
+          images.map((img) => compressImageToBase64(img.file, 900, 0.72))
         ).then((base64s) => {
           onDocumentsChange({
             front: base64s[0] || null,

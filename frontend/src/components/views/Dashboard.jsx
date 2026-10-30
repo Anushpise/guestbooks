@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
+import { getStayExpiryStatus } from '../../lib/dateUtils';
 import { 
+  Clock,
+  AlertTriangle,
   BedDouble,
   CheckCircle2,
   UserCheck,
@@ -207,11 +210,39 @@ export default function Dashboard({
 
                       {/* Status */}
                       <td className="px-5 py-4">
-                        {room.status === 'OCCUPIED' && (
-                          <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-800 border border-amber-200/80">
-                            Occupied
-                          </span>
-                        )}
+                        {room.status === 'OCCUPIED' && (() => {
+                          const expiry = getStayExpiryStatus(stay);
+                          if (expiry.isOverdue) {
+                            return (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-extrabold text-rose-700 border border-rose-200">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" />
+                                  Time Up ({expiry.statusBadgeText})
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">Due: {expiry.expectedFormatted}</span>
+                              </div>
+                            );
+                          }
+                          if (expiry.isDueSoon) {
+                            return (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-extrabold text-amber-800 border border-amber-200">
+                                  <Clock className="h-3 w-3 text-amber-600" />
+                                  Due Soon ({expiry.statusBadgeText})
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-mono">Due: {expiry.expectedFormatted}</span>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-0.5 text-xs font-extrabold text-amber-800 border border-amber-200/80">
+                                Occupied
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">Till: {expiry.expectedFormatted}</span>
+                            </div>
+                          );
+                        })()}
                         {room.status === 'VACANT' && (
                           <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-extrabold text-[#0b3c33] border border-emerald-200/80">
                             Vacant

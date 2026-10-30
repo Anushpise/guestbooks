@@ -1,3 +1,4 @@
+import { getStayExpiryStatus, playCheckoutAlertSound } from './lib/dateUtils';
 import React, { useState, useEffect } from 'react';
 import LandingPage from './components/views/LandingPage';
 import Sidebar from './components/layout/Sidebar';
@@ -33,6 +34,31 @@ export default function App() {
   // Core Data States
   const [rooms, setRooms] = useState([]);
   const [activeStays, setActiveStays] = useState([]);
+  const [dismissedOverdueIds, setDismissedOverdueIds] = useState([]);
+  const prevOverdueCountRef = React.useRef(0);
+
+  // Periodic checkout expiration updater (every 30 seconds)
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'HOTEL') return;
+    const interval = setInterval(() => {
+      setActiveStays(prev => [...prev]);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
+  // Find overdue stays that haven't been manually dismissed
+  const overdueStays = (activeStays || []).filter(stay => {
+    const st = getStayExpiryStatus(stay);
+    return st.isOverdue && !dismissedOverdueIds.includes(stay.id);
+  });
+
+  // Play alert chime when a room transitions to overdue
+  useEffect(() => {
+    if (overdueStays.length > prevOverdueCountRef.current) {
+      playCheckoutAlertSound();
+    }
+    prevOverdueCountRef.current = overdueStays.length;
+  }, [overdueStays.length]);
 
   // Modal States
   const [isExpressModalOpen, setIsExpressModalOpen] = useState(false);
@@ -409,7 +435,42 @@ export default function App() {
           openPoliceModal={handleOpenPoliceModal}
           openCounterQRModal={() => setIsCounterQRModalOpen(true)}
           showPoliceOption={showPoliceOption}
+          activeStays={activeStays}
+          onCheckOut={handleCheckOut}
         />
+
+        {/* Top Checkout Expiry Alert Banner */}
+        {overdueStays.length > 0 && (
+          <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 text-xs font-bold text-rose-900 flex items-center justify-between sticky top-16 z-20 shadow-xs animate-in fade-in slide-in-from-top-1">
+            <div className="flex items-center gap-2.5">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600" />
+              </span>
+              <span>
+                <strong>Checkout Alert:</strong> Room <strong>RM-{overdueStays[0].roomNumber}</strong> ({overdueStays[0].primaryGuest?.name || 'Guest'}) stay period has expired!
+                {overdueStays.length > 1 && ` (+${overdueStays.length - 1} more room${overdueStays.length > 2 ? 's' : ''})`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCheckOut(overdueStays[0].id)}
+                className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg text-xs font-extrabold cursor-pointer transition-all shadow-2xs active:scale-95"
+              >
+                Check Out RM-{overdueStays[0].roomNumber}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissedOverdueIds(prev => [...prev, overdueStays[0].id])}
+                className="px-2 py-0.5 hover:bg-rose-100 rounded-md text-rose-600 font-bold cursor-pointer"
+                title="Dismiss this alert"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         <main className="flex-1 p-8 max-w-7xl mx-auto w-full">
           {/* SUPER ADMIN VIEW */}

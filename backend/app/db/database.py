@@ -678,20 +678,19 @@ def checkout_guest_in_db(room_or_id: str, checkout_signature: str = None, hotel_
     clean_room = clean_val.split('_')[-1]
 
     affected = 0
-    # Try updating by primary key ID first
-    if clean_val.isdigit():
-        c = execute_query(conn, db_type, "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE id = ?", (now, checkout_signature, int(clean_val)))
-        affected = c.rowcount
+    # 1. First priority: Update active CHECKED_IN stay for this room number
+    if hotel_id:
+        query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE (room_number = ? OR room_number = ?) AND hotel_id = ? AND status = 'CHECKED_IN'"
+        params = (now, checkout_signature, clean_val, clean_room, hotel_id)
+    else:
+        query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN'"
+        params = (now, checkout_signature, clean_val, clean_room)
+    c = execute_query(conn, db_type, query, params)
+    affected = c.rowcount
 
-    # If not affected by ID, update by room number for active check-in
-    if affected == 0:
-        if hotel_id:
-            query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE (room_number = ? OR room_number = ?) AND hotel_id = ? AND status = 'CHECKED_IN'"
-            params = (now, checkout_signature, clean_val, clean_room, hotel_id)
-        else:
-            query = "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN'"
-            params = (now, checkout_signature, clean_val, clean_room)
-        c = execute_query(conn, db_type, query, params)
+    # 2. Second priority: If no active record matched room number, update by primary key ID
+    if affected == 0 and clean_val.isdigit():
+        c = execute_query(conn, db_type, "UPDATE guest_records SET status = 'CHECKED_OUT', checked_out_at = ?, checkout_signature = ? WHERE id = ?", (now, checkout_signature, int(clean_val)))
         affected = c.rowcount
 
     conn.commit()

@@ -1,3 +1,4 @@
+import { calculateExpectedCheckout, getStayExpiryStatus } from '../lib/dateUtils.js';
 import { initialRooms, frequentGuestsDatabase, initialActiveStays, initialHistoricalPoliceLogs } from '../mockData.js';
 
 const ROOMS_STORAGE_KEY = 'staylog_rooms_v1';
@@ -51,65 +52,56 @@ const stripHeavyImagesDeep = (obj) => {
 };
 
 export const safeLocalStorageSet = (key, value) => {
+  // If saving historical ledgers, pre-strip heavy base64 payloads to preserve browser storage
+  let toSave = value;
+  if (key === ALL_STAYS_STORAGE_KEY || key === POLICE_LOGS_STORAGE_KEY || key === GUESTS_STORAGE_KEY) {
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      toSave = JSON.stringify(stripHeavyImagesDeep(parsed));
+    } catch (_) {}
+  }
+
   try {
-    localStorage.setItem(key, value);
+    localStorage.setItem(key, toSave);
   } catch (err) {
-    if (err.name === 'QuotaExceededError' || err.code === 22 || err.number === -2147024882) {
-      console.warn(`[SafeStorage] LocalStorage quota reached while setting "${key}". Pruning older heavy images...`);
+    console.warn(`[SafeStorage] Storage quota issue while setting "${key}". Pruning storage...`);
+    try {
+      // 1. Aggressively strip images and slice POLICE_LOGS
       try {
-        // 1. Prune heavy image documents from historical guests ledger
-        const rawGuests = localStorage.getItem(GUESTS_STORAGE_KEY);
-        if (rawGuests) {
-          const guests = JSON.parse(rawGuests);
-          const prunedGuests = (Array.isArray(guests) ? guests : []).slice(0, 30).map(g => {
-            const p = { ...(g.primaryGuest || {}) };
-            delete p.documentFront; delete p.documentBack; delete p.signature;
-            const a = g.accompanyingGuest ? { ...g.accompanyingGuest } : null;
-            if (a) { delete a.documentFront; delete a.documentBack; delete a.signature; }
-            return { ...g, primaryGuest: p, accompanyingGuest: a };
-          });
-          localStorage.setItem(GUESTS_STORAGE_KEY, JSON.stringify(prunedGuests));
+        const rawP = localStorage.getItem(POLICE_LOGS_STORAGE_KEY);
+        if (rawP) {
+          const p = JSON.parse(rawP);
+          const pruned = (Array.isArray(p) ? p : []).slice(0, 15).map(stripHeavyImagesDeep);
+          localStorage.setItem(POLICE_LOGS_STORAGE_KEY, JSON.stringify(pruned));
         }
+      } catch (_) {}
 
-        // 2. Prune old historical stays
-        const rawAllStays = localStorage.getItem(ALL_STAYS_STORAGE_KEY);
-        if (rawAllStays) {
-          const allStays = JSON.parse(rawAllStays);
-          const prunedStays = (Array.isArray(allStays) ? allStays : []).slice(0, 20).map(s => {
-            const copy = { ...s };
-            delete copy.documentFront; delete copy.documentBack; delete copy.signature;
-            delete copy.partnerDocumentFront; delete copy.partnerDocumentBack; delete copy.partnerSignature;
-            return copy;
-          });
-          localStorage.setItem(ALL_STAYS_STORAGE_KEY, JSON.stringify(prunedStays));
+      // 2. Strip images and slice ALL_STAYS
+      try {
+        const rawS = localStorage.getItem(ALL_STAYS_STORAGE_KEY);
+        if (rawS) {
+          const s = JSON.parse(rawS);
+          const pruned = (Array.isArray(s) ? s : []).slice(0, 15).map(stripHeavyImagesDeep);
+          localStorage.setItem(ALL_STAYS_STORAGE_KEY, JSON.stringify(pruned));
         }
+      } catch (_) {}
 
-        // 3. Prune old police logs
-        const rawPolice = localStorage.getItem(POLICE_LOGS_STORAGE_KEY);
-        if (rawPolice) {
-          const police = JSON.parse(rawPolice);
-          const prunedPolice = (Array.isArray(police) ? police : []).slice(0, 20).map(p => {
-            const copy = { ...p };
-            delete copy.documentFront; delete copy.documentBack; delete copy.signature;
-            return copy;
-          });
-          localStorage.setItem(POLICE_LOGS_STORAGE_KEY, JSON.stringify(prunedPolice));
+      // 3. Strip images and slice GUESTS
+      try {
+        const rawG = localStorage.getItem(GUESTS_STORAGE_KEY);
+        if (rawG) {
+          const g = JSON.parse(rawG);
+          const pruned = (Array.isArray(g) ? g : []).slice(0, 25).map(stripHeavyImagesDeep);
+          localStorage.setItem(GUESTS_STORAGE_KEY, JSON.stringify(pruned));
         }
+      } catch (_) {}
 
-        // Try setting again after pruning
-        localStorage.setItem(key, value);
-      } catch (retryErr) {
-        // 4. If STILL failing, strip heavy base64 strings directly from the target value
-        try {
-          const parsed = JSON.parse(value);
-          const stripped = stripHeavyImagesDeep(parsed);
-          localStorage.setItem(key, JSON.stringify(stripped));
-        } catch (finalErr) {
-          console.error(`[SafeStorage] Unable to save "${key}" even with deep compression:`, finalErr);
-        }
-      }
-    } else {
-      console.error(`[SafeStorage] Failed setting "${key}":`, err);
+      // 4. Try setting stripped target value
+      const parsedTarget = typeof toSave === 'string' ? JSON.parse(toSave) : toSave;
+      const strippedTarget = stripHeavyImagesDeep(parsedTarget);
+      localStorage.setItem(key, JSON.stringify(strippedTarget));
+    } catch (finalErr) {
+      console.warn(`[SafeStorage] Could not persist key "${key}" to localStorage:`, finalErr);
     }
   }
 };
@@ -568,6 +560,15 @@ export const hotelService = {
     return hotelService.getActiveStays(hId);
   },
 
+  getOverdueActiveStays: (targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const active = hotelService.getActiveStays(hId);
+    return active.filter(s => {
+      const status = getStayExpiryStatus(s);
+      return status.isOverdue || status.isDueSoon;
+    });
+  },
+
   getActiveStays: (targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const rawStays = hotelService.getRawActiveStays();
@@ -645,7 +646,7 @@ export const hotelService = {
       guests.unshift(newProfile);
     }
 
-    safeLocalStorageSet(GUESTS_STORAGE_KEY, JSON.stringify(guests));
+    safeLocalStorageSet(GUESTS_STORAGE_KEY, JSON.stringify(guests.slice(0, 50)));
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -740,7 +741,7 @@ export const hotelService = {
       hotelId: currentHotelId,
       roomNumber: roomNo,
       checkInTime: new Date().toISOString(),
-      expectedCheckOut: stayData.expectedCheckOut || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+      expectedCheckOut: stayData.expectedCheckOut || calculateExpectedCheckout(new Date().toISOString(), stayData.stayType),
       stayType: stayData.stayType || '24 Hours Full Stay',
       primaryGuest: stayData.primaryGuest,
       accompanyingGuest: stayData.accompanyingGuest || null,

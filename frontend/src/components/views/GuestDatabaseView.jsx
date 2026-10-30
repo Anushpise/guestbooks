@@ -858,8 +858,10 @@ export default function GuestDatabaseView({ hotelId = null }) {
                         {formatRegisterTime(inTime)}
                       </td>
                       <td className="border border-black px-1.5 py-1 font-mono text-center whitespace-nowrap">
-                        {r.status === 'CHECKED_OUT' || outTime ? (
-                          formatRegisterTime(outTime || inTime)
+                        {outTime ? (
+                          formatRegisterTime(outTime)
+                        ) : r.status === 'CHECKED_OUT' ? (
+                          <span className="font-sans font-bold text-slate-700">CHECKED OUT</span>
                         ) : (
                           <span className="font-sans font-bold text-gray-700">ACTIVE STAY</span>
                         )}

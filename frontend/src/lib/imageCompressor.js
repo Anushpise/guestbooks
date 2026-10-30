@@ -123,3 +123,43 @@ export function base64ToFile(base64String, filename = 'guest_id.jpg') {
     return null;
   }
 }
+
+/**
+ * Compresses an image file or blob directly into an ultra-lean base64 JPEG data URL (~40KB-75KB).
+ * Guards against browser LocalStorage QuotaExceededError and backend 413 Payload Too Large.
+ *
+ * @param {File|Blob|string} fileOrBlobOrBase64
+ * @param {number} [maxDimension=900]
+ * @param {number} [quality=0.72]
+ * @returns {Promise<string>}
+ */
+export async function compressImageToBase64(fileOrBlobOrBase64, maxDimension = 900, quality = 0.72) {
+  if (!fileOrBlobOrBase64) return '';
+
+  let blob = fileOrBlobOrBase64;
+  if (typeof fileOrBlobOrBase64 === 'string') {
+    if (!fileOrBlobOrBase64.startsWith('data:image')) {
+      return fileOrBlobOrBase64;
+    }
+    blob = base64ToFile(fileOrBlobOrBase64);
+  }
+
+  try {
+    const compressedFile = await compressImageForOCR(blob, maxDimension, quality);
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(compressedFile);
+    });
+  } catch (err) {
+    console.warn('[ImageCompressor] compressImageToBase64 fallback:', err);
+    if (typeof fileOrBlobOrBase64 === 'string') return fileOrBlobOrBase64;
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result || '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(blob);
+    });
+  }
+}
