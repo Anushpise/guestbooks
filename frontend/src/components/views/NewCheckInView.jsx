@@ -25,9 +25,11 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
   const [advancePaid, setAdvancePaid] = useState(vacantRooms[0]?.rate?.toString() || '1800');
   const [paymentMode, setPaymentMode] = useState('UPI / GPay');
 
-  // Digital Signature & Uploaded Documents
+  // Digital Signatures & Uploaded Documents (Both Primary & Partner)
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [signatureData, setSignatureData] = useState(null);
+  const [isPartnerSignatureModalOpen, setIsPartnerSignatureModalOpen] = useState(false);
+  const [partnerSignatureData, setPartnerSignatureData] = useState(null);
   const [primaryDocs, setPrimaryDocs] = useState({ front: null, back: null });
   const [partnerDocs, setPartnerDocs] = useState({ front: null, back: null });
 
@@ -110,8 +112,8 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
   const [primaryCity, setPrimaryCity] = useState('');
   const [isLocal, setIsLocal] = useState(false);
 
-  // Accompanying Guest / Partner
-  const [hasAccompanying, setHasAccompanying] = useState(false);
+  // Accompanying Guest / Partner (Defaulted ON)
+  const [hasAccompanying, setHasAccompanying] = useState(true);
   const [partnerName, setPartnerName] = useState('');
   const [partnerAge, setPartnerAge] = useState('');
   const [partnerGender, setPartnerGender] = useState('Female');
@@ -133,6 +135,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     setAdvancePaid(vacantRooms[0]?.rate?.toString() || '1800');
     setPaymentMode('UPI / GPay');
     setSignatureData(null);
+    setPartnerSignatureData(null);
     setPrimaryDocs({ front: null, back: null });
     setPartnerDocs({ front: null, back: null });
     setPrimaryName('');
@@ -144,7 +147,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     setPrimaryAddress('');
     setPrimaryCity('');
     setIsLocal(false);
-    setHasAccompanying(false);
+    setHasAccompanying(true);
     setPartnerName('');
     setPartnerAge('');
     setPartnerGender('Female');
@@ -208,6 +211,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
       documentFront: primaryDocs.front,
       documentBack: primaryDocs.back,
       signature: signatureData,
+      partnerSignature: partnerSignatureData,
       primaryGuest: {
         name: primaryName,
         age: Number(primaryAge) || 25,
@@ -234,6 +238,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
               city: primaryCity,
               documentFront: partnerDocs.front,
               documentBack: partnerDocs.back,
+              signature: partnerSignatureData,
             }
           : null,
     };
@@ -504,7 +509,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-700">Select Room *</label>
               <select
@@ -536,6 +541,22 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700">Room Tariff (₹) *</label>
+                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">Editable</span>
+              </div>
+              <input
+                type="number"
+                min="0"
+                className="w-full h-10 px-3 text-xs bg-white border border-indigo-200 rounded-xl text-slate-900 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-none font-mono font-bold shadow-2xs"
+                value={roomRate}
+                onChange={(e) => setRoomRate(e.target.value)}
+                placeholder="Custom Stay Rate"
+                required
+              />
+            </div>
+
+            <div className="space-y-1">
               <label className="text-xs font-bold text-slate-700">Advance Paid (₹)</label>
               <input
                 type="number"
@@ -547,61 +568,119 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
           </div>
         </div>
 
-        {/* Section 4: Digital Signature */}
+        {/* Section 4: Digital Signatures (Both Partners) */}
         <div className="space-y-4 pt-4 border-t border-slate-100">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <PenTool className="h-4 w-4 text-[#0b3c33]" />
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-heading">
-                Digital Signature
+                Digital Signatures ({hasAccompanying ? 'Both Partners Mandatory' : 'Primary Guest'})
               </h3>
             </div>
-            {signatureData && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
-                <Check className="h-3.5 w-3.5" /> Signature Recorded
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {signatureData && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                  <Check className="h-3 w-3" /> Guest 1 Signed
+                </span>
+              )}
+              {hasAccompanying && partnerSignatureData && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                  <Check className="h-3 w-3" /> Partner Signed
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
-            {signatureData ? (
-              <div className="border border-emerald-300 rounded-xl p-2 bg-white shadow-2xs">
-                <img
-                  src={signatureData}
-                  alt="Signature"
-                  className="h-20 max-w-[200px] object-contain"
-                />
-              </div>
-            ) : (
-              <div className="h-20 w-48 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 text-xs bg-white">
-                <PenTool className="h-5 w-5 mb-1 opacity-50 text-slate-400" />
-                <span className="font-medium text-[11px]">No signature</span>
-              </div>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Primary Guest Signature Pad */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+              {signatureData ? (
+                <div className="border border-emerald-300 rounded-xl p-1.5 bg-white shadow-2xs">
+                  <img
+                    src={signatureData}
+                    alt="Primary Signature"
+                    className="h-16 max-w-[160px] object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="h-16 w-36 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 text-xs bg-white">
+                  <PenTool className="h-4 w-4 mb-0.5 opacity-50 text-slate-400" />
+                  <span className="font-medium text-[10px]">No signature</span>
+                </div>
+              )}
 
-            <div className="flex-1 space-y-1.5 text-center sm:text-left">
-              <p className="text-xs font-bold text-slate-800">
-                {signatureData ? 'Digital signature captured' : 'Guest signs on screen or mobile tablet'}
-              </p>
-              <div className="flex gap-2 justify-center sm:justify-start">
-                <button
-                  type="button"
-                  onClick={() => setIsSignatureModalOpen(true)}
-                  className="px-3.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold cursor-pointer transition-colors"
-                >
-                  {signatureData ? '✍️ Re-Sign' : '✍️ Open Signature Pad'}
-                </button>
-                {signatureData && (
+              <div className="flex-1 space-y-1 text-center sm:text-left">
+                <p className="text-xs font-bold text-slate-900">
+                  1. {primaryName || 'Primary Guest'} Signature
+                </p>
+                <div className="flex gap-1.5 justify-center sm:justify-start">
                   <button
                     type="button"
-                    onClick={() => setSignatureData(null)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 cursor-pointer"
+                    onClick={() => setIsSignatureModalOpen(true)}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 text-[11px] font-bold cursor-pointer transition-colors"
                   >
-                    Clear
+                    {signatureData ? '✍️ Re-Sign' : '✍️ Sign'}
                   </button>
-                )}
+                  {signatureData && (
+                    <button
+                      type="button"
+                      onClick={() => setSignatureData(null)}
+                      className="px-2 py-1 rounded-lg text-[11px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* Accompanying Partner Signature Pad */}
+            {hasAccompanying ? (
+              <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                {partnerSignatureData ? (
+                  <div className="border border-indigo-300 rounded-xl p-1.5 bg-white shadow-2xs">
+                    <img
+                      src={partnerSignatureData}
+                      alt="Partner Signature"
+                      className="h-16 max-w-[160px] object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="h-16 w-36 border-2 border-dashed border-indigo-200 rounded-xl flex flex-col items-center justify-center text-indigo-400 text-xs bg-white">
+                    <PenTool className="h-4 w-4 mb-0.5 opacity-50 text-indigo-400" />
+                    <span className="font-medium text-[10px]">Partner Signature</span>
+                  </div>
+                )}
+
+                <div className="flex-1 space-y-1 text-center sm:text-left">
+                  <p className="text-xs font-bold text-slate-900">
+                    2. {partnerName || 'Accompanying Partner'} Signature
+                  </p>
+                  <div className="flex gap-1.5 justify-center sm:justify-start">
+                    <button
+                      type="button"
+                      onClick={() => setIsPartnerSignatureModalOpen(true)}
+                      className="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 text-indigo-900 text-[11px] font-bold cursor-pointer transition-colors"
+                    >
+                      {partnerSignatureData ? '✍️ Re-Sign' : '✍️ Sign'}
+                    </button>
+                    {partnerSignatureData && (
+                      <button
+                        type="button"
+                        onClick={() => setPartnerSignatureData(null)}
+                        className="px-2 py-1 rounded-lg text-[11px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full flex items-center justify-center p-3.5 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs font-medium">
+                Single guest stay — Partner signature not required.
+              </div>
+            )}
           </div>
         </div>
 
@@ -625,12 +704,26 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
         </div>
       </form>
 
-      {/* Signature Modal */}
+      {/* Primary Guest Signature Modal */}
       <SignatureModal
         isOpen={isSignatureModalOpen}
         onClose={() => setIsSignatureModalOpen(false)}
         onSave={(sig) => setSignatureData(sig)}
         existingSignature={signatureData}
+        guestName={primaryName || 'Primary Guest'}
+        title="Primary Guest Signature"
+        subtitle="Mandatory check-in declaration for primary registered guest"
+      />
+
+      {/* Partner / Second Guest Signature Modal */}
+      <SignatureModal
+        isOpen={isPartnerSignatureModalOpen}
+        onClose={() => setIsPartnerSignatureModalOpen(false)}
+        onSave={(sig) => setPartnerSignatureData(sig)}
+        existingSignature={partnerSignatureData}
+        guestName={partnerName || 'Accompanying Partner'}
+        title="Accompanying Partner Signature"
+        subtitle="Statutory joint declaration signature for accompanying partner"
       />
 
       {/* Front-Desk QR Standee Generator & Print Modal */}

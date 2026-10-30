@@ -137,20 +137,8 @@ export default function CheckOutModal({
   };
 
   const handleSaveCheckOut = () => {
-    const canvas = canvasRef.current;
-    let dataUrl = null;
-
-    if (!canvas || !hasContent) {
-      const proceedWithout = window.confirm(
-        'Departure signature is not captured. Do you want to complete check-out without digital signature?'
-      );
-      if (!proceedWithout) return;
-    } else {
-      dataUrl = canvas.toDataURL('image/png');
-    }
-
     onConfirmCheckOut(stay.id || stay.roomNumber, {
-      checkOutSignature: dataUrl,
+      checkOutSignature: null,
       settlementMode,
       extraCharges: Number(extraCharges) || 0,
       extraChargesNote,
@@ -383,11 +371,11 @@ export default function CheckOutModal({
             <Button
               type="button"
               disabled={!canProceedToSignature}
-              onClick={() => setStep('SIGNATURE')}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-bold shadow-xs disabled:opacity-50"
+              onClick={handleSaveCheckOut}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-bold shadow-xs disabled:opacity-50"
             >
-              Proceed to Pentab Signature
-              <ArrowRight className="h-4 w-4" />
+              <Check className="h-4 w-4" />
+              Complete Check-Out & Release Room
             </Button>
           </div>
         </div>

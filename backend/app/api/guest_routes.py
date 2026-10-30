@@ -47,6 +47,9 @@ class CheckInPayload(BaseModel):
     documentFront: Optional[str] = None
     documentBack: Optional[str] = None
     signature: Optional[str] = None
+    partnerSignature: Optional[str] = None
+    partnerDocumentFront: Optional[str] = None
+    partnerDocumentBack: Optional[str] = None
     hotelId: Optional[str] = "HTL-101"
 
 @router.post("/checkin")

@@ -119,7 +119,9 @@ def init_db():
                 hotel_id VARCHAR(100) DEFAULT 'HTL-101',
                 partner_document_front TEXT,
                 partner_document_back TEXT,
-                checkout_signature TEXT
+                checkout_signature TEXT,
+                partner_signature TEXT,
+                partner_signature TEXT
             )
         """)
         conn.commit()
@@ -127,7 +129,9 @@ def init_db():
             ("hotel_id", "VARCHAR(100) DEFAULT 'HTL-101'"),
             ("partner_document_front", "TEXT"),
             ("partner_document_back", "TEXT"),
-            ("checkout_signature", "TEXT")
+            ("checkout_signature", "TEXT"),
+            ("partner_signature", "TEXT"),
+            ("partner_signature", "TEXT")
         ]:
             try:
                 execute_query(conn, db_type, f"ALTER TABLE guest_records ADD COLUMN IF NOT EXISTS {col_def[0]} {col_def[1]}")
@@ -239,14 +243,18 @@ def init_db():
                 hotel_id TEXT DEFAULT 'HTL-101',
                 partner_document_front TEXT,
                 partner_document_back TEXT,
-                checkout_signature TEXT
+                checkout_signature TEXT,
+                partner_signature TEXT,
+                partner_signature TEXT
             )
         """)
         for col_def in [
             ("hotel_id", "TEXT DEFAULT 'HTL-101'"),
             ("partner_document_front", "TEXT"),
             ("partner_document_back", "TEXT"),
-            ("checkout_signature", "TEXT")
+            ("checkout_signature", "TEXT"),
+            ("partner_signature", "TEXT"),
+            ("partner_signature", "TEXT")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE guest_records ADD COLUMN {col_def[0]} {col_def[1]}")
@@ -480,16 +488,20 @@ def create_guest_record(data: dict) -> dict:
     accompanying_json = json.dumps(accompanying) if accompanying else None
     hotel_id = str(data.get("hotelId") or data.get("hotel_id") or "HTL-101")
 
-    # Extract partner document images reliably
+    # Extract partner document images and signature reliably
     partner_front = ""
     partner_back = ""
+    partner_sig = ""
     if isinstance(accompanying, dict):
         partner_front = accompanying.get("documentFront") or accompanying.get("document_front") or ""
         partner_back = accompanying.get("documentBack") or accompanying.get("document_back") or ""
+        partner_sig = accompanying.get("signature") or accompanying.get("partnerSignature") or ""
     if not partner_front:
         partner_front = data.get("partnerDocumentFront") or data.get("partner_document_front") or ""
     if not partner_back:
         partner_back = data.get("partnerDocumentBack") or data.get("partner_document_back") or ""
+    if not partner_sig:
+        partner_sig = data.get("partnerSignature") or data.get("partner_signature") or ""
 
     query = """
         INSERT INTO guest_records (
@@ -499,7 +511,7 @@ def create_guest_record(data: dict) -> dict:
             address, city, pincode, coming_from, going_to,
             purpose, vehicle_no, accompanying_guest_json,
             document_front, document_back, signature, status, hotel_id,
-            partner_document_front, partner_document_back
+            partner_document_front, partner_document_back, partner_signature
         ) VALUES (
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
@@ -507,7 +519,7 @@ def create_guest_record(data: dict) -> dict:
             ?, ?, ?, ?, ?,
             ?, ?, ?,
             ?, ?, ?, 'CHECKED_IN', ?,
-            ?, ?
+            ?, ?, ?
         )
     """
     params = (
@@ -539,7 +551,8 @@ def create_guest_record(data: dict) -> dict:
         data.get("signature", ""),
         hotel_id,
         partner_front,
-        partner_back
+        partner_back,
+        partner_sig
     )
 
     execute_query(conn, db_type, query, params)
@@ -575,10 +588,11 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
                payment_mode, guest_name, phone, id_type, id_number, address, city, pincode,
                status, checked_out_at, hotel_id,
                document_front, document_back, signature,
-               accompanying_guest_json, partner_document_front, partner_document_back, checkout_signature,
+               accompanying_guest_json, partner_document_front, partner_document_back, checkout_signature, partner_signature,
                (CASE WHEN document_front IS NOT NULL AND document_front != '' THEN 1 ELSE 0 END) as has_doc_front,
                (CASE WHEN document_back IS NOT NULL AND document_back != '' THEN 1 ELSE 0 END) as has_doc_back,
                (CASE WHEN signature IS NOT NULL AND signature != '' THEN 1 ELSE 0 END) as has_signature,
+               (CASE WHEN partner_signature IS NOT NULL AND partner_signature != '' THEN 1 ELSE 0 END) as has_partner_signature,
                (CASE WHEN partner_document_front IS NOT NULL AND partner_document_front != '' THEN 1 ELSE 0 END) as has_partner_doc,
                (CASE WHEN checkout_signature IS NOT NULL AND checkout_signature != '' THEN 1 ELSE 0 END) as has_checkout_signature
         FROM guest_records
@@ -604,6 +618,10 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
             if not rec.get("partner_document_back"):
                 rec["partner_document_back"] = rec["accompanying_guest"].get("documentBack") or rec["accompanying_guest"].get("document_back")
 
+        if rec.get("accompanying_guest") and isinstance(rec["accompanying_guest"], dict):
+            if not rec.get("partner_signature"):
+                rec["partner_signature"] = rec["accompanying_guest"].get("signature") or rec["accompanying_guest"].get("partnerSignature") or ""
+
         has_partner = 1 if (
             rec.get("has_partner_doc") == 1
             or rec.get("partner_document_front")
@@ -612,6 +630,13 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
             or (rec.get("accompanying_guest_json") and "documentFront" in rec["accompanying_guest_json"])
         ) else 0
         rec["has_partner_doc"] = has_partner
+
+        has_p_sig = 1 if (
+            rec.get("has_partner_signature") == 1
+            or rec.get("partner_signature")
+            or (rec.get("accompanying_guest") and rec["accompanying_guest"].get("signature"))
+        ) else 0
+        rec["has_partner_signature"] = has_p_sig
         records.append(rec)
     conn.close()
     return records
@@ -635,6 +660,8 @@ def get_guest_record_by_id(record_id: int) -> dict:
             record["partner_document_front"] = record["accompanying_guest"].get("documentFront") or record["accompanying_guest"].get("document_front")
         if not record.get("partner_document_back"):
             record["partner_document_back"] = record["accompanying_guest"].get("documentBack") or record["accompanying_guest"].get("document_back")
+        if not record.get("partner_signature"):
+            record["partner_signature"] = record["accompanying_guest"].get("signature") or record["accompanying_guest"].get("partnerSignature") or ""
     return record
 
 def checkout_guest_in_db(room_or_id: str, checkout_signature: str = None) -> bool:
@@ -1138,6 +1165,46 @@ def db_update_room_tariff(hotel_id: str, room_number: str, rate: float) -> dict:
     conn.commit()
     conn.close()
     return {"success": True, "hotel_id": h_id, "room_number": clean_num, "rate": float(rate)}
+
+def db_update_room(hotel_id: str, room_identifier: str, update_data: dict) -> dict:
+    """Updates customized room name/type, tariff rate, floor, and/or number in central DB."""
+    h_id = hotel_id or "HTL-101"
+    clean_num = str(room_identifier).split("_")[-1]
+    conn, db_type = get_db_connection()
+
+    c = execute_query(conn, db_type, """
+        SELECT id, room_number, type, floor, rate, status FROM rooms
+        WHERE hotel_id = ? AND (room_number = ? OR id = ?)
+    """, (h_id, clean_num, str(room_identifier)))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        raise ValueError(f"Room {clean_num} not found in hotel {h_id}.")
+
+    current = dict(row)
+    now_iso = datetime.now().isoformat()
+    new_type = str(update_data.get("type", current.get("type") or "Standard Suite"))
+    new_rate = float(update_data.get("rate", current.get("rate") or 1500.0))
+    new_floor = str(update_data.get("floor", current.get("floor") or "1st Floor"))
+    new_number = str(update_data.get("number", current.get("room_number")))
+
+    execute_query(conn, db_type, """
+        UPDATE rooms
+        SET type = ?, rate = ?, floor = ?, room_number = ?, updated_at = ?
+        WHERE hotel_id = ? AND (room_number = ? OR id = ?)
+    """, (new_type, new_rate, new_floor, new_number, now_iso, h_id, clean_num, str(room_identifier)))
+    conn.commit()
+    conn.close()
+    return {
+        "success": True,
+        "hotel_id": h_id,
+        "id": current.get("id"),
+        "number": new_number,
+        "type": new_type,
+        "rate": new_rate,
+        "floor": new_floor,
+        "status": current.get("status")
+    }
 
 def db_delete_room(hotel_id: str, room_identifier: str) -> dict:
     """Deletes a room from hotel inventory in central DB if not currently occupied."""

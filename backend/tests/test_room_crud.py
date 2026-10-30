@@ -11,6 +11,7 @@ from app.db.database import (
     db_add_room,
     db_update_room_tariff,
     db_update_room_status,
+    db_update_room,
     db_delete_room
 )
 
@@ -63,6 +64,40 @@ class TestRoomCrud(unittest.TestCase):
         # Verify room 999 is gone
         rooms_after = db_get_rooms(hotel_id)
         self.assertFalse(any(r["number"] == "999" for r in rooms_after))
+
+    def test_room_custom_name_edit(self):
+        hotel_id = "HTL-TEST-NAME"
+        try:
+            db_delete_room(hotel_id, "505")
+        except Exception:
+            pass
+
+        try:
+            # 1. Add room with customized name
+            room_data = {
+                "number": "505",
+                "type": "Honeymoon Garden Villa",
+                "floor": "Ground Floor",
+                "rate": 4500.0
+            }
+            res_add = db_add_room(hotel_id, room_data)
+            self.assertEqual(res_add["type"], "Honeymoon Garden Villa")
+
+            # 2. Update room customized name
+            res_update = db_update_room(hotel_id, "505", {"type": "Presidential Poolside Villa", "rate": 5500.0})
+            self.assertTrue(res_update["success"])
+            self.assertEqual(res_update["type"], "Presidential Poolside Villa")
+
+            # 3. Verify in db_get_rooms
+            rooms = db_get_rooms(hotel_id)
+            r505 = next(r for r in rooms if r["number"] == "505")
+            self.assertEqual(r505["type"], "Presidential Poolside Villa")
+            self.assertEqual(r505["rate"], 5500.0)
+        finally:
+            try:
+                db_delete_room(hotel_id, "505")
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     unittest.main()

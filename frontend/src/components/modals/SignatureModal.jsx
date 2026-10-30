@@ -2,7 +2,14 @@ import React, { useRef, useState, useEffect } from 'react';
 import { PenTool, RotateCcw, Check, X } from 'lucide-react';
 import { Button } from '../ui/button';
 
-export default function SignatureModal({ isOpen, onClose, onSave, existingSignature = null }) {
+export default function SignatureModal({ 
+  isOpen, 
+  onClose, 
+  onSave, 
+  existingSignature = null,
+  title = "Guest Digital Signature",
+  subtitle = "Sign inside the box using your mouse, stylus, or fingertip."
+}) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasContent, setHasContent] = useState(false);
@@ -141,10 +148,10 @@ export default function SignatureModal({ isOpen, onClose, onSave, existingSignat
             </div>
             <div>
               <h3 className="font-heading font-bold text-slate-900 text-lg leading-tight">
-                Guest Digital Signature
+                {title}
               </h3>
               <p className="text-xs text-slate-500">
-                Sign inside the box using your mouse, stylus, or fingertip.
+                {subtitle}
               </p>
             </div>
           </div>

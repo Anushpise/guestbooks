@@ -12,6 +12,7 @@ from app.db.database import (
     db_get_rooms,
     db_update_room_status,
     db_update_room_tariff,
+    db_update_room,
     db_add_room,
     db_delete_room
 )
@@ -81,6 +82,26 @@ def update_room_tariff_endpoint(room_number: str, payload: RoomTariffPayload):
         return res
     except Exception as e:
         logger.error(f"Error updating room tariff: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+class UpdateRoomPayload(BaseModel):
+    hotel_id: Optional[str] = "HTL-101"
+    type: Optional[str] = None
+    rate: Optional[float] = None
+    floor: Optional[str] = None
+    number: Optional[str] = None
+
+@router.patch("/{room_identifier}")
+def update_room_endpoint(room_identifier: str, payload: UpdateRoomPayload):
+    """Updates customized room name/type, tariff rate, floor, and/or number in central DB."""
+    try:
+        data = {k: v for k, v in payload.dict().items() if v is not None and k != "hotel_id"}
+        res = db_update_room(payload.hotel_id or "HTL-101", room_identifier, data)
+        return res
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error updating room details: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/{room_identifier}")

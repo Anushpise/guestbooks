@@ -334,6 +334,11 @@ export default function App() {
     await refreshData(currentUser);
   };
 
+  const handleRoomDetailsChange = async (roomId, updateData) => {
+    await hotelService.updateRoomDetails(roomId, updateData, currentHotel?.id || currentUser?.hotelId);
+    await refreshData(currentUser);
+  };
+
   const handleAddRoom = async (roomData) => {
     const result = await hotelService.addRoom(roomData, currentHotel?.id || currentUser?.hotelId);
     if (result.success) {
@@ -482,6 +487,7 @@ export default function App() {
               hotel={currentHotel}
               onRoomStatusChange={handleRoomStatusChange}
               onRoomTariffChange={handleRoomTariffChange}
+              onRoomDetailsChange={handleRoomDetailsChange}
               onAddRoom={handleAddRoom}
               onDeleteRoom={handleDeleteRoom}
               refreshData={() => refreshData(currentUser)}

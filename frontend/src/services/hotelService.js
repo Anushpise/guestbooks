@@ -408,6 +408,48 @@ export const hotelService = {
     return updated;
   },
 
+  updateRoomDetails: async (roomId, updateData, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const storageKey = hotelService.getRoomsStorageKey(hId);
+    const rooms = hotelService.getRooms(hId);
+    const targetRoom = rooms.find(r => r.id === roomId || String(r.number) === String(roomId));
+    const roomNumber = targetRoom ? String(targetRoom.number) : String(roomId).split('_').pop();
+
+    const updated = rooms.map(r =>
+      (r.id === roomId || String(r.number) === String(roomId) || String(r.number) === roomNumber)
+        ? {
+            ...r,
+            ...(updateData.type !== undefined ? { type: updateData.type } : {}),
+            ...(updateData.rate !== undefined ? { rate: Number(updateData.rate) || r.rate } : {}),
+            ...(updateData.floor !== undefined ? { floor: updateData.floor } : {}),
+            ...(updateData.number !== undefined ? { number: String(updateData.number) } : {})
+          }
+        : r
+    );
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+
+    // Sync room details change to central DB (PATCH /api/rooms/{roomNumber})
+    try {
+      const url = `/api/rooms/${encodeURIComponent(roomNumber)}?hotel_id=${encodeURIComponent(hId)}`;
+      let res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...updateData, hotel_id: hId })
+      });
+      if (!res.ok) {
+        await fetch(getBackendFallbackUrl(url), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...updateData, hotel_id: hId })
+        });
+      }
+    } catch (e) {
+      console.warn('Backend room details update error:', e);
+    }
+
+    return updated;
+  },
+
   // ══════════════════════════════════════════════════════════════════════════
   // ACTIVE STAYS API (Partitioned per Hotel)
   // ══════════════════════════════════════════════════════════════════════════
