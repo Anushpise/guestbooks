@@ -1,3 +1,4 @@
+import { KeyRound, X, Clock, AlertTriangle } from 'lucide-react';
 import { getStayExpiryStatus, playCheckoutAlertSound } from './lib/dateUtils';
 import React, { useState, useEffect } from 'react';
 import LandingPage from './components/views/LandingPage';
@@ -37,12 +38,17 @@ export default function App() {
   const [dismissedOverdueIds, setDismissedOverdueIds] = useState([]);
   const prevOverdueCountRef = React.useRef(0);
 
-  // Periodic checkout expiration updater (every 30 seconds)
+  // Real-time active stays and checkout expiration checker (polls every 5 seconds)
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'HOTEL') return;
-    const interval = setInterval(() => {
-      setActiveStays(prev => [...prev]);
-    }, 30000);
+    const checkStays = () => {
+      const hId = currentUser?.hotelId || 'HTL-101';
+      const stays = hotelService.getActiveStays(hId);
+      setActiveStays(stays);
+    };
+
+    checkStays();
+    const interval = setInterval(checkStays, 5000);
     return () => clearInterval(interval);
   }, [currentUser]);
 
@@ -439,34 +445,56 @@ export default function App() {
           onCheckOut={handleCheckOut}
         />
 
-        {/* Top Checkout Expiry Alert Banner */}
+        {/* Universal Top Checkout Expiry Alert Banner - Prominently visible on ALL pages */}
         {overdueStays.length > 0 && (
-          <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 text-xs font-bold text-rose-900 flex items-center justify-between sticky top-16 z-20 shadow-xs animate-in fade-in slide-in-from-top-1">
-            <div className="flex items-center gap-2.5">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-600" />
+          <div className="bg-rose-600 text-white px-4 sm:px-8 py-2.5 text-xs font-bold flex flex-wrap items-center justify-between gap-3 sticky top-16 z-40 shadow-md border-b border-rose-700 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-3 w-3 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-200 opacity-80" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-white" />
               </span>
-              <span>
-                <strong>Checkout Alert:</strong> Room <strong>RM-{overdueStays[0].roomNumber}</strong> ({overdueStays[0].primaryGuest?.name || 'Guest'}) stay period has expired!
-                {overdueStays.length > 1 && ` (+${overdueStays.length - 1} more room${overdueStays.length > 2 ? 's' : ''})`}
-              </span>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="bg-rose-800/80 text-white font-mono uppercase text-[10px] px-2 py-0.5 rounded tracking-wider font-extrabold border border-rose-500/40">
+                  CHECKOUT DUE ALERT
+                </span>
+                <span className="text-white text-xs font-semibold">
+                  {overdueStays.length === 1 ? (
+                    <>
+                      Room <strong className="font-mono text-white underline decoration-white/60">RM-{overdueStays[0].roomNumber}</strong> ({overdueStays[0].primaryGuest?.name || 'Guest'}) — Checkout time period expired!
+                    </>
+                  ) : (
+                    <>
+                      <strong className="text-white font-extrabold">{overdueStays.length} Rooms</strong> have completed their checkout time period:
+                    </>
+                  )}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+
+            <div className="flex flex-wrap items-center gap-2">
+              {overdueStays.slice(0, 3).map((stay) => (
+                <button
+                  key={stay.id}
+                  type="button"
+                  onClick={() => handleCheckOut(stay.id)}
+                  className="bg-white hover:bg-rose-50 text-rose-700 font-extrabold px-3 py-1 rounded-lg text-xs shadow-xs transition-all cursor-pointer active:scale-95 flex items-center gap-1.5"
+                >
+                  <KeyRound className="h-3 w-3 text-rose-700" />
+                  <span>Check Out RM-{stay.roomNumber}</span>
+                </button>
+              ))}
+              {overdueStays.length > 3 && (
+                <span className="text-[11px] text-rose-100 font-bold bg-rose-800/60 px-2 py-1 rounded-lg">
+                  +{overdueStays.length - 3} more
+                </span>
+              )}
               <button
                 type="button"
-                onClick={() => handleCheckOut(overdueStays[0].id)}
-                className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg text-xs font-extrabold cursor-pointer transition-all shadow-2xs active:scale-95"
+                onClick={() => setDismissedOverdueIds(prev => [...prev, ...overdueStays.map(s => s.id)])}
+                className="ml-1 p-1 hover:bg-rose-700/80 rounded-lg text-white/80 hover:text-white transition-all cursor-pointer"
+                title="Dismiss alerts"
               >
-                Check Out RM-{overdueStays[0].roomNumber}
-              </button>
-              <button
-                type="button"
-                onClick={() => setDismissedOverdueIds(prev => [...prev, overdueStays[0].id])}
-                className="px-2 py-0.5 hover:bg-rose-100 rounded-md text-rose-600 font-bold cursor-pointer"
-                title="Dismiss this alert"
-              >
-                ✕
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
