@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { CheckCircle2, Loader2, Upload, Trash2, Clipboard, X, ScanLine, Zap } from 'lucide-react';
+import { CheckCircle2, Loader2, Upload, Trash2, Clipboard, X, ScanLine, Zap, Camera, Image as ImageIcon } from 'lucide-react';
+import CameraCaptureModal from '../modals/CameraCaptureModal';
 import { scanDocumentWithOCR, parseIndianIDText } from '../../lib/ocrUtils';
 import { compressImageForOCR, compressImageToBase64 } from '../../lib/imageCompressor';
 
@@ -18,7 +19,9 @@ export default function DocumentScannerZone({
   const [extractedResult, setExtractedResult] = useState(null);
 
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const dropZoneRef = useRef(null);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
 
   const isIndigo = accentColor !== 'emerald';
   const accent = isIndigo
@@ -286,6 +289,15 @@ export default function DocumentScannerZone({
             onChange={handleFileInput}
             className="hidden"
           />
+          {/* Direct Native Tablet Camera input fallback */}
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileInput}
+            className="hidden"
+          />
 
           {isDragging ? (
             <div className="flex flex-col items-center gap-2 py-2">
@@ -310,13 +322,43 @@ export default function DocumentScannerZone({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); handlePasteButton(); }}
-                className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg hover:border-slate-300 hover:bg-slate-50 transition-colors"
-              >
-                <Clipboard className="h-3 w-3" /> Paste from Clipboard
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                {/* 1. Camera Live / Tablet Viewfinder */}
+                <button
+                  type="button"
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setIsCameraModalOpen(true); 
+                  }}
+                  className={`flex items-center gap-1.5 text-xs font-bold text-white ${accent.bg} hover:opacity-90 px-3.5 py-1.5 rounded-lg shadow-xs transition-all cursor-pointer active:scale-95`}
+                >
+                  <Camera className="h-3.5 w-3.5" /> Take Photo (Camera)
+                </button>
+
+                {/* 2. File Upload */}
+                <button
+                  type="button"
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    fileInputRef.current?.click(); 
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Upload className="h-3.5 w-3.5 text-slate-500" /> Browse File
+                </button>
+
+                {/* 3. Paste Clipboard */}
+                <button
+                  type="button"
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    handlePasteButton(); 
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                >
+                  <Clipboard className="h-3.5 w-3.5 text-slate-500" /> Paste Clipboard
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -444,6 +486,14 @@ export default function DocumentScannerZone({
           )}
         </div>
       )}
+      {/* Live Tablet & Mobile Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        onCapture={(file) => addImages([file])}
+        title={`Scan ID Document — ${targetGuestName}`}
+        sideLabel={images.length === 0 ? "Front Side" : "Back Side"}
+      />
     </div>
   );
 }
