@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Receipt, Search, Printer, IndianRupee, Calendar, CheckCircle,
-  FileText, Users, Clock, Filter, ArrowUpRight, ShieldCheck, RefreshCw
+  Receipt, Search, IndianRupee, Calendar,
+  Users, RefreshCw, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { hotelService } from '../../services/hotelService';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
-import { formatRegisterTime, formatDateTimeIST, isDateInFilterRange } from '../../lib/dateUtils';
+import { formatRegisterTime, isDateInFilterRange } from '../../lib/dateUtils';
 
 export default function BillingArchiveView({ onViewReceipt, hotelId = null, hotel = null }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -15,6 +15,8 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
   const [dateFilter, setDateFilter] = useState('all'); // 'today' | '3days' | '15days' | '1month' | 'all'
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const effectiveHotelId = hotelId || hotel?.id || hotelService.getCurrentHotelId();
 
@@ -67,6 +69,11 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
     loadBillingData();
   }, [effectiveHotelId]);
 
+  // Reset to first page whenever search or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterType, dateFilter]);
+
   // Filtering by Status, Search Query, and Date Range
   const filteredRecords = records.filter((rec) => {
     if (filterType === 'ACTIVE' && rec.status !== 'ACTIVE') return false;
@@ -90,165 +97,138 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
     return true;
   });
 
-  // Accurate Filter-based Revenue Calculations
+  // Accurate Filter-based Total Revenue Calculation
   const totalRevenue = filteredRecords.reduce((acc, curr) => acc + curr.roomRate, 0);
-  const totalAdvance = filteredRecords.reduce((acc, curr) => acc + curr.advancePaid, 0);
-  const activeCount = filteredRecords.filter(r => r.status === 'ACTIVE').length;
-  const completedCount = filteredRecords.filter(r => r.status === 'COMPLETED').length;
+
+  // Pagination Calculation: Exactly 10 entries per page
+  const totalPages = Math.ceil(filteredRecords.length / pageSize) || 1;
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filteredRecords.length);
+  const paginatedRecords = filteredRecords.slice(startIndex, startIndex + pageSize);
 
   const getDateFilterLabel = (key) => {
     switch (key) {
       case 'today': return 'Today';
       case '3days': return 'Last 3 Days';
       case '15days': return 'Last 15 Days';
-      case '1month': return 'Last 1 Month (30 Days)';
+      case '1month': return 'Last 1 Month';
       default: return 'All Time';
     }
   };
 
   return (
-    <div className="space-y-5 font-sans">
-      {/* Executive Header & Revenue KPI Dashboard */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-[#0b3c33]/10 text-[#0b3c33] rounded-2xl border border-[#0b3c33]/20 shadow-2xs">
-              <Receipt className="h-6 w-6" />
+    <div className="space-y-4 font-sans">
+      {/* 
+        Sticky Top Header & Revenue Section:
+        Remains fixed and visible when scrolling down through the entries.
+      */}
+      <div className="sticky top-16 z-20 bg-slate-50/95 backdrop-blur-md pt-1 pb-2 space-y-3">
+        <div className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-sm space-y-3.5">
+          {/* Title Row */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-[#0b3c33]/10 text-[#0b3c33] rounded-xl border border-[#0b3c33]/20 shadow-2xs">
+                <Receipt className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="font-heading text-lg sm:text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  {hotel?.name ? `${hotel.name} — Billing & Receipts` : 'Billing & Guest Receipt Archives'}
+                </h2>
+                <p className="text-xs text-slate-500 font-medium">
+                  Track room revenue, filter by date ranges, and view tax invoices for {hotel?.name || 'your property'}.
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-heading text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                {hotel?.name ? `${hotel.name} — Billing & Receipts` : 'Billing & Guest Receipt Archives'}
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                Accurate tariff tracking, filtered revenue calculations, and guest tax invoices for {hotel?.name || 'your hotel'}.
-              </p>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={loadBillingData}
-              className="text-xs gap-1.5 font-semibold border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer"
+              className="text-xs gap-1.5 font-semibold border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer h-8"
             >
               <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
           </div>
-        </div>
 
-        {/* Dynamic Financial Overview Cards (Calculates based on selected date filter) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-          {/* Total Revenue Card */}
-          <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5">
-            <span className="text-[10px] font-extrabold uppercase text-[#0b3c33] tracking-wider flex items-center gap-1">
-              <IndianRupee className="h-3 w-3" /> Total Revenue ({getDateFilterLabel(dateFilter)})
-            </span>
-            <div className="text-xl sm:text-2xl font-black text-[#0b3c33] font-mono mt-1">
-              ₹{totalRevenue.toLocaleString('en-IN')}
+          {/* Dedicated Total Revenue Section (Only Total Revenue with selected filter) */}
+          <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <span className="text-[11px] font-extrabold uppercase text-[#0b3c33] tracking-wider flex items-center gap-1.5">
+                <IndianRupee className="h-4 w-4" /> Total Revenue ({getDateFilterLabel(dateFilter)})
+              </span>
+              <div className="text-2xl sm:text-3xl font-black text-[#0b3c33] font-mono mt-0.5">
+                ₹{totalRevenue.toLocaleString('en-IN')}
+              </div>
+              <p className="text-[11px] text-emerald-800/80 mt-0.5 font-medium">
+                Calculated tariff from {filteredRecords.length} records matching current filter
+              </p>
             </div>
-            <p className="text-[10px] text-emerald-800/80 mt-0.5 font-medium">
-              Calculated tariff for {filteredRecords.length} slips
-            </p>
+
+            <div className="flex items-center gap-2">
+              <Badge className="bg-[#0b3c33] text-white font-bold text-xs py-1.5 px-3">
+                {filteredRecords.length} Invoices
+              </Badge>
+            </div>
           </div>
 
-          {/* Advance Collected Card */}
-          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5">
-            <span className="text-[10px] font-extrabold uppercase text-blue-700 tracking-wider flex items-center gap-1">
-              <ShieldCheck className="h-3 w-3" /> Advance Received
-            </span>
-            <div className="text-xl sm:text-2xl font-black text-blue-900 font-mono mt-1">
-              ₹{totalAdvance.toLocaleString('en-IN')}
+          {/* Filter Bar: 1-Click Date Range Pills, Search, and Status */}
+          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            {/* Quick 1-Click Date Filters */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5" /> Date Filter:
+              </span>
+              {[
+                { id: 'today', label: 'Today' },
+                { id: '3days', label: 'Last 3 Days' },
+                { id: '15days', label: 'Last 15 Days' },
+                { id: '1month', label: 'Last 1 Month' },
+                { id: 'all', label: 'All Time' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setDateFilter(tab.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    dateFilter === tab.id
+                      ? 'bg-[#0b3c33] text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
-            <p className="text-[10px] text-blue-700/80 mt-0.5 font-medium">
-              Collected at check-in desk
-            </p>
-          </div>
 
-          {/* Active Stays Slips */}
-          <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3.5">
-            <span className="text-[10px] font-extrabold uppercase text-amber-800 tracking-wider flex items-center gap-1">
-              <Clock className="h-3 w-3" /> Active Running Slips
-            </span>
-            <div className="text-xl sm:text-2xl font-black text-amber-900 font-mono mt-1">
-              {activeCount}
-            </div>
-            <p className="text-[10px] text-amber-800/80 mt-0.5 font-medium">
-              Currently occupied stays
-            </p>
-          </div>
+            {/* Search Input & Status Dropdown */}
+            <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+              <div className="relative flex-1 sm:w-60">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <Input
+                  type="text"
+                  className="pl-8 h-8 text-xs bg-slate-50 border-slate-200 focus:bg-white focus:ring-[#0b3c33]"
+                  placeholder="Search guest, room, phone, slip..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
 
-          {/* Settled / Checked-Out Slips */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
-            <span className="text-[10px] font-extrabold uppercase text-slate-600 tracking-wider flex items-center gap-1">
-              <CheckCircle className="h-3 w-3" /> Settled / Departed
-            </span>
-            <div className="text-xl sm:text-2xl font-black text-slate-800 font-mono mt-1">
-              {completedCount}
-            </div>
-            <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
-              Key handover completed
-            </p>
-          </div>
-        </div>
-
-        {/* Filter Navigation Bar */}
-        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          {/* 1-Click Date Range Pills */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] font-bold text-slate-500 mr-1 flex items-center gap-1">
-              <Calendar className="h-3.5 w-3.5" /> Date Filter:
-            </span>
-            {[
-              { id: 'today', label: 'Today' },
-              { id: '3days', label: 'Last 3 Days' },
-              { id: '15days', label: 'Last 15 Days' },
-              { id: '1month', label: 'Last 1 Month' },
-              { id: 'all', label: 'All Time' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setDateFilter(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  dateFilter === tab.id
-                    ? 'bg-[#0b3c33] text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200/80'
-                }`}
+              <select
+                className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 shadow-xs outline-none focus:ring-2 focus:ring-[#0b3c33] cursor-pointer"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
               >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Search & Status Filter */}
-          <div className="flex items-center gap-2.5 flex-1 sm:flex-initial">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-              <Input
-                type="text"
-                className="pl-8 h-9 text-xs bg-slate-50/70 border-slate-200 focus:bg-white focus:ring-[#0b3c33]"
-                placeholder="Search guest, room, phone, slip..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+                <option value="ALL">All Stays</option>
+                <option value="ACTIVE">Active Stays</option>
+                <option value="COMPLETED">Checked-Out</option>
+              </select>
             </div>
-
-            <select
-              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 shadow-xs outline-none focus:ring-2 focus:ring-[#0b3c33] cursor-pointer"
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-            >
-              <option value="ALL">All Stays</option>
-              <option value="ACTIVE">Active Stays</option>
-              <option value="COMPLETED">Checked-Out</option>
-            </select>
           </div>
         </div>
       </div>
 
-      {/* Billing Records Table Container */}
+      {/* Billing Records Table Container (10 entries per page) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -279,7 +259,7 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((rec) => {
+                paginatedRecords.map((rec) => {
                   const partner = rec.accompanyingGuest;
                   return (
                     <tr key={rec.id} className="hover:bg-emerald-50/20 transition-colors">
@@ -305,9 +285,10 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
                         <div className="text-[10px] text-slate-400">{rec.stayType}</div>
                       </td>
 
+                      {/* Check-Out (IST) - Clean text color (NO red!) */}
                       <td className="px-5 py-3.5 text-slate-700 font-mono">
                         {rec.status === 'COMPLETED' || (rec.checkOutTime && rec.checkOutTime !== 'Active Stay') ? (
-                          <div className="font-semibold text-rose-700">{formatRegisterTime(rec.checkOutTime)}</div>
+                          <div className="font-semibold text-slate-800">{formatRegisterTime(rec.checkOutTime)}</div>
                         ) : (
                           <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px]">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active Stay
@@ -352,6 +333,43 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Bar: Exactly 10 entries per page */}
+        {filteredRecords.length > 0 && (
+          <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+            <div>
+              Showing <span className="font-bold text-slate-900">{startIndex + 1}</span> to{' '}
+              <span className="font-bold text-slate-900">{endIndex}</span> of{' '}
+              <span className="font-bold text-slate-900">{filteredRecords.length}</span> entries
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="h-8 px-2.5 gap-1 text-xs font-bold border-slate-200 cursor-pointer disabled:opacity-40"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Prev
+              </Button>
+
+              <div className="px-2 text-xs font-bold text-slate-700">
+                Page {currentPage} of {totalPages}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="h-8 px-2.5 gap-1 text-xs font-bold border-slate-200 cursor-pointer disabled:opacity-40"
+              >
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
