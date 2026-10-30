@@ -465,7 +465,7 @@ def _seed_default_data(conn, db_type):
             ("304", "Super Deluxe", "3rd Floor", 2200),
             ("305", "Presidential Suite", "3rd Floor", 3500),
         ]
-        now_iso = datetime.now().isoformat()
+        now_iso = get_current_ist_iso()
         for r_num, r_type, r_fl, r_rate in room_types:
             r_id = f"HTL-101_{r_num}"
             execute_query(conn, db_type, """
@@ -768,7 +768,7 @@ def db_register_hotel(data: dict) -> dict:
         user_id = f"USR-{hotel_id}"
 
     reg_number = data.get("regNumber") or f"REG-{random.randint(100000, 999999)}"
-    now_iso = datetime.now().isoformat()
+    now_iso = get_current_ist_iso()
     docs = data.get("documents") or []
     if isinstance(docs, str):
         docs_json = docs
@@ -882,7 +882,7 @@ def db_get_hotel(hotel_id: str) -> dict:
 def db_update_hotel_status(hotel_id: str, status: str) -> dict:
     """Updates hotel status to APPROVED or REJECTED."""
     conn, db_type = get_db_connection()
-    now_iso = datetime.now().isoformat()
+    now_iso = get_current_ist_iso()
     if status == "APPROVED":
         execute_query(conn, db_type, """
             UPDATE hotels SET status = 'APPROVED', approved_at = ? WHERE id = ?
@@ -998,7 +998,7 @@ def db_create_police_account(data: dict) -> dict:
 
     user_id = f"USR-POL-{random.randint(100, 999)}"
     pol_id = f"POL-{random.randint(100, 999)}"
-    now_iso = datetime.now().isoformat()
+    now_iso = get_current_ist_iso()
     badge = data.get("badgeNo") or f"POL-INSP-{random.randint(1000, 9999)}"
 
     execute_query(conn, db_type, """
@@ -1092,7 +1092,7 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
         h_cur = execute_query(conn, db_type, "SELECT total_rooms FROM hotels WHERE id = ?", (h_id,))
         h_row = h_cur.fetchone()
         tot_rooms = int(get_first_val(h_row, 15))
-        now_iso = datetime.now().isoformat()
+        now_iso = get_current_ist_iso()
         room_types = [
             ("Executive Deluxe", 1800),
             ("Super Deluxe", 2200),
@@ -1161,7 +1161,7 @@ def db_update_room_status(hotel_id: str, room_number: str, status: str) -> dict:
     h_id = hotel_id or "HTL-101"
     clean_num = str(room_number).split("_")[-1]
     conn, db_type = get_db_connection()
-    now_iso = datetime.now().isoformat()
+    now_iso = get_current_ist_iso()
     execute_query(conn, db_type, """
         UPDATE rooms SET status = ?, updated_at = ?
         WHERE hotel_id = ? AND (room_number = ? OR id = ?)
@@ -1175,7 +1175,7 @@ def db_update_room_tariff(hotel_id: str, room_number: str, rate: float) -> dict:
     h_id = hotel_id or "HTL-101"
     clean_num = str(room_number).split("_")[-1]
     conn, db_type = get_db_connection()
-    now_iso = datetime.now().isoformat()
+    now_iso = get_current_ist_iso()
     execute_query(conn, db_type, """
         UPDATE rooms SET rate = ?, updated_at = ?
         WHERE hotel_id = ? AND (room_number = ? OR id = ?)
@@ -1200,7 +1200,7 @@ def db_update_room(hotel_id: str, room_identifier: str, update_data: dict) -> di
         raise ValueError(f"Room {clean_num} not found in hotel {h_id}.")
 
     current = dict(row)
-    now_iso = datetime.now().isoformat()
+    now_iso = get_current_ist_iso()
     new_type = str(update_data.get("type", current.get("type") or "Standard Suite"))
     new_rate = float(update_data.get("rate", current.get("rate") or 1500.0))
     new_floor = str(update_data.get("floor", current.get("floor") or "1st Floor"))
@@ -1274,7 +1274,7 @@ def db_add_room(hotel_id: str, room_data: dict) -> dict:
         conn.close()
         raise ValueError(f"Room {r_num} already exists in hotel inventory.")
 
-    now_iso = datetime.now().isoformat()
+    now_iso = get_current_ist_iso()
     execute_query(conn, db_type, """
         INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)

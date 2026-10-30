@@ -4,6 +4,7 @@ import {
   Key, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, Clock, Calendar
 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { formatDateTimeIST } from '../../lib/dateUtils';
 
 export default function CheckOutModal({
   isOpen,
@@ -162,7 +163,7 @@ export default function CheckOutModal({
   const guestName = stay.primaryGuest?.name || 'Guest';
   const guestPhone = stay.primaryGuest?.phone || '';
   const roomNo = stay.roomNumber || '';
-  const checkInTime = stay.checkInDate || stay.created_at || stay.check_in_at;
+  const checkInTime = stay.checkInTime || stay.checkInDate || stay.created_at || stay.check_in_at;
 
   const canProceedToSignature = keyHandoverConfirmed && (balanceDue <= 0 || paymentSettled);
 
@@ -204,7 +205,7 @@ export default function CheckOutModal({
                 <Clock className="h-4 w-4 text-indigo-600" />
                 <span>
                   Check-in: <strong className="text-slate-900">
-                    {checkInTime ? new Date(checkInTime).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : 'Today'}
+                    {checkInTime ? formatDateTimeIST(checkInTime) : 'Today'}
                   </strong>
                 </span>
               </div>

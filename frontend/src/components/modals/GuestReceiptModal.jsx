@@ -1,6 +1,7 @@
 import React from 'react';
-import { Receipt, Printer, X } from 'lucide-react';
+import { Receipt, Printer, X, CheckCircle2 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { formatDateTimeIST } from '../../lib/dateUtils';
 
 export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
   if (!isOpen || !stayRecord) return null;
@@ -8,6 +9,27 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
   const handlePrint = () => {
     window.print();
   };
+
+  const primary = stayRecord.primaryGuest || {
+    name: stayRecord.guest_name || 'Guest',
+    phone: stayRecord.phone || 'N/A',
+    idType: stayRecord.id_type || 'Aadhaar Card',
+    idNumber: stayRecord.id_number || 'N/A',
+  };
+
+  const partner = stayRecord.accompanyingGuest || stayRecord.accompanying_guest || null;
+  const inTime = stayRecord.checkInTime || stayRecord.created_at || stayRecord.check_in_at;
+  const outTime = stayRecord.checkOutTime || stayRecord.checked_out_at || stayRecord.check_out_at;
+  const isCheckedOut = stayRecord.status === 'CHECKED_OUT' || (outTime && outTime !== 'Active Stay');
+
+  const slipId = stayRecord.id || stayRecord.reg_no || stayRecord.regNo || 'SLIP-001';
+  const roomNo = stayRecord.roomNumber || stayRecord.room_number || '101';
+  const stayType = stayRecord.stayType || stayRecord.stay_type || '24 Hours Full Stay';
+  const roomRate = Number(stayRecord.roomRate || stayRecord.room_rate || 0);
+  const advancePaid = Number(stayRecord.advancePaid || stayRecord.advance_paid || roomRate);
+  const paymentMode = stayRecord.paymentMode || stayRecord.payment_mode || 'Cash';
+  const primarySig = stayRecord.signature || null;
+  const partnerSig = stayRecord.partnerSignature || stayRecord.partner_signature || partner?.signature || null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-xs p-4">
@@ -32,27 +54,27 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
             <h3 className="font-extrabold text-sm text-slate-900">GUESTBOOKS HOTEL & LODGE</h3>
             <p className="text-[11px] text-slate-600">124, Station Road, Main Market</p>
             <p className="text-[10px] text-slate-500">Phone: +91 98765 00000 | GSTIN: 27AAAAA0000A1Z5</p>
-            <h4 className="font-bold text-xs pt-2 text-slate-900 tracking-wider">GUEST CHECK-IN SLIP</h4>
+            <h4 className="font-bold text-xs pt-2 text-slate-900 tracking-wider">GUEST OFFICIAL STAY RECEIPT</h4>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-700 py-1">
-            <div><strong className="text-slate-900">Slip ID:</strong> {stayRecord.id}</div>
+            <div><strong className="text-slate-900">Slip ID:</strong> {slipId}</div>
             <div>
               <strong className="text-slate-900">Check-In:</strong>{' '}
-              {stayRecord.checkInTime ? new Date(stayRecord.checkInTime).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+              {formatDateTimeIST(inTime)}
             </div>
-            <div><strong className="text-slate-900">Room No:</strong> Room {stayRecord.roomNumber}</div>
+            <div><strong className="text-slate-900">Room No:</strong> Room {roomNo}</div>
             <div>
               <strong className="text-slate-900">Status:</strong>{' '}
-              <span className={stayRecord.status === 'CHECKED_OUT' ? 'text-rose-600 font-bold' : 'text-emerald-700 font-bold'}>
-                {stayRecord.status === 'CHECKED_OUT' ? 'Checked Out' : 'Active Stay'}
+              <span className={isCheckedOut ? 'text-rose-600 font-bold' : 'text-emerald-700 font-bold'}>
+                {isCheckedOut ? 'Checked Out' : 'Active Stay'}
               </span>
             </div>
-            {stayRecord.checkOutTime && stayRecord.status === 'CHECKED_OUT' && (
+            {isCheckedOut && outTime && outTime !== 'Active Stay' && (
               <div className="col-span-2 text-rose-700 bg-rose-50/70 p-1.5 rounded border border-rose-200 flex items-center justify-between">
                 <div>
                   <strong className="text-rose-900">Checked Out At:</strong>{' '}
-                  {new Date(stayRecord.checkOutTime).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}
+                  {formatDateTimeIST(outTime)}
                 </div>
                 <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
                   Key Handover Cleared
@@ -62,11 +84,11 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
           </div>
 
           <div className="space-y-1 py-2 border-t border-b border-dashed border-slate-300 text-[11px]">
-            <p><strong className="text-slate-900">Primary Guest:</strong> {stayRecord.primaryGuest?.name || 'Guest'}</p>
-            <p><strong className="text-slate-900">Mobile:</strong> {stayRecord.primaryGuest?.phone || 'N/A'}</p>
-            <p><strong className="text-slate-900">ID Proof:</strong> {stayRecord.primaryGuest?.idType} ({stayRecord.primaryGuest?.idNumber})</p>
-            {stayRecord.accompanyingGuest && (
-              <p><strong className="text-slate-900">Partner / Accompanying:</strong> {stayRecord.accompanyingGuest.name} ({stayRecord.accompanyingGuest.idType}: {stayRecord.accompanyingGuest.idNumber})</p>
+            <p><strong className="text-slate-900">Primary Guest:</strong> {primary.name || 'Guest'}</p>
+            <p><strong className="text-slate-900">Mobile:</strong> {primary.phone || 'N/A'}</p>
+            <p><strong className="text-slate-900">ID Proof:</strong> {primary.idType || 'Aadhaar Card'} ({primary.idNumber || '—'})</p>
+            {partner && (
+              <p><strong className="text-slate-900">Partner / Accompanying:</strong> {partner.name || 'Partner'} ({partner.idType || 'ID'}: {partner.idNumber || '—'})</p>
             )}
           </div>
 
@@ -79,12 +101,12 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
             </thead>
             <tbody className="divide-y divide-dashed divide-slate-200">
               <tr>
-                <td className="py-1.5">Room Tariff ({stayRecord.stayType})</td>
-                <td className="py-1.5 text-right font-medium">₹{stayRecord.roomRate}</td>
+                <td className="py-1.5">Room Tariff ({stayType})</td>
+                <td className="py-1.5 text-right font-medium">₹{roomRate}</td>
               </tr>
               <tr>
-                <td className="py-1.5 font-bold">Advance Amount Paid ({stayRecord.paymentMode})</td>
-                <td className="py-1.5 text-right font-extrabold text-slate-900">₹{stayRecord.advancePaid}</td>
+                <td className="py-1.5 font-bold">Advance Amount Paid ({paymentMode})</td>
+                <td className="py-1.5 text-right font-extrabold text-slate-900">₹{advancePaid}</td>
               </tr>
               <tr>
                 <td className="py-1.5">Balance Dues</td>
@@ -97,9 +119,9 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
           <div className="grid grid-cols-2 gap-4 pt-4 border-t border-dashed border-slate-300">
             <div className="flex flex-col items-center text-center">
               <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">Primary Guest Signature</span>
-              {stayRecord.signature ? (
+              {primarySig ? (
                 <div className="h-14 w-full flex items-center justify-center border border-slate-200 rounded bg-slate-50 p-1">
-                  <img src={stayRecord.signature} alt="Primary Sig" className="max-h-12 max-w-full object-contain" />
+                  <img src={primarySig} alt="Primary Sig" className="max-h-12 max-w-full object-contain" />
                 </div>
               ) : (
                 <div className="h-14 w-full flex items-center justify-center border border-dashed border-slate-300 rounded text-[10px] text-slate-400">
@@ -113,17 +135,17 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
 
             <div className="flex flex-col items-center text-center">
               <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">
-                {stayRecord.partnerSignature || stayRecord.accompanyingGuest ? 'Partner Check-In Signature' : 'Authorized Signatory'}
+                {partnerSig || partner ? 'Partner Check-In Signature' : 'Authorized Signatory'}
               </span>
-              {stayRecord.partnerSignature || stayRecord.accompanyingGuest?.signature ? (
+              {partnerSig ? (
                 <div className="h-14 w-full flex items-center justify-center border border-slate-200 rounded bg-slate-50 p-1">
                   <img
-                    src={stayRecord.partnerSignature || stayRecord.accompanyingGuest?.signature}
+                    src={partnerSig}
                     alt="Partner Sig"
                     className="max-h-12 max-w-full object-contain"
                   />
                 </div>
-              ) : stayRecord.accompanyingGuest ? (
+              ) : partner ? (
                 <div className="h-14 w-full flex items-center justify-center border border-dashed border-slate-300 rounded text-[10px] text-slate-400">
                   Partner Signed
                 </div>
@@ -133,7 +155,7 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
                 </div>
               )}
               <div className="w-28 border-t border-slate-400 mt-1 pt-0.5 text-[9px] text-slate-600">
-                {stayRecord.partnerSignature || stayRecord.accompanyingGuest ? 'Partner / Guest 2' : 'Front Desk Reception'}
+                {partnerSig || partner ? 'Partner / Guest 2' : 'Front Desk Reception'}
               </div>
             </div>
           </div>

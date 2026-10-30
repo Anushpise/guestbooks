@@ -1198,8 +1198,8 @@ export const hotelService = {
   addPoliceLogEntry: (stayRecord) => {
     const logs = hotelService.getPoliceLogs('ALL');
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateStr = now.toLocaleDateString('en-CA');
+    const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
     const newLog = {
       id: generateId('LOG'),
@@ -1236,8 +1236,8 @@ export const hotelService = {
 
     if (logIndex >= 0) {
       const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
-      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dateStr = now.toLocaleDateString('en-CA');
+      const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
       logs[logIndex].checkOutTime = `${dateStr} ${timeStr}`;
       localStorage.setItem(POLICE_LOGS_STORAGE_KEY, JSON.stringify(logs));
     }
