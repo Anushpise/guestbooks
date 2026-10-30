@@ -33,6 +33,87 @@ export const getBackendFallbackUrl = (path) => {
   return `${proto}//${host}:8008${path}`;
 };
 
+// ── Resilient LocalStorage Setter (Guards against QuotaExceededError) ──────────
+const stripHeavyImagesDeep = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(stripHeavyImagesDeep);
+  const copy = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'string' && v.length > 2000 && (v.startsWith('data:image') || v.startsWith('/9j/'))) {
+      copy[k] = null; // Prune heavy base64 payload to preserve localStorage quota
+    } else if (typeof v === 'object' && v !== null) {
+      copy[k] = stripHeavyImagesDeep(v);
+    } else {
+      copy[k] = v;
+    }
+  }
+  return copy;
+};
+
+export const safeLocalStorageSet = (key, value) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err) {
+    if (err.name === 'QuotaExceededError' || err.code === 22 || err.number === -2147024882) {
+      console.warn(`[SafeStorage] LocalStorage quota reached while setting "${key}". Pruning older heavy images...`);
+      try {
+        // 1. Prune heavy image documents from historical guests ledger
+        const rawGuests = localStorage.getItem(GUESTS_STORAGE_KEY);
+        if (rawGuests) {
+          const guests = JSON.parse(rawGuests);
+          const prunedGuests = (Array.isArray(guests) ? guests : []).slice(0, 30).map(g => {
+            const p = { ...(g.primaryGuest || {}) };
+            delete p.documentFront; delete p.documentBack; delete p.signature;
+            const a = g.accompanyingGuest ? { ...g.accompanyingGuest } : null;
+            if (a) { delete a.documentFront; delete a.documentBack; delete a.signature; }
+            return { ...g, primaryGuest: p, accompanyingGuest: a };
+          });
+          localStorage.setItem(GUESTS_STORAGE_KEY, JSON.stringify(prunedGuests));
+        }
+
+        // 2. Prune old historical stays
+        const rawAllStays = localStorage.getItem(ALL_STAYS_STORAGE_KEY);
+        if (rawAllStays) {
+          const allStays = JSON.parse(rawAllStays);
+          const prunedStays = (Array.isArray(allStays) ? allStays : []).slice(0, 20).map(s => {
+            const copy = { ...s };
+            delete copy.documentFront; delete copy.documentBack; delete copy.signature;
+            delete copy.partnerDocumentFront; delete copy.partnerDocumentBack; delete copy.partnerSignature;
+            return copy;
+          });
+          localStorage.setItem(ALL_STAYS_STORAGE_KEY, JSON.stringify(prunedStays));
+        }
+
+        // 3. Prune old police logs
+        const rawPolice = localStorage.getItem(POLICE_LOGS_STORAGE_KEY);
+        if (rawPolice) {
+          const police = JSON.parse(rawPolice);
+          const prunedPolice = (Array.isArray(police) ? police : []).slice(0, 20).map(p => {
+            const copy = { ...p };
+            delete copy.documentFront; delete copy.documentBack; delete copy.signature;
+            return copy;
+          });
+          localStorage.setItem(POLICE_LOGS_STORAGE_KEY, JSON.stringify(prunedPolice));
+        }
+
+        // Try setting again after pruning
+        localStorage.setItem(key, value);
+      } catch (retryErr) {
+        // 4. If STILL failing, strip heavy base64 strings directly from the target value
+        try {
+          const parsed = JSON.parse(value);
+          const stripped = stripHeavyImagesDeep(parsed);
+          localStorage.setItem(key, JSON.stringify(stripped));
+        } catch (finalErr) {
+          console.error(`[SafeStorage] Unable to save "${key}" even with deep compression:`, finalErr);
+        }
+      }
+    } else {
+      console.error(`[SafeStorage] Failed setting "${key}":`, err);
+    }
+  }
+};
+
 // ── Initialize LocalStorage if empty ─────────────────────────────────────────
 const initStorage = () => {
   if (!localStorage.getItem(ROOMS_STORAGE_KEY)) {
@@ -522,9 +603,21 @@ export const hotelService = {
 
   saveOrUpdateGuestHistory: (primaryGuest, accompanyingGuest) => {
     const guests = hotelService.getAllGuests();
+    const cleanPrimary = { ...(primaryGuest || {}) };
+    delete cleanPrimary.documentFront;
+    delete cleanPrimary.documentBack;
+    delete cleanPrimary.signature;
+
+    const cleanAccompanying = accompanyingGuest ? { ...accompanyingGuest } : null;
+    if (cleanAccompanying) {
+      delete cleanAccompanying.documentFront;
+      delete cleanAccompanying.documentBack;
+      delete cleanAccompanying.signature;
+    }
+
     const existingIndex = guests.findIndex(g =>
-      (g.phone && g.phone === primaryGuest.phone) ||
-      (g.aadhaar && g.aadhaar === primaryGuest.idNumber)
+      (g.phone && g.phone === cleanPrimary.phone) ||
+      (g.aadhaar && g.aadhaar === cleanPrimary.idNumber)
     );
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -533,17 +626,17 @@ export const hotelService = {
       // Update visit count & last visit date
       guests[existingIndex].totalVisits = (guests[existingIndex].totalVisits || 1) + 1;
       guests[existingIndex].lastVisited = todayStr;
-      guests[existingIndex].primaryGuest = { ...guests[existingIndex].primaryGuest, ...primaryGuest };
-      if (accompanyingGuest) {
-        guests[existingIndex].accompanyingGuest = { ...guests[existingIndex].accompanyingGuest, ...accompanyingGuest };
+      guests[existingIndex].primaryGuest = { ...guests[existingIndex].primaryGuest, ...cleanPrimary };
+      if (cleanAccompanying) {
+        guests[existingIndex].accompanyingGuest = { ...guests[existingIndex].accompanyingGuest, ...cleanAccompanying };
       }
     } else {
-      // Create new profile
+      // Create new profile (clean of heavy images to prevent QuotaExceededError)
       const newProfile = {
-        phone: primaryGuest.phone || '',
-        aadhaar: primaryGuest.idType === 'Aadhaar Card' ? primaryGuest.idNumber : '',
-        primaryGuest: { ...primaryGuest },
-        accompanyingGuest: accompanyingGuest ? { ...accompanyingGuest } : null,
+        phone: cleanPrimary.phone || '',
+        aadhaar: cleanPrimary.idType === 'Aadhaar Card' ? cleanPrimary.idNumber : '',
+        primaryGuest: cleanPrimary,
+        accompanyingGuest: cleanAccompanying,
         totalVisits: 1,
         lastVisited: todayStr,
         isBlacklisted: false,
@@ -552,7 +645,7 @@ export const hotelService = {
       guests.unshift(newProfile);
     }
 
-    localStorage.setItem(GUESTS_STORAGE_KEY, JSON.stringify(guests));
+    safeLocalStorageSet(GUESTS_STORAGE_KEY, JSON.stringify(guests));
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -670,13 +763,13 @@ export const hotelService = {
     // 1. Add to active stays master (PRESERVES all hotels' active stays!)
     const rawStays = hotelService.getRawActiveStays();
     rawStays.unshift(newStayRecord);
-    localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(rawStays));
+    safeLocalStorageSet(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(rawStays));
 
     // 2. Add to master all-stays log
     try {
       const allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
       allStays.unshift(newStayRecord);
-      localStorage.setItem(ALL_STAYS_STORAGE_KEY, JSON.stringify(allStays));
+      safeLocalStorageSet(ALL_STAYS_STORAGE_KEY, JSON.stringify(allStays));
     } catch (e) {
       console.warn('Failed to append to master stays log:', e);
     }
@@ -1124,7 +1217,7 @@ export const hotelService = {
     };
 
     logs.unshift(newLog);
-    localStorage.setItem(POLICE_LOGS_STORAGE_KEY, JSON.stringify(logs));
+    safeLocalStorageSet(POLICE_LOGS_STORAGE_KEY, JSON.stringify(logs));
   },
 
   updatePoliceLogCheckOut: (roomNumber, guestName, targetHotelId = null) => {

@@ -63,7 +63,7 @@ export default function DocumentScannerZone({
     // Compress only for preview (fast <30ms); send original to backend for best OCR fidelity
     const compressedItems = await Promise.all(
       rawFiles.slice(0, 2).map(async (file) => {
-        const compressed = await compressImageForOCR(file, 1600, 0.92);
+        const compressed = await compressImageForOCR(file, 1200, 0.82);
         return {
           file: compressed,   // for backend OCR (high quality)
           original: file,     // original reference
@@ -134,13 +134,8 @@ export default function DocumentScannerZone({
         let res = null;
         try {
           res = await fetch('/api/ocr/scan', { method: 'POST', body: formData, signal: controller.signal });
-        } catch {
-          // If proxy fails, try direct backend port 8008
-          try {
-            res = await fetch('http://127.0.0.1:8008/api/ocr/scan', { method: 'POST', body: formData });
-          } catch (directErr) {
-            console.warn('Direct backend OCR attempt failed:', directErr);
-          }
+        } catch (fetchErr) {
+          console.warn('Backend OCR fetch warning:', fetchErr);
         } finally {
           clearTimeout(timeoutId);
         }

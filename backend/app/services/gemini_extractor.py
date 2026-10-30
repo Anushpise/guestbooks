@@ -67,14 +67,13 @@ def get_candidate_models() -> List[str]:
     if configured and configured.startswith("gemini-") and configured != "gemini-2.0-flash" and configured not in candidates:
         candidates.append(configured)
 
-    # Standard high-availability multimodal vision models
+    # Standard high-availability multimodal vision models (prioritizing fast flash-lite)
     defaults = [
-        "gemini-flash-latest",
-        "gemini-2.5-flash",
-        "gemini-1.5-flash",
         "gemini-flash-lite-latest",
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
         "gemini-2.5-pro",
-        "gemini-1.5-pro",
+        "gemini-1.5-flash",
     ]
     for d in defaults:
         if d not in candidates:
@@ -352,22 +351,28 @@ def extract_id_with_gemini(
             }
         }
 
-        # Dynamic candidate resolution with automated fallback
+        # Dynamic candidate resolution with fast automated fallback
         candidate_models = get_candidate_models()
+        # Cap candidate trials to top 3 models and limit per-request timeout to prevent gateway 504
+        top_candidates = candidate_models[:3]
+        per_model_timeout = min(timeout_sec, 8.0)
 
         resp = None
-        used_model = candidate_models[0]
-        with httpx.Client(timeout=timeout_sec) as client:
-            for m in candidate_models:
+        used_model = top_candidates[0]
+        with httpx.Client(timeout=per_model_timeout) as client:
+            for m in top_candidates:
                 used_model = m
                 url = f"{GEMINI_API_BASE}/{m}:generateContent?key={api_key}"
                 logger.info(f"Calling Gemini Flash Vision API ({m})...")
-                resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
-                if resp.status_code == 200:
-                    global _CACHED_WORKING_MODEL
-                    _CACHED_WORKING_MODEL = m
-                    break
-                logger.warning(f"Model {m} returned HTTP {resp.status_code}: {resp.text[:250]}")
+                try:
+                    resp = client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                    if resp.status_code == 200:
+                        global _CACHED_WORKING_MODEL
+                        _CACHED_WORKING_MODEL = m
+                        break
+                    logger.warning(f"Model {m} returned HTTP {resp.status_code}: {resp.text[:250]}")
+                except Exception as req_err:
+                    logger.warning(f"Model {m} request failed: {req_err}")
 
         if not resp or resp.status_code != 200:
             logger.error(f"Gemini API all candidate models failed. Last response: {resp.text[:300] if resp else 'No response'}")
