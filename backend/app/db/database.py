@@ -879,7 +879,7 @@ def db_get_hotel(hotel_id: str) -> dict:
     return _format_hotel_dict(r_dict, guest_count=r_dict.get("guest_count", 0))
 
 def db_update_hotel_status(hotel_id: str, status: str) -> dict:
-    """Updates hotel status to APPROVED or REJECTED."""
+    """Updates hotel status to APPROVED, REJECTED, or DEACTIVATED."""
     conn, db_type = get_db_connection()
     now_iso = get_current_ist_iso()
     if status == "APPROVED":
@@ -890,6 +890,10 @@ def db_update_hotel_status(hotel_id: str, status: str) -> dict:
         execute_query(conn, db_type, """
             UPDATE hotels SET status = 'REJECTED', rejected_at = ? WHERE id = ?
         """, (now_iso, hotel_id))
+    elif status == "DEACTIVATED":
+        execute_query(conn, db_type, """
+            UPDATE hotels SET status = 'DEACTIVATED' WHERE id = ?
+        """, (hotel_id,))
     else:
         execute_query(conn, db_type, """
             UPDATE hotels SET status = ? WHERE id = ?
@@ -897,6 +901,170 @@ def db_update_hotel_status(hotel_id: str, status: str) -> dict:
     conn.commit()
     conn.close()
     return db_get_hotel(hotel_id)
+
+def db_update_hotel(hotel_id: str, data: dict) -> dict:
+    """
+    Updates hotel profile information and manager login credentials.
+    """
+    conn, db_type = get_db_connection()
+    clean_id = str(hotel_id).strip()
+
+    fields = []
+    params = []
+
+    if "name" in data and str(data["name"]).strip():
+        fields.append("name = ?")
+        params.append(str(data["name"]).strip())
+    if "ownerName" in data or "owner_name" in data:
+        val = data.get("ownerName") or data.get("owner_name")
+        if val is not None:
+            fields.append("owner_name = ?")
+            params.append(str(val).strip())
+    if "email" in data and str(data["email"]).strip():
+        fields.append("email = ?")
+        params.append(str(data["email"]).strip().lower())
+    if "phone" in data and str(data["phone"]).strip():
+        fields.append("phone = ?")
+        params.append(str(data["phone"]).strip())
+    if "address" in data and str(data["address"]).strip():
+        fields.append("address = ?")
+        params.append(str(data["address"]).strip())
+    if "propertyType" in data or "property_type" in data:
+        val = data.get("propertyType") or data.get("property_type")
+        if val:
+            fields.append("property_type = ?")
+            params.append(str(val).strip())
+    if "subscriptionPlan" in data or "subscription_plan" in data:
+        val = data.get("subscriptionPlan") or data.get("subscription_plan")
+        if val:
+            fields.append("subscription_plan = ?")
+            params.append(str(val).strip())
+    if "subscriptionAmount" in data or "subscription_amount" in data:
+        val = data.get("subscriptionAmount") or data.get("subscription_amount")
+        if val is not None:
+            fields.append("subscription_amount = ?")
+            params.append(float(val))
+
+    if fields:
+        params.append(clean_id)
+        query = f"UPDATE hotels SET {', '.join(fields)} WHERE id = ?"
+        execute_query(conn, db_type, query, tuple(params))
+
+    # Also update corresponding manager user account credentials in users table
+    user_fields = []
+    user_params = []
+    if "password" in data and str(data["password"]).strip():
+        user_fields.append("password = ?")
+        user_params.append(str(data["password"]).strip())
+    if "email" in data and str(data["email"]).strip():
+        user_fields.append("email = ?")
+        user_params.append(str(data["email"]).strip().lower())
+        user_fields.append("username = ?")
+        user_params.append(str(data["email"]).strip().lower())
+    if "name" in data and str(data["name"]).strip():
+        user_fields.append("name = ?")
+        user_params.append(str(data["name"]).strip())
+
+    if user_fields:
+        user_params.append(clean_id)
+        u_query = f"UPDATE users SET {', '.join(user_fields)} WHERE hotel_id = ? AND role = 'HOTEL'"
+        execute_query(conn, db_type, u_query, tuple(user_params))
+
+    conn.commit()
+    conn.close()
+    return db_get_hotel(clean_id)
+
+def db_delete_hotel(hotel_id: str) -> dict:
+    """
+    Cascades and completely deletes a hotel and all its associated data from the server:
+    - Guest records & photos
+    - Rooms & tariffs
+    - Hotel manager login user accounts
+    - The hotel record itself
+    """
+    conn, db_type = get_db_connection()
+    clean_id = str(hotel_id).strip()
+
+    # 1. Delete all guest records belonging to this hotel
+    execute_query(conn, db_type, "DELETE FROM guest_records WHERE hotel_id = ?", (clean_id,))
+
+    # 2. Delete all rooms belonging to this hotel
+    execute_query(conn, db_type, "DELETE FROM rooms WHERE hotel_id = ?", (clean_id,))
+
+    # 3. Delete all users belonging to this hotel
+    execute_query(conn, db_type, "DELETE FROM users WHERE hotel_id = ?", (clean_id,))
+
+    # 4. Delete the hotel record itself
+    c = execute_query(conn, db_type, "DELETE FROM hotels WHERE id = ?", (clean_id,))
+    deleted = c.rowcount
+
+    conn.commit()
+
+    if db_type == "sqlite":
+        try:
+            conn.execute("VACUUM")
+        except Exception:
+            pass
+
+    conn.close()
+    return {"success": True, "deleted": deleted > 0, "hotel_id": clean_id}
+
+def db_purge_hotel_data(hotel_id: str, before_date: str = None, from_date: str = None, to_date: str = None, photos_only: bool = False) -> dict:
+    """
+    Purges guest records or ID photo attachments for a hotel by time period.
+    Helps maintain server storage and compliance.
+    """
+    conn, db_type = get_db_connection()
+    clean_id = str(hotel_id).strip()
+
+    conditions = ["hotel_id = ?"]
+    params = [clean_id]
+
+    if before_date:
+        conditions.append("created_at < ?")
+        params.append(before_date)
+    elif from_date and to_date:
+        to_clean = to_date + "T23:59:59+05:30" if "T" not in to_date else to_date
+        conditions.append("created_at >= ? AND created_at <= ?")
+        params.extend([from_date, to_clean])
+    elif from_date:
+        conditions.append("created_at >= ?")
+        params.append(from_date)
+
+    where_clause = " AND ".join(conditions)
+
+    if photos_only:
+        # Strip heavy base64 photos to save storage while keeping textual police log
+        query = f"""
+            UPDATE guest_records 
+            SET document_front = NULL, document_back = NULL, 
+                partner_document_front = NULL, partner_document_back = NULL
+            WHERE {where_clause}
+        """
+        c = execute_query(conn, db_type, query, tuple(params))
+        count = c.rowcount
+    else:
+        # Full deletion of records in time range
+        query = f"DELETE FROM guest_records WHERE {where_clause}"
+        c = execute_query(conn, db_type, query, tuple(params))
+        count = c.rowcount
+
+    conn.commit()
+
+    if db_type == "sqlite":
+        try:
+            conn.execute("VACUUM")
+        except Exception:
+            pass
+
+    conn.close()
+    return {
+        "success": True,
+        "purgedCount": count,
+        "photosOnly": photos_only,
+        "hotel_id": clean_id,
+        "message": f"Successfully purged {count} {'document photos' if photos_only else 'guest records'} from server."
+    }
 
 def db_login_user(credential: str, password: str) -> dict:
     """
@@ -939,6 +1107,12 @@ def db_login_user(credential: str, password: str) -> dict:
                 return {
                     "success": False,
                     "message": "Your Hotel Registration was rejected by Admin. Please contact support."
+                }
+            if h_status in ("DEACTIVATED", "SUSPENDED", "INACTIVE"):
+                conn.close()
+                return {
+                    "success": False,
+                    "message": "Your hotel subscription / access has been DEACTIVATED by Super Admin. Please contact administration."
                 }
 
     conn.close()

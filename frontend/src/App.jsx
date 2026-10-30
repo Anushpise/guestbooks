@@ -1,4 +1,4 @@
-import { KeyRound, X, Clock, AlertTriangle } from 'lucide-react';
+import { KeyRound, X, Clock, AlertTriangle, ShieldAlert, Lock, Ban } from 'lucide-react';
 import { getStayExpiryStatus, playCheckoutAlertSound } from './lib/dateUtils';
 import React, { useState, useEffect } from 'react';
 import LandingPage from './components/views/LandingPage';
@@ -530,76 +530,120 @@ export default function App() {
             <PolicePortalView user={currentUser} />
           )}
 
-          {/* HOTEL MANAGER VIEWS */}
-          {activeTab === 'dashboard' && (
-            <Dashboard 
-              rooms={rooms}
-              activeStays={activeStays}
-              onCheckOut={handleCheckOut}
-              openExpressModal={handleOpenExpressModal}
-              openNewCheckInModal={handleOpenNewCheckInModal}
-              openPoliceModal={handleOpenPoliceModal}
-              onRoomStatusChange={handleRoomStatusChange}
-              onViewReceipt={handleViewReceipt}
-              user={currentUser}
-              hotel={currentHotel}
-            />
-          )}
+          {/* HOTEL MANAGER - DEACTIVATED STATE LOCKOUT */}
+          {currentUser?.role === 'HOTEL' && (currentHotel?.status === 'DEACTIVATED' || currentHotel?.status === 'SUSPENDED' || currentHotel?.status === 'INACTIVE') ? (
+            <div className="flex flex-col items-center justify-center min-h-[65vh] text-center p-6 max-w-lg mx-auto animate-in fade-in zoom-in-95 duration-200">
+              <div className="w-16 h-16 rounded-3xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mb-4 shadow-sm">
+                <ShieldAlert className="h-8 w-8" />
+              </div>
+              <span className="px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-rose-100 text-rose-800 border border-rose-200 mb-3">
+                Subscription Access Deactivated
+              </span>
+              <h2 className="text-xl font-black text-slate-900 mb-2">
+                Property Access Suspended
+              </h2>
+              <p className="text-xs text-slate-600 mb-6 leading-relaxed">
+                Access for <strong>{currentHotel?.name || 'this hotel'}</strong> ({currentHotel?.id}) has been deactivated by the Super Administrator. 
+                All desk check-ins, guest registers, and billing operations are locked for this property until renewed and reactivated.
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-700 w-full mb-6 space-y-1.5 text-left">
+                <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                  <span className="text-slate-500 font-medium">Hotel ID:</span>
+                  <span className="font-mono font-bold text-slate-900">{currentHotel?.id}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                  <span className="text-slate-500 font-medium">Property Name:</span>
+                  <span className="font-bold text-slate-900">{currentHotel?.name}</span>
+                </div>
+                <div className="flex justify-between pt-0.5">
+                  <span className="text-slate-500 font-medium">Account Email:</span>
+                  <span className="font-mono text-slate-800">{currentUser?.email}</span>
+                </div>
+                <div className="text-[11px] text-amber-700 bg-amber-50 p-2 rounded-lg mt-2 font-medium">
+                  Please contact central system administration to renew your property subscription.
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="px-5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all shadow-xs cursor-pointer"
+              >
+                Sign Out of Hotel Account
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* HOTEL MANAGER VIEWS */}
+              {activeTab === 'dashboard' && (
+                <Dashboard 
+                  rooms={rooms}
+                  activeStays={activeStays}
+                  onCheckOut={handleCheckOut}
+                  openExpressModal={handleOpenExpressModal}
+                  openNewCheckInModal={handleOpenNewCheckInModal}
+                  openPoliceModal={handleOpenPoliceModal}
+                  onRoomStatusChange={handleRoomStatusChange}
+                  onViewReceipt={handleViewReceipt}
+                  user={currentUser}
+                  hotel={currentHotel}
+                />
+              )}
 
-          {activeTab === 'express-checkin' && (
-            <ExpressCheckInView
-              vacantRooms={vacantRooms}
-              onCheckInComplete={handleCheckInComplete}
-              switchToNewGuest={() => handleTabChange('new-checkin')}
-              hotel={currentHotel}
-            />
-          )}
+              {activeTab === 'express-checkin' && (
+                <ExpressCheckInView
+                  vacantRooms={vacantRooms}
+                  onCheckInComplete={handleCheckInComplete}
+                  switchToNewGuest={() => handleTabChange('new-checkin')}
+                  hotel={currentHotel}
+                />
+              )}
 
-          {activeTab === 'new-checkin' && (
-            <NewCheckInView
-              vacantRooms={vacantRooms}
-              onCheckInComplete={handleCheckInComplete}
-              hotel={currentHotel}
-            />
-          )}
+              {activeTab === 'new-checkin' && (
+                <NewCheckInView
+                  vacantRooms={vacantRooms}
+                  onCheckInComplete={handleCheckInComplete}
+                  hotel={currentHotel}
+                />
+              )}
 
-          {activeTab === 'database' && (
-            <GuestDatabaseView hotelId={currentHotel?.id || currentUser?.hotelId} />
-          )}
+              {activeTab === 'database' && (
+                <GuestDatabaseView hotelId={currentHotel?.id || currentUser?.hotelId} />
+              )}
 
-          {activeTab === 'ledger' && (
-            <GuestLedger 
-              openExpressModal={(roomNo, phone) => handleOpenExpressModal(roomNo)}
-              hotelId={currentHotel?.id || currentUser?.hotelId}
-            />
-          )}
+              {activeTab === 'ledger' && (
+                <GuestLedger 
+                  openExpressModal={(roomNo, phone) => handleOpenExpressModal(roomNo)}
+                  hotelId={currentHotel?.id || currentUser?.hotelId}
+                />
+              )}
 
-          {activeTab === 'police-log' && (
-            <PoliceReportView 
-              hotelId={currentHotel?.id || currentUser?.hotelId} 
-              hotel={currentHotel} 
-            />
-          )}
+              {activeTab === 'police-log' && (
+                <PoliceReportView 
+                  hotelId={currentHotel?.id || currentUser?.hotelId} 
+                  hotel={currentHotel} 
+                />
+              )}
 
-          {activeTab === 'billing' && (
-            <BillingArchiveView 
-              onViewReceipt={handleViewReceipt}
-              hotelId={currentHotel?.id || currentUser?.hotelId}
-              hotel={currentHotel}
-            />
-          )}
+              {activeTab === 'billing' && (
+                <BillingArchiveView 
+                  onViewReceipt={handleViewReceipt}
+                  hotelId={currentHotel?.id || currentUser?.hotelId}
+                  hotel={currentHotel}
+                />
+              )}
 
-          {activeTab === 'room-mgmt' && (
-            <RoomManagementView 
-              rooms={rooms}
-              hotel={currentHotel}
-              onRoomStatusChange={handleRoomStatusChange}
-              onRoomTariffChange={handleRoomTariffChange}
-              onRoomDetailsChange={handleRoomDetailsChange}
-              onAddRoom={handleAddRoom}
-              onDeleteRoom={handleDeleteRoom}
-              refreshData={() => refreshData(currentUser)}
-            />
+              {activeTab === 'room-mgmt' && (
+                <RoomManagementView 
+                  rooms={rooms}
+                  hotel={currentHotel}
+                  onRoomStatusChange={handleRoomStatusChange}
+                  onRoomTariffChange={handleRoomTariffChange}
+                  onRoomDetailsChange={handleRoomDetailsChange}
+                  onAddRoom={handleAddRoom}
+                  onDeleteRoom={handleDeleteRoom}
+                  refreshData={() => refreshData(currentUser)}
+                />
+              )}
+            </>
           )}
         </main>
       </div>

@@ -28,8 +28,14 @@ import {
   Filter,
   Check,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  Settings,
+  Power,
+  Ban,
+  Trash2,
+  Database
 } from 'lucide-react';
+import HotelSettingsModal from '../modals/HotelSettingsModal';
 import { authService } from '../../services/authService';
 import { hotelService } from '../../services/hotelService';
 import { Button } from '../ui/button';
@@ -58,6 +64,10 @@ export default function AdminDashboard() {
 
   // Full-size Photo Lightbox Modal (for guest Aadhaar / Passport / ID cards)
   const [lightboxPhoto, setLightboxPhoto] = useState(null); // { url, title, subTitle }
+
+  // Hotel Settings & Storage Purge Modal
+  const [settingsModalHotel, setSettingsModalHotel] = useState(null);
+  const [togglingHotelId, setTogglingHotelId] = useState(null);
 
   // New Police Account Form state
   const [stationName, setStationName] = useState('');
@@ -95,6 +105,9 @@ export default function AdminDashboard() {
     };
     window.addEventListener('guestbooks_hotel_registered', handleSync);
     window.addEventListener('guestbooks_hotel_status_changed', handleSync);
+    window.addEventListener('guestbooks_hotel_updated', handleSync);
+    window.addEventListener('guestbooks_hotel_deleted', handleSync);
+    window.addEventListener('guestbooks_hotel_data_purged', handleSync);
     window.addEventListener('storage', handleSync);
 
     // Auto-poll server every 4 seconds to sync PC1 and PC2 requests automatically
@@ -105,6 +118,9 @@ export default function AdminDashboard() {
     return () => {
       window.removeEventListener('guestbooks_hotel_registered', handleSync);
       window.removeEventListener('guestbooks_hotel_status_changed', handleSync);
+      window.removeEventListener('guestbooks_hotel_updated', handleSync);
+      window.removeEventListener('guestbooks_hotel_deleted', handleSync);
+      window.removeEventListener('guestbooks_hotel_data_purged', handleSync);
       window.removeEventListener('storage', handleSync);
       clearInterval(pollInterval);
     };
@@ -142,6 +158,19 @@ export default function AdminDashboard() {
     await authService.rejectHotel(hotelId);
     await refreshData();
     setSelectedDocHotel(null);
+  };
+
+  const handleToggleStatus = async (hotelId, currentStatus) => {
+    setTogglingHotelId(hotelId);
+    try {
+      const newStatus = currentStatus === 'APPROVED' ? 'DEACTIVATED' : 'APPROVED';
+      await authService.toggleHotelStatus(hotelId, newStatus);
+      await refreshData();
+    } catch (e) {
+      console.warn('Failed to toggle hotel status:', e);
+    } finally {
+      setTogglingHotelId(null);
+    }
   };
 
   const handleCreatePoliceAccount = async (e) => {
@@ -366,6 +395,15 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSettingsModalHotel(selectedHotel)}
+                    className="text-xs font-bold border-slate-300 text-slate-800 bg-white hover:bg-slate-100 flex items-center gap-1.5 shadow-2xs"
+                  >
+                    <Settings className="h-3.5 w-3.5 text-slate-700" />
+                    Hotel Settings & Storage
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -856,18 +894,26 @@ export default function AdminDashboard() {
 
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => setSelectedDocHotel(hotel)}
-                              className="flex-1 py-1 text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200 transition-colors flex items-center justify-center gap-1"
+                              onClick={() => setSettingsModalHotel(hotel)}
+                              className="flex-1 py-1.5 text-[11px] font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-md border border-slate-200 transition-colors flex items-center justify-center gap-1 shadow-2xs"
+                              title="Edit hotel credentials, reset password, purge storage data or delete hotel"
                             >
-                              <FileText className="h-3 w-3" /> Inspect Proofs
+                              <Settings className="h-3 w-3 text-slate-600" /> Settings
+                            </button>
+
+                            <button
+                              onClick={() => setSelectedDocHotel(hotel)}
+                              className="flex-1 py-1.5 text-[11px] font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 rounded-md border border-amber-200 transition-colors flex items-center justify-center gap-1"
+                            >
+                              <FileText className="h-3 w-3" /> Proofs
                             </button>
 
                             {hotel.status === 'PENDING' && (
                               <button
                                 onClick={() => handleApprove(hotel.id)}
-                                className="flex-1 py-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors flex items-center justify-center gap-1"
+                                className="flex-1 py-1.5 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors flex items-center justify-center gap-1"
                               >
-                                <Check className="h-3 w-3" /> Quick Approve
+                                <Check className="h-3 w-3" /> Approve
                               </button>
                             )}
                           </div>
@@ -1109,32 +1155,100 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 uppercase font-extrabold">
-              <tr>
-                <th className="p-3">HOTEL NAME</th>
-                <th className="p-3">PLAN TYPE</th>
-                <th className="p-3">MONTHLY RATE</th>
-                <th className="p-3">STATUS</th>
-                <th className="p-3 text-right">LAST RENEWAL</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200">
-              {hotels.map((h) => (
-                <tr key={h.id}>
-                  <td className="p-3 font-bold text-slate-900">{h.name}</td>
-                  <td className="p-3 font-semibold text-slate-700">{h.subscriptionPlan || 'Standard Plan'}</td>
-                  <td className="p-3 font-mono font-extrabold text-emerald-800">₹{h.subscriptionAmount || 499} / mo</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${h.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'}`}>
-                      {h.status === 'APPROVED' ? 'ACTIVE SUBSCRIBER' : 'PENDING ACTIVATION'}
-                    </span>
-                  </td>
-                  <td className="p-3 text-right text-slate-500">{new Date(h.registeredAt).toLocaleDateString()}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs min-w-[700px]">
+              <thead className="bg-slate-50 text-slate-500 uppercase font-extrabold border-b border-slate-200">
+                <tr>
+                  <th className="p-3">HOTEL NAME & ID</th>
+                  <th className="p-3">PLAN TYPE</th>
+                  <th className="p-3">MONTHLY RATE</th>
+                  <th className="p-3">SUBSCRIPTION STATUS</th>
+                  <th className="p-3 text-center">SOFTWARE ACCESS</th>
+                  <th className="p-3 text-right">MANAGE</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {hotels.map((h) => {
+                  const isActive = h.status === 'APPROVED';
+                  const isDeactivated = h.status === 'DEACTIVATED';
+                  const isPending = h.status === 'PENDING';
+                  const isToggling = togglingHotelId === h.id;
+
+                  return (
+                    <tr key={h.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="p-3">
+                        <div className="font-extrabold text-slate-900">{h.name || h.hotelName}</div>
+                        <div className="font-mono text-[10px] text-slate-400 mt-0.5">{h.id} • {h.email}</div>
+                      </td>
+                      <td className="p-3 font-semibold text-slate-700">{h.subscriptionPlan || 'Standard Property Plan'}</td>
+                      <td className="p-3 font-mono font-extrabold text-emerald-800">₹{h.subscriptionAmount || 499} / mo</td>
+                      <td className="p-3">
+                        {isActive && (
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold border bg-emerald-50 text-emerald-800 border-emerald-200 inline-flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 text-emerald-600" /> ACTIVE SUBSCRIBER
+                          </span>
+                        )}
+                        {isDeactivated && (
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold border bg-rose-50 text-rose-800 border-rose-200 inline-flex items-center gap-1">
+                            <Ban className="h-3 w-3 text-rose-600" /> ACCESS DEACTIVATED
+                          </span>
+                        )}
+                        {isPending && (
+                          <span className="px-2.5 py-1 rounded-md text-[10px] font-extrabold border bg-amber-50 text-amber-800 border-amber-200 inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3 text-amber-600" /> PENDING VERIFICATION
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 text-center">
+                        {isActive && (
+                          <button
+                            disabled={isToggling}
+                            onClick={() => handleToggleStatus(h.id, h.status)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:border-rose-300 transition-colors inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                            title="Deactivate hotel subscription and block access to software"
+                          >
+                            <Power className="h-3.5 w-3.5 text-rose-600" />
+                            {isToggling ? 'Updating...' : 'Deactivate'}
+                          </button>
+                        )}
+                        {isDeactivated && (
+                          <button
+                            disabled={isToggling}
+                            onClick={() => handleToggleStatus(h.id, h.status)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 transition-colors inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                            title="Reactivate software access for this hotel"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                            {isToggling ? 'Updating...' : 'Activate Access'}
+                          </button>
+                        )}
+                        {isPending && (
+                          <button
+                            disabled={isToggling}
+                            onClick={() => handleApprove(h.id)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Check className="h-3.5 w-3.5 text-amber-700" />
+                            Approve & Activate
+                          </button>
+                        )}
+                      </td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => setSettingsModalHotel(h)}
+                          className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 hover:text-slate-900 transition-colors inline-flex items-center gap-1 text-xs font-bold shadow-2xs cursor-pointer"
+                          title="Manage hotel credentials, storage purge & deletion"
+                        >
+                          <Settings className="h-3.5 w-3.5 text-slate-600" />
+                          Settings
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1305,6 +1419,27 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 3: Hotel Settings, Storage Purge & Permanent Deletion Modal */}
+      {/* ========================================================================= */}
+      <HotelSettingsModal
+        isOpen={!!settingsModalHotel}
+        onClose={() => setSettingsModalHotel(null)}
+        hotel={settingsModalHotel}
+        onHotelUpdated={(updated) => {
+          refreshData();
+          if (selectedHotel && updated && selectedHotel.id === updated.id) {
+            setSelectedHotel(updated);
+          }
+        }}
+        onHotelDeleted={(deletedId) => {
+          refreshData();
+          if (selectedHotel && selectedHotel.id === deletedId) {
+            setSelectedHotel(null);
+          }
+        }}
+      />
     </div>
   );
 }

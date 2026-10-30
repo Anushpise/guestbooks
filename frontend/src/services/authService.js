@@ -317,6 +317,13 @@ export const authService = {
       const hotels = JSON.parse(localStorage.getItem(HOTELS_STORAGE_KEY)) || initialHotels;
       const hotel = hotels.find((h) => h.id === user.hotelId || (h.email && h.email.toLowerCase() === cleanLower));
 
+      if (hotel && (hotel.status === 'DEACTIVATED' || hotel.status === 'SUSPENDED' || hotel.status === 'INACTIVE')) {
+        return {
+          success: false,
+          message: 'Your hotel subscription / access has been DEACTIVATED by Super Admin. Please contact administration.',
+        };
+      }
+
       if (hotel && hotel.status === 'PENDING') {
         return {
           success: false,
@@ -486,6 +493,160 @@ export const authService = {
 
     authService.fetchHotels();
     return updated;
+  },
+
+  // Toggle Hotel Subscription Status (APPROVED / ACTIVE vs DEACTIVATED)
+  toggleHotelStatus: async (hotelId, newStatus) => {
+    // 1. Update central backend DB
+    const res = await apiFetch('/api/auth/hotel-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hotelId, status: newStatus })
+    });
+
+    // 2. Update local storage cache
+    const hotels = authService.getAllHotels();
+    const updated = hotels.map((h) =>
+      h.id === hotelId ? { ...h, status: newStatus } : h
+    );
+    localStorage.setItem(HOTELS_STORAGE_KEY, JSON.stringify(updated));
+
+    try {
+      window.dispatchEvent(new CustomEvent('guestbooks_hotel_status_changed', { detail: { hotelId, status: newStatus } }));
+    } catch (e) {}
+
+    authService.fetchHotels();
+    return res && res.success ? { success: true, hotel: res.hotel } : { success: true, hotel: updated.find(h => h.id === hotelId) };
+  },
+
+  // Super Admin: Update Hotel Information & Manager Password
+  updateHotel: async (hotelId, updateData) => {
+    // 1. Update central backend DB
+    const res = await apiFetch(`/api/auth/hotels/${hotelId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+
+    // 2. Update local storage
+    const hotels = authService.getAllHotels();
+    const updated = hotels.map((h) => {
+      if (h.id === hotelId) {
+        return {
+          ...h,
+          name: updateData.name || h.name,
+          ownerName: updateData.ownerName || h.ownerName,
+          email: updateData.email || h.email,
+          phone: updateData.phone || h.phone,
+          address: updateData.address || h.address,
+          propertyType: updateData.propertyType || h.propertyType,
+          subscriptionPlan: updateData.subscriptionPlan || h.subscriptionPlan,
+          subscriptionAmount: updateData.subscriptionAmount !== undefined ? updateData.subscriptionAmount : h.subscriptionAmount
+        };
+      }
+      return h;
+    });
+    localStorage.setItem(HOTELS_STORAGE_KEY, JSON.stringify(updated));
+
+    // Also update users table in localStorage if password / email changed
+    try {
+      const users = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY)) || initialUsers;
+      const updatedUsers = users.map(u => {
+        if (u.hotelId === hotelId || (u.email && updateData.email && u.email.toLowerCase() === updateData.email.toLowerCase())) {
+          return {
+            ...u,
+            ...(updateData.password ? { password: updateData.password } : {}),
+            ...(updateData.email ? { email: updateData.email, username: updateData.email } : {}),
+            ...(updateData.name ? { name: updateData.name } : {})
+          };
+        }
+        return u;
+      });
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
+    } catch (e) {}
+
+    try {
+      window.dispatchEvent(new CustomEvent('guestbooks_hotel_updated', { detail: { hotelId, updateData } }));
+    } catch (e) {}
+
+    authService.fetchHotels();
+    return res || { success: true };
+  },
+
+  // Super Admin: Permanently Delete Hotel and Wipe All Associated Data
+  deleteHotel: async (hotelId) => {
+    // 1. Delete on central server backend
+    const res = await apiFetch(`/api/auth/hotels/${hotelId}`, {
+      method: 'DELETE'
+    });
+
+    // 2. Wipe from localStorage
+    try {
+      const hotels = authService.getAllHotels().filter(h => h.id !== hotelId);
+      localStorage.setItem(HOTELS_STORAGE_KEY, JSON.stringify(hotels));
+
+      // Remove users associated with this hotel
+      const users = (JSON.parse(localStorage.getItem(USERS_STORAGE_KEY)) || []).filter(u => u.hotelId !== hotelId);
+      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+
+      // Remove rooms for this hotel
+      const ROOMS_KEY = 'staylog_rooms_v1';
+      const rooms = (JSON.parse(localStorage.getItem(ROOMS_KEY)) || []).filter(r => r.hotelId !== hotelId);
+      localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
+
+      // Remove guest stays
+      const ALL_STAYS_KEY = 'staylog_all_stays_master_v1';
+      const stays = (JSON.parse(localStorage.getItem(ALL_STAYS_KEY)) || []).filter(s => s.hotelId !== hotelId);
+      localStorage.setItem(ALL_STAYS_KEY, JSON.stringify(stays));
+
+      const ACTIVE_STAYS_KEY = 'staylog_active_stays_v1';
+      const activeStays = (JSON.parse(localStorage.getItem(ACTIVE_STAYS_KEY)) || []).filter(s => s.hotelId !== hotelId);
+      localStorage.setItem(ACTIVE_STAYS_KEY, JSON.stringify(activeStays));
+    } catch (e) {}
+
+    try {
+      window.dispatchEvent(new CustomEvent('guestbooks_hotel_deleted', { detail: { hotelId } }));
+    } catch (e) {}
+
+    authService.fetchHotels();
+    return res || { success: true };
+  },
+
+  // Super Admin: Purge Hotel Guest Data / Photos by Time Period
+  purgeHotelData: async (hotelId, options = {}) => {
+    // options: { beforeDate, fromDate, toDate, photosOnly }
+    const res = await apiFetch(`/api/auth/hotels/${hotelId}/purge-data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    });
+
+    // Also update local storage if needed
+    try {
+      const ALL_STAYS_KEY = 'staylog_all_stays_master_v1';
+      let stays = JSON.parse(localStorage.getItem(ALL_STAYS_KEY)) || [];
+      if (options.photosOnly) {
+        stays = stays.map(s => {
+          if (s.hotelId === hotelId) {
+            return {
+              ...s,
+              documentFront: null,
+              documentBack: null,
+              partnerDocumentFront: null,
+              partnerDocumentBack: null
+            };
+          }
+          return s;
+        });
+      }
+      localStorage.setItem(ALL_STAYS_KEY, JSON.stringify(stays));
+    } catch (e) {}
+
+    try {
+      window.dispatchEvent(new CustomEvent('guestbooks_hotel_data_purged', { detail: { hotelId, options } }));
+    } catch (e) {}
+
+    return res || { success: true };
   },
 };
 
