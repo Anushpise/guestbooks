@@ -127,9 +127,18 @@ class TestAdminHotelManagement(unittest.TestCase):
         photo_purge_res = db_purge_hotel_data(hotel_id, photos_only=True)
         self.assertTrue(photo_purge_res["success"])
 
-        # Test full deletion purge
-        full_purge_res = db_purge_hotel_data(hotel_id, photos_only=False)
+        # Test full deletion purge (wiping all records)
+        full_purge_res = db_purge_hotel_data(hotel_id, photos_only=False, all_records=True)
         self.assertTrue(full_purge_res["success"])
+        self.assertGreaterEqual(full_purge_res["purgedCount"], 1)
+
+        # Confirm 0 records remaining
+        from app.db.database import get_db_connection, execute_query, get_first_val
+        conn, db_type = get_db_connection()
+        c = execute_query(conn, db_type, "SELECT COUNT(*) FROM guest_records WHERE hotel_id = ?", (hotel_id,))
+        count_remaining = get_first_val(c.fetchone())
+        conn.close()
+        self.assertEqual(count_remaining, 0)
 
     def test_hotel_cascade_delete(self):
         uid = uuid.uuid4().hex[:6]

@@ -1009,9 +1009,17 @@ def db_delete_hotel(hotel_id: str) -> dict:
     conn.close()
     return {"success": True, "deleted": deleted > 0, "hotel_id": clean_id}
 
-def db_purge_hotel_data(hotel_id: str, before_date: str = None, from_date: str = None, to_date: str = None, photos_only: bool = False) -> dict:
+def db_purge_hotel_data(
+    hotel_id: str, 
+    before_date: str = None, 
+    from_date: str = None, 
+    to_date: str = None, 
+    photos_only: bool = False,
+    all_records: bool = False
+) -> dict:
     """
     Purges guest records or ID photo attachments for a hotel by time period.
+    When all_records is True (or no dates provided), purges all records for this hotel.
     Helps maintain server storage and compliance.
     """
     conn, db_type = get_db_connection()
@@ -1020,16 +1028,17 @@ def db_purge_hotel_data(hotel_id: str, before_date: str = None, from_date: str =
     conditions = ["hotel_id = ?"]
     params = [clean_id]
 
-    if before_date:
-        conditions.append("created_at < ?")
-        params.append(before_date)
-    elif from_date and to_date:
-        to_clean = to_date + "T23:59:59+05:30" if "T" not in to_date else to_date
-        conditions.append("created_at >= ? AND created_at <= ?")
-        params.extend([from_date, to_clean])
-    elif from_date:
-        conditions.append("created_at >= ?")
-        params.append(from_date)
+    if not all_records:
+        if before_date:
+            conditions.append("(created_at < ? OR substr(created_at, 1, 10) <= substr(?, 1, 10))")
+            params.extend([before_date, before_date])
+        elif from_date and to_date:
+            to_clean = to_date + "T23:59:59+05:30" if "T" not in to_date else to_date
+            conditions.append("created_at >= ? AND created_at <= ?")
+            params.extend([from_date, to_clean])
+        elif from_date:
+            conditions.append("created_at >= ?")
+            params.append(from_date)
 
     where_clause = " AND ".join(conditions)
 
@@ -1048,6 +1057,17 @@ def db_purge_hotel_data(hotel_id: str, before_date: str = None, from_date: str =
         query = f"DELETE FROM guest_records WHERE {where_clause}"
         c = execute_query(conn, db_type, query, tuple(params))
         count = c.rowcount
+
+        # If any active check-ins were purged, reset unoccupied rooms back to VACANT
+        try:
+            execute_query(conn, db_type, """
+                UPDATE rooms SET status = 'VACANT' 
+                WHERE hotel_id = ? AND room_number NOT IN (
+                    SELECT room_number FROM guest_records WHERE hotel_id = ? AND status = 'CHECKED_IN'
+                )
+            """, (clean_id, clean_id))
+        except Exception as e:
+            logger.warning(f"Error resetting room statuses on purge: {e}")
 
     conn.commit()
 

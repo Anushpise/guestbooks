@@ -46,10 +46,10 @@ export default function HotelSettingsModal({
   const [profileErrorMsg, setProfileErrorMsg] = useState('');
 
   // Storage Purge State
-  const [purgePreset, setPurgePreset] = useState('60_DAYS'); // '30_DAYS', '60_DAYS', '90_DAYS', 'CUSTOM', 'ALL'
+  const [purgePreset, setPurgePreset] = useState('ALL'); // 'ALL', '30_DAYS', '60_DAYS', '90_DAYS', 'CUSTOM'
   const [purgeFromDate, setPurgeFromDate] = useState('');
   const [purgeToDate, setPurgeToDate] = useState('');
-  const [photosOnly, setPhotosOnly] = useState(true);
+  const [photosOnly, setPhotosOnly] = useState(false);
   const [purging, setPurging] = useState(false);
   const [purgeResult, setPurgeResult] = useState(null);
   const [confirmPurgeStep, setConfirmPurgeStep] = useState(false);
@@ -119,6 +119,9 @@ export default function HotelSettingsModal({
   // Compute Purge Date Parameters
   const calculatePurgeParams = () => {
     const now = new Date();
+    if (purgePreset === 'ALL') {
+      return { allRecords: true, photosOnly };
+    }
     if (purgePreset === '30_DAYS') {
       const d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       return { beforeDate: d.toISOString(), photosOnly };
@@ -131,13 +134,10 @@ export default function HotelSettingsModal({
       const d = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
       return { beforeDate: d.toISOString(), photosOnly };
     }
-    if (purgePreset === 'ALL') {
-      return { beforeDate: now.toISOString(), photosOnly };
-    }
     if (purgePreset === 'CUSTOM') {
       return { fromDate: purgeFromDate, toDate: purgeToDate, photosOnly };
     }
-    return { photosOnly };
+    return { allRecords: true, photosOnly };
   };
 
   // Execute Storage Purge

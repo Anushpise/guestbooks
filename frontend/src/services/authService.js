@@ -614,20 +614,68 @@ export const authService = {
 
   // Super Admin: Purge Hotel Guest Data / Photos by Time Period
   purgeHotelData: async (hotelId, options = {}) => {
-    // options: { beforeDate, fromDate, toDate, photosOnly }
+    // options: { beforeDate, fromDate, toDate, photosOnly, allRecords }
     const res = await apiFetch(`/api/auth/hotels/${hotelId}/purge-data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(options)
     });
 
-    // Also update local storage if needed
+    const isMatch = (stay) => {
+      const stayHId = stay.hotelId || 'HTL-101';
+      if (stayHId !== hotelId) return false;
+
+      if (options.allRecords || options.all || (!options.beforeDate && !options.fromDate && !options.toDate)) {
+        return true;
+      }
+      const rawDate = stay.checkInTime || stay.created_at;
+      if (!rawDate) return true;
+      const stayTime = new Date(rawDate).getTime();
+
+      if (options.beforeDate) {
+        return stayTime <= new Date(options.beforeDate).getTime();
+      }
+      if (options.fromDate && options.toDate) {
+        const fromTime = new Date(options.fromDate).getTime();
+        const toTime = new Date(options.toDate + 'T23:59:59').getTime();
+        return stayTime >= fromTime && stayTime <= toTime;
+      }
+      return true;
+    };
+
+    // Update ALL localStorage stores for instant UI reactivity across tabs
     try {
+      // 1. ALL_STAYS
       const ALL_STAYS_KEY = 'staylog_all_stays_master_v1';
-      let stays = JSON.parse(localStorage.getItem(ALL_STAYS_KEY)) || [];
+      let allStays = JSON.parse(localStorage.getItem(ALL_STAYS_KEY)) || [];
       if (options.photosOnly) {
-        stays = stays.map(s => {
-          if (s.hotelId === hotelId) {
+        allStays = allStays.map(s => {
+          if (isMatch(s)) {
+            return {
+              ...s,
+              documentFront: null,
+              documentBack: null,
+              partnerDocumentFront: null,
+              partnerDocumentBack: null,
+              signature: null,
+              checkOutSignature: null,
+              partnerSignature: null
+            };
+          }
+          return s;
+        });
+      } else {
+        // COMPLETE WIPE: Remove matched records completely!
+        allStays = allStays.filter(s => !isMatch(s));
+      }
+      localStorage.setItem(ALL_STAYS_KEY, JSON.stringify(allStays));
+
+      // 2. ACTIVE_STAYS
+      const ACTIVE_STAYS_KEY = 'staylog_active_stays_v1';
+      let activeStays = JSON.parse(localStorage.getItem(ACTIVE_STAYS_KEY)) || [];
+      if (options.photosOnly) {
+        activeStays = activeStays.map(s => {
+          if (isMatch(s)) {
             return {
               ...s,
               documentFront: null,
@@ -638,12 +686,56 @@ export const authService = {
           }
           return s;
         });
+      } else {
+        activeStays = activeStays.filter(s => !isMatch(s));
       }
-      localStorage.setItem(ALL_STAYS_KEY, JSON.stringify(stays));
-    } catch (e) {}
+      localStorage.setItem(ACTIVE_STAYS_KEY, JSON.stringify(activeStays));
+
+      // 3. POLICE_LOGS
+      const POLICE_LOGS_KEY = 'staylog_police_logs_v1';
+      let policeLogs = JSON.parse(localStorage.getItem(POLICE_LOGS_KEY)) || [];
+      if (options.photosOnly) {
+        policeLogs = policeLogs.map(l => {
+          if (isMatch(l)) {
+            return { ...l, documentFront: null, documentBack: null };
+          }
+          return l;
+        });
+      } else {
+        policeLogs = policeLogs.filter(l => !isMatch(l));
+      }
+      localStorage.setItem(POLICE_LOGS_KEY, JSON.stringify(policeLogs));
+
+      // 4. GUESTS (Frequent guest database)
+      if (!options.photosOnly) {
+        const GUESTS_KEY = 'staylog_guests_v1';
+        if (options.allRecords || (!options.beforeDate && !options.fromDate && !options.toDate)) {
+          localStorage.setItem(GUESTS_KEY, JSON.stringify([]));
+        }
+      }
+
+      // 5. ROOMS (Reset rooms of deleted active stays to VACANT)
+      if (!options.photosOnly) {
+        const ROOMS_KEY = 'staylog_rooms_v1';
+        let rooms = JSON.parse(localStorage.getItem(ROOMS_KEY)) || [];
+        const remainingActiveRoomNums = new Set(
+          activeStays.filter(s => (s.hotelId || 'HTL-101') === hotelId).map(s => String(s.roomNumber))
+        );
+        rooms = rooms.map(r => {
+          if (!remainingActiveRoomNums.has(String(r.number))) {
+            return { ...r, status: 'VACANT' };
+          }
+          return r;
+        });
+        localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
+      }
+    } catch (e) {
+      console.warn('Error syncing localStorage on purge:', e);
+    }
 
     try {
       window.dispatchEvent(new CustomEvent('guestbooks_hotel_data_purged', { detail: { hotelId, options } }));
+      window.dispatchEvent(new Event('storage'));
     } catch (e) {}
 
     return res || { success: true };

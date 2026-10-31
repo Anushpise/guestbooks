@@ -1429,8 +1429,11 @@ export default function AdminDashboard() {
         hotel={settingsModalHotel}
         onHotelUpdated={(updated) => {
           refreshData();
-          if (selectedHotel && updated && selectedHotel.id === updated.id) {
-            setSelectedHotel(updated);
+          if (selectedHotel) {
+            loadHotelGuests(selectedHotel.id);
+            if (updated && selectedHotel.id === updated.id) {
+              setSelectedHotel(updated);
+            }
           }
         }}
         onHotelDeleted={(deletedId) => {

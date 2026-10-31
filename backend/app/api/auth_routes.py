@@ -104,6 +104,7 @@ class PurgeDataPayload(BaseModel):
     fromDate: Optional[str] = None
     toDate: Optional[str] = None
     photosOnly: Optional[bool] = False
+    allRecords: Optional[bool] = False
 
 @router.post("/hotel-status")
 def update_hotel_status_endpoint(payload: HotelStatusPayload):
@@ -155,12 +156,14 @@ def purge_hotel_data_endpoint(hotel_id: str, payload: PurgeDataPayload):
     Super Admin purges guest data or photos for a hotel across a specified date range.
     """
     try:
+        is_all = payload.allRecords or (not payload.beforeDate and not payload.fromDate and not payload.toDate)
         res = db_purge_hotel_data(
             hotel_id=hotel_id,
             before_date=payload.beforeDate,
             from_date=payload.fromDate,
             to_date=payload.toDate,
-            photos_only=payload.photosOnly or False
+            photos_only=payload.photosOnly or False,
+            all_records=is_all
         )
         return res
     except Exception as e:

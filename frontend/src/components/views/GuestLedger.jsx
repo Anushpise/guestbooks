@@ -33,6 +33,18 @@ export default function GuestLedger({ openExpressModal }) {
   const [guests, setGuests] = useState(hotelService.getAllGuests());
   const [searchQuery, setSearchQuery] = useState('');
 
+  useEffect(() => {
+    const handleSync = () => {
+      setGuests(hotelService.getAllGuests());
+    };
+    window.addEventListener('guestbooks_hotel_data_purged', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('guestbooks_hotel_data_purged', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
   const handleToggleBlacklist = (identifier) => {
     const updated = hotelService.toggleBlacklist(identifier);
     setGuests(updated);

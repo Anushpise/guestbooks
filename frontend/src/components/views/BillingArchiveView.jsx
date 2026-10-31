@@ -67,6 +67,22 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
 
   useEffect(() => {
     loadBillingData();
+
+    const handleSync = () => {
+      loadBillingData();
+    };
+
+    window.addEventListener('guestbooks_hotel_data_purged', handleSync);
+    window.addEventListener('guestbooks_stay_updated', handleSync);
+    window.addEventListener('guestbooks_hotel_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('guestbooks_hotel_data_purged', handleSync);
+      window.removeEventListener('guestbooks_stay_updated', handleSync);
+      window.removeEventListener('guestbooks_hotel_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, [effectiveHotelId]);
 
   // Reset to first page whenever search or filters change

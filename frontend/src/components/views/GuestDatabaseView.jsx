@@ -32,6 +32,22 @@ export default function GuestDatabaseView({ hotelId = null }) {
 
   useEffect(() => {
     fetchRecords(search);
+
+    const handleSync = () => {
+      fetchRecords(search);
+    };
+
+    window.addEventListener('guestbooks_hotel_data_purged', handleSync);
+    window.addEventListener('guestbooks_stay_updated', handleSync);
+    window.addEventListener('guestbooks_hotel_updated', handleSync);
+    window.addEventListener('storage', handleSync);
+
+    return () => {
+      window.removeEventListener('guestbooks_hotel_data_purged', handleSync);
+      window.removeEventListener('guestbooks_stay_updated', handleSync);
+      window.removeEventListener('guestbooks_hotel_updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, [search, hotelId]);
 
   // Date filtering calculation

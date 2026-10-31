@@ -913,13 +913,13 @@ export const hotelService = {
   },
 
   /**
-   * Retrieves date-wise guest registrations for a specific hotel, merging
-   * both backend SQLite/PostgreSQL records and frontend master stays.
-   * Ensures front and back ID document images are always included.
+   * Retrieves date-wise guest registrations for a specific hotel.
+   * Central SQLite/PostgreSQL backend is the authoritative single source of truth.
+   * Falls back to offline localStorage stays ONLY when backend is unreachable.
    */
   getHotelGuestHistory: async (hotelId = null) => {
-    const localStays = hotelService.getAllStays(hotelId);
     let backendRecords = [];
+    let backendFetched = false;
 
     try {
       const url = hotelId && hotelId !== 'ALL'
@@ -936,61 +936,23 @@ export const hotelService = {
       if (res && res.ok) {
         const json = await res.json();
         backendRecords = json.records || [];
+        backendFetched = true;
       }
     } catch (e) {
       console.warn('Backend fetch in getHotelGuestHistory failed:', e);
     }
 
-    // Merge local and backend records by id/regNo
-    const combinedMap = new Map();
-
-    localStays.forEach(stay => {
-      combinedMap.set(stay.id || stay.regNo, {
-        id: stay.id,
-        regNo: stay.regNo || 'REG-0000',
-        hotelId: stay.hotelId || 'HTL-101',
-        roomNumber: stay.roomNumber,
-        checkInTime: stay.checkInTime,
-        checkOutTime: stay.checkOutTime || null,
-        stayType: stay.stayType || '24 Hours Full Stay',
-        roomRate: stay.roomRate || 0,
-        advancePaid: stay.advancePaid || 0,
-        paymentMode: stay.paymentMode || 'Cash',
-        status: stay.status || (stay.checkOutTime ? 'CHECKED_OUT' : 'CHECKED_IN'),
-        guestName: stay.primaryGuest?.name || 'Guest',
-        phone: stay.primaryGuest?.phone || 'N/A',
-        idType: stay.primaryGuest?.idType || 'Aadhaar Card',
-        idNumber: stay.primaryGuest?.idNumber || 'N/A',
-        age: stay.primaryGuest?.age || 'N/A',
-        gender: stay.primaryGuest?.gender || 'N/A',
-        address: stay.primaryGuest?.address || '',
-        city: stay.primaryGuest?.city || '',
-        purpose: stay.purpose || 'Personal Stay',
-        vehicleNo: stay.vehicleNo || 'N/A',
-        documentFront: stay.documentFront || null,
-        documentBack: stay.documentBack || null,
-        signature: stay.signature || null,
-        checkOutSignature: stay.checkOutSignature || null,
-        accompanyingGuest: stay.accompanyingGuest || null,
-        partnerDocumentFront: stay.accompanyingGuest?.documentFront || stay.accompanyingGuest?.document_front || null,
-        partnerDocumentBack: stay.accompanyingGuest?.documentBack || stay.accompanyingGuest?.document_back || null,
-        hasDocFront: !!stay.documentFront,
-        hasDocBack: !!stay.documentBack,
-        hasSignature: !!stay.signature,
-        hasPartnerDoc: !!(stay.accompanyingGuest?.documentFront || stay.accompanyingGuest?.documentBack),
-        hasCheckoutSignature: !!stay.checkOutSignature,
-        source: 'local',
-      });
-    });
-
-    backendRecords.forEach(bRec => {
-      const key = `DB-${bRec.id}` || bRec.reg_no;
-      if (!combinedMap.has(key)) {
+    // 1. If backend responded successfully, authoritative records from server are used
+    if (backendFetched) {
+      return backendRecords.map(bRec => {
         const partner = bRec.accompanying_guest;
         const pFront = bRec.partner_document_front || partner?.documentFront || partner?.document_front || null;
         const pBack = bRec.partner_document_back || partner?.documentBack || partner?.document_back || null;
-        combinedMap.set(key, {
+        const key = `DB-${bRec.id}` || bRec.reg_no;
+
+        return {
           id: key,
+          dbId: bRec.id,
           regNo: bRec.reg_no,
           hotelId: bRec.hotel_id || 'HTL-101',
           roomNumber: bRec.room_number,
@@ -1016,20 +978,70 @@ export const hotelService = {
           accompanyingGuest: partner || null,
           partnerDocumentFront: pFront,
           partnerDocumentBack: pBack,
+          primaryGuest: {
+            name: bRec.guest_name,
+            phone: bRec.phone,
+            address: bRec.address,
+            city: bRec.city,
+            pincode: bRec.pincode,
+            idType: bRec.id_type,
+            idNumber: bRec.id_number
+          },
           hasDocFront: bRec.has_doc_front === 1 || !!bRec.document_front,
           hasDocBack: bRec.has_doc_back === 1 || !!bRec.document_back,
           hasSignature: bRec.has_signature === 1 || !!bRec.signature,
           hasPartnerDoc: (bRec.has_partner_doc === 1) || !!pFront || !!pBack,
           hasCheckoutSignature: (bRec.has_checkout_signature === 1) || !!bRec.checkout_signature,
           source: 'backend',
-        });
-      }
-    });
+        };
+      }).sort((a, b) => new Date(b.checkInTime || 0) - new Date(a.checkInTime || 0));
+    }
 
-    const list = Array.from(combinedMap.values());
-    // Sort descending by checkInTime
-    list.sort((a, b) => new Date(b.checkInTime || 0) - new Date(a.checkInTime || 0));
-    return list;
+    // 2. Offline Fallback (only when backend server is completely offline)
+    const localStays = hotelService.getAllStays(hotelId);
+    return localStays.map(stay => ({
+      id: stay.id,
+      regNo: stay.regNo || 'REG-0000',
+      hotelId: stay.hotelId || 'HTL-101',
+      roomNumber: stay.roomNumber,
+      checkInTime: stay.checkInTime,
+      checkOutTime: stay.checkOutTime || null,
+      stayType: stay.stayType || '24 Hours Full Stay',
+      roomRate: stay.roomRate || 0,
+      advancePaid: stay.advancePaid || 0,
+      paymentMode: stay.paymentMode || 'Cash',
+      status: stay.status || (stay.checkOutTime ? 'CHECKED_OUT' : 'CHECKED_IN'),
+      guestName: stay.primaryGuest?.name || 'Guest',
+      phone: stay.primaryGuest?.phone || 'N/A',
+      idType: stay.primaryGuest?.idType || 'Aadhaar Card',
+      idNumber: stay.primaryGuest?.idNumber || 'N/A',
+      age: stay.primaryGuest?.age || 'N/A',
+      gender: stay.primaryGuest?.gender || 'N/A',
+      address: stay.primaryGuest?.address || '',
+      city: stay.primaryGuest?.city || '',
+      purpose: stay.purpose || 'Personal Stay',
+      vehicleNo: stay.vehicleNo || 'N/A',
+      documentFront: stay.documentFront || null,
+      documentBack: stay.documentBack || null,
+      signature: stay.signature || null,
+      checkOutSignature: stay.checkOutSignature || null,
+      accompanyingGuest: stay.accompanyingGuest || null,
+      partnerDocumentFront: stay.accompanyingGuest?.documentFront || stay.accompanyingGuest?.document_front || null,
+      partnerDocumentBack: stay.accompanyingGuest?.documentBack || stay.accompanyingGuest?.document_back || null,
+      primaryGuest: stay.primaryGuest || {
+        name: stay.guestName,
+        phone: stay.phone,
+        address: stay.address,
+        idType: stay.idType,
+        idNumber: stay.idNumber
+      },
+      hasDocFront: !!stay.documentFront,
+      hasDocBack: !!stay.documentBack,
+      hasSignature: !!stay.signature,
+      hasPartnerDoc: !!(stay.accompanyingGuest?.documentFront || stay.accompanyingGuest?.documentBack),
+      hasCheckoutSignature: !!stay.checkOutSignature,
+      source: 'local',
+    })).sort((a, b) => new Date(b.checkInTime || 0) - new Date(a.checkInTime || 0));
   },
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1039,6 +1051,8 @@ export const hotelService = {
   getDatabaseRecords: async (search = '', targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     let backendRecords = [];
+    let backendFetched = false;
+
     try {
       let queryParams = [];
       if (search) queryParams.push(`search=${encodeURIComponent(search)}`);
@@ -1055,12 +1069,13 @@ export const hotelService = {
       if (res && res.ok) {
         const json = await res.json();
         backendRecords = json.records || [];
+        backendFetched = true;
       }
     } catch (e) {
       console.warn('Failed to fetch from backend database:', e);
     }
 
-    if (backendRecords.length > 0) {
+    if (backendFetched) {
       return backendRecords;
     }
 
