@@ -477,7 +477,13 @@ def _seed_default_data(conn, db_type):
             """, (r_id, "HTL-101", r_num, r_type, r_fl, float(r_rate), "VACANT", now_iso))
 
     conn.commit()
+    # Auto-repair: Ensure any hotel with NULL or invalid total_rooms is safely set to 15
+    try:
+        execute_query(conn, db_type, "UPDATE hotels SET total_rooms = 15 WHERE total_rooms IS NULL OR total_rooms <= 0")
+    except Exception as e:
+        logger.warning(f"Auto-repair hotels total_rooms note: {e}")
 
+    conn.commit()
 def create_guest_record(data: dict) -> dict:
     """
     Inserts a new guest check-in record in strict sequence.
