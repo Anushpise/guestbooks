@@ -99,5 +99,34 @@ class TestRoomCrud(unittest.TestCase):
             except Exception:
                 pass
 
+    def test_db_get_rooms_with_null_total_rooms(self):
+        """Verify that hotels with NULL total_rooms do not crash db_get_rooms with TypeError: int(None)."""
+        from app.db.database import get_db_connection, execute_query, db_delete_hotel
+        conn, db_type = get_db_connection()
+        test_htl = "HTL-7660-TEST"
+        try:
+            # Delete any existing
+            execute_query(conn, db_type, "DELETE FROM hotels WHERE id = ?", (test_htl,))
+            execute_query(conn, db_type, "DELETE FROM rooms WHERE hotel_id = ?", (test_htl,))
+            # Insert hotel with total_rooms as NULL
+            execute_query(conn, db_type, """
+                INSERT INTO hotels (id, name, email, phone, total_rooms, status, registered_at)
+                VALUES (?, ?, ?, ?, NULL, 'active', '2026-11-01T00:00:00Z')
+            """, (test_htl, "Null Rooms Test Hotel", "test@null.com", "9999999999"))
+            conn.commit()
+        finally:
+            conn.close()
+
+        try:
+            # Now fetch rooms - must not raise TypeError/500
+            rooms = db_get_rooms(test_htl)
+            self.assertIsInstance(rooms, list)
+            self.assertEqual(len(rooms), 15)
+        finally:
+            try:
+                db_delete_hotel(test_htl)
+            except Exception:
+                pass
+
 if __name__ == "__main__":
     unittest.main()

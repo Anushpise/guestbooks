@@ -76,15 +76,18 @@ def get_first_val(row, default=0):
     """Safely extracts the first column value from either a tuple row or RealDictRow."""
     if row is None:
         return default
+    val = None
     if isinstance(row, dict):
         try:
-            return list(row.values())[0]
+            val = list(row.values())[0]
         except Exception:
             return default
-    try:
-        return row[0]
-    except Exception:
-        return default
+    else:
+        try:
+            val = row[0]
+        except Exception:
+            return default
+    return default if val is None else val
 
 def init_db():
     """Initializes the database tables if they do not exist."""
@@ -1282,26 +1285,36 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
     count = get_first_val(cursor.fetchone())
 
     if count == 0:
-        h_cur = execute_query(conn, db_type, "SELECT total_rooms FROM hotels WHERE id = ?", (h_id,))
-        h_row = h_cur.fetchone()
-        tot_rooms = int(get_first_val(h_row, 15))
-        now_iso = get_current_ist_iso()
-        room_types = [
-            ("Executive Deluxe", 1800),
-            ("Super Deluxe", 2200),
-            ("Standard Suite", 1500),
-            ("Presidential Suite", 3500)
-        ]
-        for i in range(1, tot_rooms + 1):
-            fl_num = (i - 1) // 5 + 1
-            fl_suffix = "st" if fl_num == 1 else "nd" if fl_num == 2 else "rd" if fl_num == 3 else "th"
-            r_num = str(fl_num * 100 + ((i - 1) % 5 + 1))
-            t_name, t_rate = room_types[(i - 1) % len(room_types)]
-            execute_query(conn, db_type, """
-                INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (f"{h_id}_{r_num}", h_id, r_num, t_name, f"{fl_num}{fl_suffix} Floor", float(t_rate), "VACANT", now_iso))
-        conn.commit()
+        try:
+            h_cur = execute_query(conn, db_type, "SELECT total_rooms FROM hotels WHERE id = ?", (h_id,))
+            h_row = h_cur.fetchone()
+            raw_val = get_first_val(h_row, 15)
+            try:
+                tot_rooms = int(raw_val) if raw_val is not None else 15
+                if tot_rooms <= 0:
+                    tot_rooms = 15
+            except (ValueError, TypeError):
+                tot_rooms = 15
+
+            now_iso = get_current_ist_iso()
+            room_types = [
+                ("Executive Deluxe", 1800),
+                ("Super Deluxe", 2200),
+                ("Standard Suite", 1500),
+                ("Presidential Suite", 3500)
+            ]
+            for i in range(1, tot_rooms + 1):
+                fl_num = (i - 1) // 5 + 1
+                fl_suffix = "st" if fl_num == 1 else "nd" if fl_num == 2 else "rd" if fl_num == 3 else "th"
+                r_num = str(fl_num * 100 + ((i - 1) % 5 + 1))
+                t_name, t_rate = room_types[(i - 1) % len(room_types)]
+                execute_query(conn, db_type, """
+                    INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (f"{h_id}_{r_num}", h_id, r_num, t_name, f"{fl_num}{fl_suffix} Floor", float(t_rate), "VACANT", now_iso))
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Failed to auto-populate rooms for hotel {h_id}: {e}")
 
     # Fetch all rooms
     cursor = execute_query(conn, db_type, """
