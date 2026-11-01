@@ -225,6 +225,14 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
       alert('Please fill primary guest name, phone, and ID proof number.');
       return;
     }
+    if (!signatureData) {
+      alert('Primary guest digital signature is mandatory. Please tap the signature box to sign.');
+      return;
+    }
+    if (hasAccompanying && !partnerSignatureData) {
+      alert('Partner digital signature is mandatory. Please tap the partner signature box to sign.');
+      return;
+    }
 
     const checkInData = {
       roomNumber: selectedRoomNumber,
@@ -652,42 +660,49 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             {/* Primary Guest Signature Pad */}
             <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
               {signatureData ? (
-                <div className="border border-emerald-300 rounded-xl p-1.5 bg-white shadow-2xs">
+                <div 
+                  onClick={() => setIsSignatureModalOpen(true)}
+                  className="border-2 border-emerald-300 hover:border-emerald-500 rounded-xl p-1.5 bg-white shadow-2xs cursor-pointer group relative transition-all"
+                  title="Click to change signature"
+                >
                   <img
                     src={signatureData}
                     alt="Primary Signature"
                     className="h-16 max-w-[160px] object-contain"
                   />
+                  <span className="absolute bottom-1 right-1 text-[9px] font-bold bg-white/90 text-emerald-800 px-1 py-0.5 rounded shadow-2xs opacity-0 group-hover:opacity-100 transition-opacity">
+                    Click to Change
+                  </span>
                 </div>
               ) : (
-                <div className="h-16 w-36 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-400 text-xs bg-white">
-                  <PenTool className="h-4 w-4 mb-0.5 opacity-50 text-slate-400" />
-                  <span className="font-medium text-[10px]">No signature</span>
+                <div 
+                  onClick={() => setIsSignatureModalOpen(true)}
+                  className="h-16 w-44 border-2 border-dashed border-slate-300 hover:border-[#0b3c33] hover:bg-emerald-50/40 rounded-xl flex flex-col items-center justify-center text-slate-500 hover:text-[#0b3c33] text-xs bg-white cursor-pointer transition-all shadow-2xs group"
+                  title="Click to sign"
+                >
+                  <PenTool className="h-4 w-4 mb-0.5 text-slate-400 group-hover:text-[#0b3c33] transition-colors" />
+                  <span className="font-semibold text-[11px]">Click to Sign *</span>
                 </div>
               )}
 
               <div className="flex-1 space-y-1 text-center sm:text-left">
                 <p className="text-xs font-bold text-slate-900">
-                  1. {primaryName || 'Primary Guest'} Signature
+                  1. {primaryName || 'Primary Guest'} Signature *
                 </p>
-                <div className="flex gap-1.5 justify-center sm:justify-start">
-                  <button
-                    type="button"
-                    onClick={() => setIsSignatureModalOpen(true)}
-                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 text-[11px] font-bold cursor-pointer transition-colors"
-                  >
-                    {signatureData ? '✍️ Re-Sign' : '✍️ Sign'}
-                  </button>
-                  {signatureData && (
+                <p className="text-[11px] text-slate-500">
+                  {signatureData ? 'Signature captured. Tap box to re-sign.' : 'Mandatory. Tap the box to draw signature.'}
+                </p>
+                {signatureData && (
+                  <div>
                     <button
                       type="button"
                       onClick={() => setSignatureData(null)}
-                      className="px-2 py-1 rounded-lg text-[11px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                      className="px-2 py-0.5 rounded-md text-[11px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
                     >
-                      Clear
+                      Clear Signature
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -695,42 +710,49 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             {hasAccompanying ? (
               <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
                 {partnerSignatureData ? (
-                  <div className="border border-indigo-300 rounded-xl p-1.5 bg-white shadow-2xs">
+                  <div 
+                    onClick={() => setIsPartnerSignatureModalOpen(true)}
+                    className="border-2 border-indigo-300 hover:border-indigo-500 rounded-xl p-1.5 bg-white shadow-2xs cursor-pointer group relative transition-all"
+                    title="Click to change signature"
+                  >
                     <img
                       src={partnerSignatureData}
                       alt="Partner Signature"
                       className="h-16 max-w-[160px] object-contain"
                     />
+                    <span className="absolute bottom-1 right-1 text-[9px] font-bold bg-white/90 text-indigo-800 px-1 py-0.5 rounded shadow-2xs opacity-0 group-hover:opacity-100 transition-opacity">
+                      Click to Change
+                    </span>
                   </div>
                 ) : (
-                  <div className="h-16 w-36 border-2 border-dashed border-indigo-200 rounded-xl flex flex-col items-center justify-center text-indigo-400 text-xs bg-white">
-                    <PenTool className="h-4 w-4 mb-0.5 opacity-50 text-indigo-400" />
-                    <span className="font-medium text-[10px]">Partner Signature</span>
+                  <div 
+                    onClick={() => setIsPartnerSignatureModalOpen(true)}
+                    className="h-16 w-44 border-2 border-dashed border-indigo-300 hover:border-indigo-500 hover:bg-indigo-50/40 rounded-xl flex flex-col items-center justify-center text-indigo-500 text-xs bg-white cursor-pointer transition-all shadow-2xs group"
+                    title="Click to sign"
+                  >
+                    <PenTool className="h-4 w-4 mb-0.5 text-indigo-400 group-hover:text-indigo-600 transition-colors" />
+                    <span className="font-semibold text-[11px]">Click to Sign *</span>
                   </div>
                 )}
 
                 <div className="flex-1 space-y-1 text-center sm:text-left">
                   <p className="text-xs font-bold text-slate-900">
-                    2. {partnerName || 'Accompanying Partner'} Signature
+                    2. {partnerName || 'Accompanying Partner'} Signature *
                   </p>
-                  <div className="flex gap-1.5 justify-center sm:justify-start">
-                    <button
-                      type="button"
-                      onClick={() => setIsPartnerSignatureModalOpen(true)}
-                      className="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 text-indigo-900 text-[11px] font-bold cursor-pointer transition-colors"
-                    >
-                      {partnerSignatureData ? '✍️ Re-Sign' : '✍️ Sign'}
-                    </button>
-                    {partnerSignatureData && (
+                  <p className="text-[11px] text-slate-500">
+                    {partnerSignatureData ? 'Signature captured. Tap box to re-sign.' : 'Mandatory. Tap the box to draw signature.'}
+                  </p>
+                  {partnerSignatureData && (
+                    <div>
                       <button
                         type="button"
                         onClick={() => setPartnerSignatureData(null)}
-                        className="px-2 py-1 rounded-lg text-[11px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
+                        className="px-2 py-0.5 rounded-md text-[11px] font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
                       >
-                        Clear
+                        Clear Signature
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
