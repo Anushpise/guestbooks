@@ -594,7 +594,7 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
 
     query = f"""
         SELECT id, reg_no, created_at, room_number, stay_type, room_rate, advance_paid,
-               payment_mode, guest_name, phone, id_type, id_number, address, city, pincode,
+               payment_mode, guest_name, phone, id_type, id_number, dob, age, gender, address, city, pincode,
                status, checked_out_at, hotel_id,
                document_front, document_back, signature,
                accompanying_guest_json, partner_document_front, partner_document_back, checkout_signature, partner_signature,

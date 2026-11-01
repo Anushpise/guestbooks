@@ -18,6 +18,56 @@ import logging
 
 logger = logging.getLogger("indian_id_parser")
 
+def compute_exact_age(dob_str: str) -> str:
+    """
+    Computes accurate age based on exact birth date (day, month, year) compared against today's date.
+    Handles DD/MM/YYYY, YYYY-MM-DD, DD.MM.YYYY, DD-MM-YYYY, and 4-digit year only.
+    """
+    if not dob_str:
+        return ""
+    clean = str(dob_str).strip()
+    now = datetime.now()
+    cur_y, cur_m, cur_d = now.year, now.month, now.day
+
+    # 1. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+    m = re.match(r"^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$", clean)
+    if m:
+        try:
+            d, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1900 < y <= cur_y and 1 <= mth <= 12 and 1 <= d <= 31:
+                age = cur_y - y
+                if (cur_m, cur_d) < (mth, d):
+                    age -= 1
+                return str(max(0, age))
+        except Exception:
+            pass
+
+    # 2. YYYY/MM/DD or YYYY-MM-DD
+    m = re.match(r"^(\d{4})[\/\.\-](\d{1,2})[\/\.\-](\d{1,2})$", clean)
+    if m:
+        try:
+            y, mth, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 1900 < y <= cur_y and 1 <= mth <= 12 and 1 <= d <= 31:
+                age = cur_y - y
+                if (cur_m, cur_d) < (mth, d):
+                    age -= 1
+                return str(max(0, age))
+        except Exception:
+            pass
+
+    # 3. Year only (e.g., "1995")
+    m = re.search(r"\b(19\d{2}|20\d{2})\b", clean)
+    if m:
+        try:
+            y = int(m.group(1))
+            if 1900 < y <= cur_y:
+                return str(cur_y - y)
+        except Exception:
+            pass
+
+    return ""
+
+
 # OCR Digit vs Character Confusions
 OCR_DIGIT_FIXES = {
     'O': '0', 'o': '0', 'D': '0', 'Q': '0',
@@ -857,13 +907,14 @@ def parse_indian_id_text(text: str) -> dict:
             if 18 <= cand_age <= 110:
                 age = str(cand_age)
 
-    # Guarantee age from DOB
-    if dob and not age:
-        m_yr = re.search(r'\b(19\d{2}|20\d{2})\b', dob)
-        if m_yr:
-            yr = int(m_yr.group(1))
-            if 1900 < yr <= current_year:
-                age = str(current_year - yr)
+    # Guarantee accurate age from DOB
+    if dob:
+        calculated_age = compute_exact_age(dob)
+        if calculated_age:
+            age = calculated_age
+    elif not age:
+        # Fallback if only age was present or found
+        pass
 
     # Guarantee approximate DOB from age if DOB missing
     if age and not dob and age.isdigit():

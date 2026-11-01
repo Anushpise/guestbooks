@@ -18,6 +18,59 @@ import { createWorker } from 'tesseract.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Calculates accurate age based on birth date (DD/MM/YYYY, YYYY-MM-DD, or YYYY)
+ * comparing day, month, and year against today's date.
+ */
+export function calculateAccurateAge(dobStr) {
+  if (!dobStr) return '';
+  const clean = String(dobStr).trim();
+  const now = new Date();
+  const curY = now.getFullYear();
+  const curM = now.getMonth() + 1;
+  const curD = now.getDate();
+
+  // 1. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmy = clean.match(/^(\d{1,2})[\/\.\-](\d{1,2})[\/\.\-](\d{4})$/);
+  if (dmy) {
+    const d = parseInt(dmy[1], 10);
+    const m = parseInt(dmy[2], 10);
+    const y = parseInt(dmy[3], 10);
+    if (y > 1900 && y <= curY && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      let age = curY - y;
+      if (curM < m || (curM === m && curD < d)) {
+        age -= 1;
+      }
+      return String(Math.max(0, age));
+    }
+  }
+
+  // 2. YYYY/MM/DD or YYYY-MM-DD
+  const ymd = clean.match(/^(\d{4})[\/\.\-](\d{1,2})[\/\.\-](\d{1,2})$/);
+  if (ymd) {
+    const y = parseInt(ymd[1], 10);
+    const m = parseInt(ymd[2], 10);
+    const d = parseInt(ymd[3], 10);
+    if (y > 1900 && y <= curY && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      let age = curY - y;
+      if (curM < m || (curM === m && curD < d)) {
+        age -= 1;
+      }
+      return String(Math.max(0, age));
+    }
+  }
+
+  // 3. Year only (e.g. 1995 or 01/01/1995)
+  const yrMatch = clean.match(/\b(19\d{2}|20\d{2})\b/);
+  if (yrMatch) {
+    const y = parseInt(yrMatch[1], 10);
+    if (y > 1900 && y <= curY) {
+      return String(curY - y);
+    }
+  }
+  return '';
+}
+
 /** Score an OCR text result — higher = more useful content. */
 function scoreText(text) {
   if (!text) return 0;
@@ -503,7 +556,7 @@ export function parseIndianIDText(rawText) {
     const yVal = +lDobM[3];
     if (yVal > 1900 && yVal <= curYear) {
       dob = `${dVal}/${mVal}/${yVal}`;
-      age = String(curYear - yVal);
+      age = calculateAccurateAge(dob);
     }
   }
 
@@ -513,7 +566,7 @@ export function parseIndianIDText(rawText) {
     const yobM = text.match(yobRx);
     if (yobM) {
       const y = +yobM[1];
-      if (y > 1900 && y <= curYear) { dob = `01/01/${y}`; age = String(curYear - y); }
+      if (y > 1900 && y <= curYear) { dob = `01/01/${y}`; age = calculateAccurateAge(dob); }
     }
   }
 
@@ -527,7 +580,7 @@ export function parseIndianIDText(rawText) {
       const y = +yr;
       if (y > 1920 && y <= (curYear - 5)) {
         dob = cand;
-        age = String(curYear - y);
+        age = calculateAccurateAge(dob);
         break;
       }
     }

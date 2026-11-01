@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { hotelService } from '../../services/hotelService';
+import { calculateAccurateAge } from '../../lib/ocrUtils';
 
 export default function GuestDatabaseView({ hotelId = null }) {
   const [records, setRecords] = useState([]);
@@ -295,7 +296,14 @@ export default function GuestDatabaseView({ hotelId = null }) {
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-900">{r.guest_name}</div>
+                        <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                          <span>{r.guest_name}</span>
+                          {(r.age || r.dob) && (
+                            <span className="text-[10px] font-semibold text-slate-500">
+                              ({r.age ? `${r.age} yrs` : `${calculateAccurateAge(r.dob)} yrs`}{r.gender ? `, ${r.gender}` : ''})
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
                           <Phone className="h-3 w-3 text-slate-400" /> {r.phone}
                         </div>
@@ -431,7 +439,7 @@ export default function GuestDatabaseView({ hotelId = null }) {
             {/* Modal Scrollable Body */}
             <div className="p-6 overflow-y-auto space-y-6 text-xs">
               {/* Personal & Stay Info */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase">Phone</span>
                   <p className="font-bold text-slate-900">{selectedRecord.phone}</p>
@@ -442,11 +450,19 @@ export default function GuestDatabaseView({ hotelId = null }) {
                   <p className="font-mono text-slate-600 text-[11px]">{selectedRecord.id_number || '—'}</p>
                 </div>
                 <div>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase">Age / Gender / DOB</span>
+                  <p className="font-bold text-slate-900">
+                    {selectedRecord.age ? `${selectedRecord.age} yrs` : (selectedRecord.dob ? `${calculateAccurateAge(selectedRecord.dob)} yrs` : '—')}
+                    {selectedRecord.gender ? ` • ${selectedRecord.gender}` : ''}
+                  </p>
+                  <p className="text-slate-500 font-mono text-[11px]">{selectedRecord.dob ? `DOB: ${selectedRecord.dob}` : 'DOB: —'}</p>
+                </div>
+                <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase">Tariff / Advance</span>
                   <p className="font-bold text-slate-900">₹{selectedRecord.room_rate} / ₹{selectedRecord.advance_paid}</p>
                   <p className="text-slate-500 text-[11px]">{selectedRecord.payment_mode}</p>
                 </div>
-                <div className="col-span-2 sm:col-span-3">
+                <div className="col-span-2 sm:col-span-4">
                   <span className="text-[10px] text-slate-400 font-bold uppercase">Residential Address</span>
                   <p className="font-semibold text-slate-900 text-xs">{selectedRecord.address || '—'}</p>
                   <p className="text-slate-500 text-[11px]">{selectedRecord.city} {selectedRecord.pincode ? `• PIN: ${selectedRecord.pincode}` : ''}</p>
@@ -536,7 +552,10 @@ export default function GuestDatabaseView({ hotelId = null }) {
                       </div>
                       <div>
                         <span className="text-[9px] text-purple-700 font-bold uppercase">Age / Gender</span>
-                        <p className="font-semibold text-slate-800 mt-0.5">{partner.age || '24'} yrs / {partner.gender || 'Female'}</p>
+                        <p className="font-semibold text-slate-800 mt-0.5">
+                          {partner.age ? `${partner.age} yrs` : (partner.dob ? `${calculateAccurateAge(partner.dob)} yrs` : '—')}
+                          {partner.gender ? ` / ${partner.gender}` : ''}
+                        </p>
                       </div>
                       <div>
                         <span className="text-[9px] text-purple-700 font-bold uppercase">Relationship</span>

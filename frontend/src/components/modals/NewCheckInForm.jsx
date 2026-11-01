@@ -8,13 +8,14 @@ import DocumentScannerZone from '../common/DocumentScannerZone';
 import SignatureModal from '../modals/SignatureModal';
 import CounterQRModal from '../modals/CounterQRModal';
 import { base64ToFile } from '../../lib/imageCompressor';
+import { calculateAccurateAge } from '../../lib/ocrUtils';
 
 export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckInComplete, hotel }) {
   const [resetKey, setResetKey] = useState(Date.now());
-  const [selectedRoomNumber, setSelectedRoomNumber] = useState(vacantRooms[0]?.number || '');
-  const [stayType, setStayType] = useState('24 Hours Full Stay');
-  const [roomRate, setRoomRate] = useState(vacantRooms[0]?.rate?.toString() || '1800');
-  const [advancePaid, setAdvancePaid] = useState(vacantRooms[0]?.rate?.toString() || '1800');
+  const [selectedRoomNumber, setSelectedRoomNumber] = useState('');
+  const [stayType, setStayType] = useState('');
+  const [roomRate, setRoomRate] = useState('');
+  const [advancePaid, setAdvancePaid] = useState('');
   const [paymentMode, setPaymentMode] = useState('UPI / GPay');
 
   // Digital Signatures & Uploaded Documents (Both Primary & Partner)
@@ -121,6 +122,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
 
   // Primary Guest
   const [primaryName, setPrimaryName] = useState('');
+  const [primaryDob, setPrimaryDob] = useState('');
   const [primaryAge, setPrimaryAge] = useState('');
   const [primaryGender, setPrimaryGender] = useState('Male');
   const [primaryPhone, setPrimaryPhone] = useState('');
@@ -133,6 +135,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
   // Accompanying Guest / Partner (Defaulted ON)
   const [hasAccompanying, setHasAccompanying] = useState(true);
   const [partnerName, setPartnerName] = useState('');
+  const [partnerDob, setPartnerDob] = useState('');
   const [partnerAge, setPartnerAge] = useState('');
   const [partnerGender, setPartnerGender] = useState('Female');
   const [partnerRelation, setPartnerRelation] = useState('Partner / Couple');
@@ -147,16 +150,17 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
   const [idScanUploaded, setIdScanUploaded] = useState(false);
 
   const resetForm = () => {
-    setSelectedRoomNumber(vacantRooms[0]?.number || '');
-    setStayType('24 Hours Full Stay');
-    setRoomRate(vacantRooms[0]?.rate?.toString() || '1800');
-    setAdvancePaid(vacantRooms[0]?.rate?.toString() || '1800');
+    setSelectedRoomNumber('');
+    setStayType('');
+    setRoomRate('');
+    setAdvancePaid('');
     setPaymentMode('UPI / GPay');
     setSignatureData(null);
     setPartnerSignatureData(null);
     setPrimaryDocs({ front: null, back: null });
     setPartnerDocs({ front: null, back: null });
     setPrimaryName('');
+    setPrimaryDob('');
     setPrimaryAge('');
     setPrimaryGender('Male');
     setPrimaryPhone('');
@@ -167,6 +171,7 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
     setIsLocal(false);
     setHasAccompanying(true);
     setPartnerName('');
+    setPartnerDob('');
     setPartnerAge('');
     setPartnerGender('Female');
     setPartnerRelation('Partner / Couple');
@@ -193,7 +198,13 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
     if (parsed.name) setPrimaryName(parsed.name);
     if (parsed.idType) setPrimaryIdType(parsed.idType);
     if (parsed.idNumber) setPrimaryIdNumber(parsed.idNumber);
-    if (parsed.age) setPrimaryAge(String(parsed.age));
+    if (parsed.dob) setPrimaryDob(parsed.dob);
+    const calcAge = parsed.dob ? calculateAccurateAge(parsed.dob) : '';
+    if (calcAge) {
+      setPrimaryAge(calcAge);
+    } else if (parsed.age) {
+      setPrimaryAge(String(parsed.age));
+    }
     if (parsed.gender) setPrimaryGender(parsed.gender);
     if (parsed.phone) setPrimaryPhone(parsed.phone);
     if (parsed.address) setPrimaryAddress(parsed.address);
@@ -205,7 +216,13 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
     if (parsed.name) setPartnerName(parsed.name);
     if (parsed.idType) setPartnerIdType(parsed.idType);
     if (parsed.idNumber) setPartnerIdNumber(parsed.idNumber);
-    if (parsed.age) setPartnerAge(String(parsed.age));
+    if (parsed.dob) setPartnerDob(parsed.dob);
+    const calcAge = parsed.dob ? calculateAccurateAge(parsed.dob) : '';
+    if (calcAge) {
+      setPartnerAge(calcAge);
+    } else if (parsed.age) {
+      setPartnerAge(String(parsed.age));
+    }
     if (parsed.gender) setPartnerGender(parsed.gender);
   };
 
@@ -220,6 +237,14 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!selectedRoomNumber) {
+      alert('Please select a room before completing check-in.');
+      return;
+    }
+    if (!stayType) {
+      alert('Please select a stay package before completing check-in.');
+      return;
+    }
     if (!primaryName || !primaryPhone || !primaryIdNumber) {
       alert('Please fill primary guest name, phone, and ID proof number.');
       return;
@@ -241,7 +266,8 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
       partnerSignature: partnerSignatureData,
       primaryGuest: {
         name: primaryName,
-        age: Number(primaryAge) || 25,
+        dob: primaryDob,
+        age: Number(primaryAge) || (primaryDob ? Number(calculateAccurateAge(primaryDob)) : 25),
         gender: primaryGender,
         phone: primaryPhone,
         idType: primaryIdType,
@@ -593,13 +619,25 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Select Room *</label>
+                <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                  <span>Select Room *</span>
+                  {!selectedRoomNumber && (
+                    <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1 rounded border border-amber-200">
+                      Required
+                    </span>
+                  )}
+                </label>
                 <select 
-                  className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
+                  className={`w-full h-9 rounded-lg border bg-white px-3 text-xs font-semibold outline-none transition-all ${
+                    !selectedRoomNumber
+                      ? 'border-amber-400 bg-amber-50/20 text-slate-500 focus:ring-2 focus:ring-amber-500'
+                      : 'border-slate-200 text-slate-900 focus:ring-2 focus:ring-emerald-600'
+                  }`}
                   value={selectedRoomNumber}
                   onChange={(e) => handleRoomChange(e.target.value)}
                   required
                 >
+                  <option value="" disabled>-- Select Vacant Room * --</option>
                   {vacantRooms.map(r => (
                     <option key={r.id} value={r.number}>
                       Room {r.number} ({r.type} - ₹{r.rate})
@@ -609,12 +647,25 @@ export default function NewCheckInForm({ isOpen, onClose, vacantRooms, onCheckIn
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Stay Package / Slot</label>
+                <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                  <span>Stay Package / Slot *</span>
+                  {!stayType && (
+                    <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1 rounded border border-amber-200">
+                      Required
+                    </span>
+                  )}
+                </label>
                 <select 
-                  className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
+                  className={`w-full h-9 rounded-lg border bg-white px-3 text-xs font-semibold outline-none transition-all ${
+                    !stayType
+                      ? 'border-amber-400 bg-amber-50/20 text-slate-500 focus:ring-2 focus:ring-amber-500'
+                      : 'border-slate-200 text-slate-900 focus:ring-2 focus:ring-emerald-600'
+                  }`}
                   value={stayType}
                   onChange={(e) => setStayType(e.target.value)}
+                  required
                 >
+                  <option value="" disabled>-- Select Stay Package / Slot * --</option>
                   <option value="3 Hours Express">3 Hours Express</option>
                   <option value="6 Hours Flexi">6 Hours Flexi</option>
                   <option value="12 Hours Day Stay">12 Hours Day Stay</option>

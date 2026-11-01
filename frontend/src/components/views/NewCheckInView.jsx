@@ -16,13 +16,14 @@ import DocumentScannerZone from '../common/DocumentScannerZone';
 import SignatureModal from '../modals/SignatureModal';
 import CounterQRModal from '../modals/CounterQRModal';
 import { base64ToFile } from '../../lib/imageCompressor';
+import { calculateAccurateAge } from '../../lib/ocrUtils';
 
 export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }) {
   const [resetKey, setResetKey] = useState(Date.now());
-  const [selectedRoomNumber, setSelectedRoomNumber] = useState(vacantRooms[0]?.number || '');
-  const [stayType, setStayType] = useState('24 Hours Full Stay');
-  const [roomRate, setRoomRate] = useState(vacantRooms[0]?.rate?.toString() || '1800');
-  const [advancePaid, setAdvancePaid] = useState(vacantRooms[0]?.rate?.toString() || '1800');
+  const [selectedRoomNumber, setSelectedRoomNumber] = useState('');
+  const [stayType, setStayType] = useState('');
+  const [roomRate, setRoomRate] = useState('');
+  const [advancePaid, setAdvancePaid] = useState('');
   const [paymentMode, setPaymentMode] = useState('UPI / GPay');
 
   // Digital Signatures & Uploaded Documents (Both Primary & Partner)
@@ -103,6 +104,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
 
   // Primary Guest
   const [primaryName, setPrimaryName] = useState('');
+  const [primaryDob, setPrimaryDob] = useState('');
   const [primaryAge, setPrimaryAge] = useState('');
   const [primaryGender, setPrimaryGender] = useState('Male');
   const [primaryPhone, setPrimaryPhone] = useState('');
@@ -115,6 +117,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
   // Accompanying Guest / Partner (Defaulted ON)
   const [hasAccompanying, setHasAccompanying] = useState(true);
   const [partnerName, setPartnerName] = useState('');
+  const [partnerDob, setPartnerDob] = useState('');
   const [partnerAge, setPartnerAge] = useState('');
   const [partnerGender, setPartnerGender] = useState('Female');
   const [partnerRelation, setPartnerRelation] = useState('Partner / Couple');
@@ -129,16 +132,17 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
   const [idScanUploaded, setIdScanUploaded] = useState(false);
 
   const resetForm = () => {
-    setSelectedRoomNumber(vacantRooms[0]?.number || '');
-    setStayType('24 Hours Full Stay');
-    setRoomRate(vacantRooms[0]?.rate?.toString() || '1800');
-    setAdvancePaid(vacantRooms[0]?.rate?.toString() || '1800');
+    setSelectedRoomNumber('');
+    setStayType('');
+    setRoomRate('');
+    setAdvancePaid('');
     setPaymentMode('UPI / GPay');
     setSignatureData(null);
     setPartnerSignatureData(null);
     setPrimaryDocs({ front: null, back: null });
     setPartnerDocs({ front: null, back: null });
     setPrimaryName('');
+    setPrimaryDob('');
     setPrimaryAge('');
     setPrimaryGender('Male');
     setPrimaryPhone('');
@@ -149,6 +153,7 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     setIsLocal(false);
     setHasAccompanying(true);
     setPartnerName('');
+    setPartnerDob('');
     setPartnerAge('');
     setPartnerGender('Female');
     setPartnerRelation('Partner / Couple');
@@ -166,7 +171,13 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     if (parsed.name) setPrimaryName(parsed.name);
     if (parsed.idType) setPrimaryIdType(parsed.idType);
     if (parsed.idNumber) setPrimaryIdNumber(parsed.idNumber);
-    if (parsed.age) setPrimaryAge(String(parsed.age));
+    if (parsed.dob) setPrimaryDob(parsed.dob);
+    const calcAge = parsed.dob ? calculateAccurateAge(parsed.dob) : '';
+    if (calcAge) {
+      setPrimaryAge(calcAge);
+    } else if (parsed.age) {
+      setPrimaryAge(String(parsed.age));
+    }
     if (parsed.gender) setPrimaryGender(parsed.gender);
     if (parsed.phone) setPrimaryPhone(parsed.phone);
     if (parsed.address) setPrimaryAddress(parsed.address);
@@ -178,7 +189,13 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     if (parsed.name) setPartnerName(parsed.name);
     if (parsed.idType) setPartnerIdType(parsed.idType);
     if (parsed.idNumber) setPartnerIdNumber(parsed.idNumber);
-    if (parsed.age) setPartnerAge(String(parsed.age));
+    if (parsed.dob) setPartnerDob(parsed.dob);
+    const calcAge = parsed.dob ? calculateAccurateAge(parsed.dob) : '';
+    if (calcAge) {
+      setPartnerAge(calcAge);
+    } else if (parsed.age) {
+      setPartnerAge(String(parsed.age));
+    }
     if (parsed.gender) setPartnerGender(parsed.gender);
   };
 
@@ -188,11 +205,22 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
     if (rm) {
       setRoomRate(rm.rate.toString());
       setAdvancePaid(rm.rate.toString());
+    } else {
+      setRoomRate('');
+      setAdvancePaid('');
     }
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!selectedRoomNumber) {
+      alert('Please select a room before completing check-in.');
+      return;
+    }
+    if (!stayType) {
+      alert('Please select a stay package before completing check-in.');
+      return;
+    }
     if (!primaryName || !primaryPhone || !primaryIdNumber) {
       alert('Please fill primary guest name, phone, and ID proof number.');
       return;
@@ -214,7 +242,8 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
       partnerSignature: partnerSignatureData,
       primaryGuest: {
         name: primaryName,
-        age: Number(primaryAge) || 25,
+        dob: primaryDob,
+        age: Number(primaryAge) || (primaryDob ? Number(calculateAccurateAge(primaryDob)) : 25),
         gender: primaryGender,
         phone: primaryPhone,
         idType: primaryIdType,
@@ -229,7 +258,8 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
         (hasAccompanying && (partnerName || partnerDocs.front))
           ? {
               name: partnerName || 'Accompanying Partner',
-              age: Number(partnerAge) || 24,
+              dob: partnerDob,
+              age: Number(partnerAge) || (partnerDob ? Number(calculateAccurateAge(partnerDob)) : 24),
               gender: partnerGender || 'Female',
               relation: partnerRelation || 'Partner / Couple',
               idType: partnerIdType || 'Aadhaar Card',
@@ -340,17 +370,29 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Age & Gender</label>
+              <label className="text-xs font-bold text-slate-700">DOB & Age & Gender</label>
               <div className="flex gap-2">
                 <input
+                  type="text"
+                  className="w-28 h-10 px-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs font-mono"
+                  placeholder="DD/MM/YYYY"
+                  value={primaryDob}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setPrimaryDob(val);
+                    const calc = calculateAccurateAge(val);
+                    if (calc) setPrimaryAge(calc);
+                  }}
+                />
+                <input
                   type="number"
-                  className="w-24 h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
+                  className="w-20 h-10 px-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs text-center"
                   placeholder="Age"
                   value={primaryAge}
                   onChange={(e) => setPrimaryAge(e.target.value)}
                 />
                 <select
-                  className="flex-1 h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
+                  className="flex-1 h-10 rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                   value={primaryGender}
                   onChange={(e) => setPrimaryGender(e.target.value)}
                 >
@@ -461,17 +503,29 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Age & Gender</label>
+                  <label className="text-xs font-bold text-slate-700">DOB & Age & Gender</label>
                   <div className="flex gap-2">
                     <input
+                      type="text"
+                      className="w-28 h-10 px-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs font-mono"
+                      placeholder="DD/MM/YYYY"
+                      value={partnerDob}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPartnerDob(val);
+                        const calc = calculateAccurateAge(val);
+                        if (calc) setPartnerAge(calc);
+                      }}
+                    />
+                    <input
                       type="number"
-                      className="w-24 h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs"
+                      className="w-20 h-10 px-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:bg-white focus:border-[#0b3c33] outline-none font-medium shadow-2xs text-center"
                       placeholder="Age"
                       value={partnerAge}
                       onChange={(e) => setPartnerAge(e.target.value)}
                     />
                     <select
-                      className="flex-1 h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
+                      className="flex-1 h-10 rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                       value={partnerGender}
                       onChange={(e) => setPartnerGender(e.target.value)}
                     >
@@ -511,13 +565,25 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Select Room *</label>
+              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span>Select Room *</span>
+                {!selectedRoomNumber && (
+                  <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                    Required
+                  </span>
+                )}
+              </label>
               <select
-                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
+                className={`w-full h-10 rounded-xl border bg-white px-3 text-xs font-bold outline-none shadow-2xs transition-all ${
+                  !selectedRoomNumber
+                    ? 'border-amber-400 bg-amber-50/20 text-slate-500 focus:border-amber-500'
+                    : 'border-slate-200 text-slate-900 focus:border-[#0b3c33]'
+                }`}
                 value={selectedRoomNumber}
                 onChange={(e) => handleRoomChange(e.target.value)}
                 required
               >
+                <option value="" disabled>-- Select Vacant Room * --</option>
                 {vacantRooms.map((r) => (
                   <option key={r.id} value={r.number}>
                     Room {r.number} ({r.type} - ₹{r.rate})
@@ -527,12 +593,25 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Stay Package</label>
+              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                <span>Stay Package *</span>
+                {!stayType && (
+                  <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                    Required
+                  </span>
+                )}
+              </label>
               <select
-                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
+                className={`w-full h-10 rounded-xl border bg-white px-3 text-xs font-bold outline-none shadow-2xs transition-all ${
+                  !stayType
+                    ? 'border-amber-400 bg-amber-50/20 text-slate-500 focus:border-amber-500'
+                    : 'border-slate-200 text-slate-900 focus:border-[#0b3c33]'
+                }`}
                 value={stayType}
                 onChange={(e) => setStayType(e.target.value)}
+                required
               >
+                <option value="" disabled>-- Select Stay Package / Slot * --</option>
                 <option value="3 Hours Express">3 Hours Express</option>
                 <option value="6 Hours Flexi">6 Hours Flexi</option>
                 <option value="12 Hours Day Stay">12 Hours Day Stay</option>

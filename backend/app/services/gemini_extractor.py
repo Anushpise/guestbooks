@@ -2,6 +2,7 @@ import os
 import re
 import json
 import base64
+from app.services.indian_id_parser import compute_exact_age
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -170,11 +171,10 @@ def parse_gemini_response(response_text: str) -> Dict[str, Any]:
         d = re.sub(r"\D", "", res["idNumber"])
         res["idNumber"] = f"{d[:4]} {d[4:8]} {d[8:]}"
 
-    if res["dob"] and not res["age"]:
-        current_year = datetime.now().year
-        m_yr = re.search(r"\b(19\d{2}|20\d{2})\b", res["dob"])
-        if m_yr:
-            res["age"] = str(current_year - int(m_yr.group(1)))
+    if res["dob"]:
+        calc_age = compute_exact_age(res["dob"])
+        if calc_age:
+            res["age"] = calc_age
 
     return res
 
