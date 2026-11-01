@@ -565,20 +565,9 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                <span>Select Room *</span>
-                {!selectedRoomNumber && (
-                  <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                    Required
-                  </span>
-                )}
-              </label>
+              <label className="text-xs font-bold text-slate-700">Select Room *</label>
               <select
-                className={`w-full h-10 rounded-xl border bg-white px-3 text-xs font-bold outline-none shadow-2xs transition-all ${
-                  !selectedRoomNumber
-                    ? 'border-amber-400 bg-amber-50/20 text-slate-500 focus:border-amber-500'
-                    : 'border-slate-200 text-slate-900 focus:border-[#0b3c33]'
-                }`}
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                 value={selectedRoomNumber}
                 onChange={(e) => handleRoomChange(e.target.value)}
                 required
@@ -593,20 +582,9 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                <span>Stay Package *</span>
-                {!stayType && (
-                  <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                    Required
-                  </span>
-                )}
-              </label>
+              <label className="text-xs font-bold text-slate-700">Stay Package *</label>
               <select
-                className={`w-full h-10 rounded-xl border bg-white px-3 text-xs font-bold outline-none shadow-2xs transition-all ${
-                  !stayType
-                    ? 'border-amber-400 bg-amber-50/20 text-slate-500 focus:border-amber-500'
-                    : 'border-slate-200 text-slate-900 focus:border-[#0b3c33]'
-                }`}
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
                 value={stayType}
                 onChange={(e) => setStayType(e.target.value)}
                 required
