@@ -24,7 +24,7 @@ export default function RoomGrid({
       const matchNumber = room.number.includes(q);
       const matchType = room.type.toLowerCase().includes(q);
       
-      const activeStay = activeStays.find(s => s.roomNumber === room.number);
+      const activeStay = (activeStays || []).find(s => String(s.roomNumber) === String(room.number));
       const matchGuest = activeStay && (
         activeStay.primaryGuest.name.toLowerCase().includes(q) ||
         activeStay.primaryGuest.phone.includes(q)
@@ -39,7 +39,20 @@ export default function RoomGrid({
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {filteredRooms.map((room) => {
-        const activeStay = activeStays.find(s => s.roomNumber === room.number);
+        const activeStay = (activeStays || []).find(s => String(s.roomNumber) === String(room.number)) || (
+          room.currentGuest ? {
+            id: `STAY-${room.currentGuest.regNo || room.number}`,
+            regNo: room.currentGuest.regNo || `REG-${room.number}`,
+            roomNumber: String(room.number),
+            primaryGuest: {
+              name: room.currentGuest.name || 'Occupied Guest',
+              phone: ''
+            },
+            stayType: 'Active Stay',
+            checkInTime: room.currentGuest.checkInTime || new Date().toISOString(),
+            status: 'CHECKED_IN'
+          } : null
+        );
 
         return (
           <Card 

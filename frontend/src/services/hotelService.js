@@ -174,6 +174,42 @@ export const hotelService = {
   // Fetch rooms from Central DB and update local cache
   fetchRooms: async (targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const storageKey = hotelService.getRoomsStorageKey(hId);
+    let localRooms = [];
+    try {
+      localRooms = JSON.parse(localStorage.getItem(storageKey)) || [];
+    } catch (e) {}
+
+    // Upstream local custom rooms once per session if local device modified rooms
+    if (localRooms.length > 0 && !hotelService._hasSyncedRooms) {
+      hotelService._hasSyncedRooms = true;
+      try {
+        const syncUrl = `/api/rooms/sync`;
+        let sRes = await fetch(syncUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hotel_id: hId, rooms: localRooms })
+        });
+        if (!sRes.ok) {
+          sRes = await fetch(getBackendFallbackUrl(syncUrl), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hotel_id: hId, rooms: localRooms })
+          });
+        }
+        if (sRes && sRes.ok) {
+          const sJson = await sRes.json();
+          if (sJson.rooms && Array.isArray(sJson.rooms)) {
+            localStorage.setItem(storageKey, JSON.stringify(sJson.rooms));
+            syncHotelOccupancyStats(sJson.rooms, hId);
+            return sJson.rooms;
+          }
+        }
+      } catch (e) {
+        console.warn('Initial room upstream sync note:', e);
+      }
+    }
+
     try {
       let res = await fetch(`/api/rooms?hotel_id=${encodeURIComponent(hId)}`);
       if (!res.ok) {
@@ -182,7 +218,6 @@ export const hotelService = {
       if (res && res.ok) {
         const json = await res.json();
         if (json.rooms && Array.isArray(json.rooms)) {
-          const storageKey = hotelService.getRoomsStorageKey(hId);
           localStorage.setItem(storageKey, JSON.stringify(json.rooms));
           syncHotelOccupancyStats(json.rooms, hId);
           return json.rooms;
@@ -546,8 +581,39 @@ export const hotelService = {
       if (res && res.ok) {
         const json = await res.json();
         if (json.stays && Array.isArray(json.stays)) {
-          // Merge active stays for this hotel into storage
+          // Check for any offline local stays missing on backend and sync them up!
           const rawStays = hotelService.getRawActiveStays();
+          const localStaysForHotel = rawStays.filter(s => s.hotelId === hId || (!s.hotelId && hId === 'HTL-101'));
+          const backendRooms = new Set(json.stays.map(s => String(s.roomNumber)));
+
+          for (const localStay of localStaysForHotel) {
+            if (!localStay.dbId && !backendRooms.has(String(localStay.roomNumber))) {
+              try {
+                await fetch('/api/guests/checkin', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    roomNumber: String(localStay.roomNumber),
+                    stayType: localStay.stayType || '24 Hours Full Stay',
+                    roomRate: Number(localStay.roomRate) || 1800,
+                    advancePaid: Number(localStay.advancePaid) || 1800,
+                    paymentMode: localStay.paymentMode || 'Cash',
+                    comingFrom: localStay.comingFrom || 'Direct',
+                    goingTo: localStay.goingTo || 'Direct',
+                    purpose: localStay.purpose || 'Personal Stay',
+                    vehicleNo: localStay.vehicleNo || 'N/A',
+                    primaryGuest: localStay.primaryGuest,
+                    accompanyingGuest: localStay.accompanyingGuest,
+                    hotelId: hId
+                  })
+                });
+              } catch (syncErr) {
+                console.warn('Syncing offline stay to backend:', syncErr);
+              }
+            }
+          }
+
+          // Merge active stays for this hotel into storage
           const otherHotelsStays = rawStays.filter(s => s.hotelId !== hId && (s.hotelId || hId !== 'HTL-101'));
           const merged = [...json.stays, ...otherHotelsStays];
           localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(merged));

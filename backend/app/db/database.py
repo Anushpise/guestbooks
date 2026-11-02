@@ -1368,6 +1368,45 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
     conn.close()
     return rooms
 
+def db_sync_rooms(hotel_id: str, custom_rooms: list) -> list:
+    """
+    Upserts a list of rooms for a hotel into the central database.
+    Preserves custom rates, types, floors, and newly added rooms from local devices.
+    """
+    if not custom_rooms or not isinstance(custom_rooms, list):
+        return db_get_rooms(hotel_id)
+
+    h_id = hotel_id or "HTL-101"
+    conn, db_type = get_db_connection()
+    now_iso = get_current_ist_iso()
+
+    for r in custom_rooms:
+        r_num = str(r.get("number") or r.get("room_number") or "").strip()
+        if not r_num:
+            continue
+        r_id = f"{h_id}_{r_num}"
+        r_type = r.get("type") or "Standard Suite"
+        r_floor = r.get("floor") or "1st Floor"
+        r_rate = float(r.get("rate") or 1500)
+        r_status = r.get("status") or "VACANT"
+
+        # Check if room already exists
+        c = execute_query(conn, db_type, "SELECT id FROM rooms WHERE hotel_id = ? AND room_number = ?", (h_id, r_num))
+        if c.fetchone():
+            execute_query(conn, db_type, """
+                UPDATE rooms SET type = ?, floor = ?, rate = ?, updated_at = ?
+                WHERE hotel_id = ? AND room_number = ?
+            """, (r_type, r_floor, r_rate, now_iso, h_id, r_num))
+        else:
+            execute_query(conn, db_type, """
+                INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (r_id, h_id, r_num, r_type, r_floor, r_rate, r_status, now_iso))
+
+    conn.commit()
+    conn.close()
+    return db_get_rooms(h_id)
+
 def db_update_room_status(hotel_id: str, room_number: str, status: str) -> dict:
     """Updates status for a room in central DB."""
     h_id = hotel_id or "HTL-101"

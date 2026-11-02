@@ -10,6 +10,7 @@ from typing import Optional
 import logging
 from app.db.database import (
     db_get_rooms,
+    db_sync_rooms,
     db_update_room_status,
     db_update_room_tariff,
     db_update_room,
@@ -35,6 +36,23 @@ def list_rooms_endpoint(hotel_id: Optional[str] = Query("HTL-101", description="
         }
     except Exception as e:
         logger.error(f"Error fetching rooms: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SyncRoomsPayload(BaseModel):
+    hotel_id: Optional[str] = "HTL-101"
+    rooms: list
+
+@router.post("/sync")
+def sync_rooms_endpoint(payload: SyncRoomsPayload):
+    """
+    Two-way synchronization for customized rooms (tariffs, names, newly created rooms).
+    Saves any local customizations from tablet/browser to central DB so all devices see the exact same rooms.
+    """
+    try:
+        updated_rooms = db_sync_rooms(payload.hotel_id or "HTL-101", payload.rooms)
+        return {"success": True, "count": len(updated_rooms), "rooms": updated_rooms}
+    except Exception as e:
+        logger.error(f"Error syncing rooms: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 class AddRoomPayload(BaseModel):

@@ -55,8 +55,8 @@ export default function App() {
     if (!currentUser || currentUser.role !== 'HOTEL') return;
     const checkStays = () => {
       const hId = currentUser?.hotelId || 'HTL-101';
-      const stays = hotelService.getActiveStays(hId);
-      setActiveStays(stays);
+      // Only set initial active stays from cache if activeStays state is still empty
+      setActiveStays(prev => (prev && prev.length > 0) ? prev : hotelService.getActiveStays(hId));
     };
 
     checkStays();
