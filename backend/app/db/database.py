@@ -483,6 +483,12 @@ def _seed_default_data(conn, db_type):
     except Exception as e:
         logger.warning(f"Auto-repair hotels total_rooms note: {e}")
 
+    # Auto-repair: Purge any accidental placeholder "Walk-in Guest" entries from guest_records
+    try:
+        execute_query(conn, db_type, "DELETE FROM guest_records WHERE guest_name LIKE ? OR address = 'Manual Room Allocation'", ('%Walk-in Guest%',))
+    except Exception as e:
+        logger.warning(f"Auto-repair purge placeholder note: {e}")
+
     conn.commit()
 def create_guest_record(data: dict) -> dict:
     """
@@ -584,7 +590,10 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
     conn, db_type = get_db_connection()
     like_op = "ILIKE" if db_type == "postgres" else "LIKE"
 
-    conditions = []
+    conditions = [
+        "guest_name NOT LIKE '%Walk-in Guest%'",
+        "(address IS NULL OR address != 'Manual Room Allocation')"
+    ]
     params = []
 
     if hotel_id and hotel_id != "ALL":
@@ -1643,10 +1652,22 @@ def db_get_active_stays(hotel_id: str = None) -> list:
     """
     conn, db_type = get_db_connection()
     if hotel_id and hotel_id != "ALL":
-        query = "SELECT * FROM guest_records WHERE status = 'CHECKED_IN' AND (hotel_id = ? OR hotel_id IS NULL) ORDER BY id DESC"
+        query = """
+            SELECT * FROM guest_records
+            WHERE status = 'CHECKED_IN' AND (hotel_id = ? OR hotel_id IS NULL)
+              AND guest_name NOT LIKE '%Walk-in Guest%'
+              AND (address IS NULL OR address != 'Manual Room Allocation')
+            ORDER BY id DESC
+        """
         cursor = execute_query(conn, db_type, query, (hotel_id,))
     else:
-        query = "SELECT * FROM guest_records WHERE status = 'CHECKED_IN' ORDER BY id DESC"
+        query = """
+            SELECT * FROM guest_records
+            WHERE status = 'CHECKED_IN'
+              AND guest_name NOT LIKE '%Walk-in Guest%'
+              AND (address IS NULL OR address != 'Manual Room Allocation')
+            ORDER BY id DESC
+        """
         cursor = execute_query(conn, db_type, query)
 
     rows = cursor.fetchall()

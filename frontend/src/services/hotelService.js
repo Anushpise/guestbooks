@@ -406,43 +406,7 @@ export const hotelService = {
       const activeStays = hotelService.getActiveStays(hId);
       const roomNo = String(targetRoom.number);
 
-      if (status === 'OCCUPIED' && previousStatus !== 'OCCUPIED') {
-        // If manually marked OCCUPIED from Room Management, create a placeholder stay for this hotel
-        const existingStay = activeStays.find(s => String(s.roomNumber) === roomNo);
-        if (!existingStay) {
-          const newStay = {
-            id: generateId('STAY'),
-            hotelId: hId,
-            roomNumber: roomNo,
-            checkInTime: new Date().toISOString(),
-            expectedCheckOut: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-            stayType: '24 Hours Full Stay',
-            primaryGuest: {
-              name: `Walk-in Guest (Room ${roomNo})`,
-              phone: 'N/A',
-              idType: 'N/A',
-              idNumber: 'N/A',
-              address: 'Manual Room Allocation',
-              city: 'N/A'
-            },
-            accompanyingGuest: null,
-            comingFrom: 'Direct',
-            goingTo: 'Direct',
-            purpose: 'Personal Stay',
-            vehicleNo: 'N/A',
-            roomRate: Number(targetRoom.rate) || 1800,
-            advancePaid: Number(targetRoom.rate) || 1800,
-            paymentMode: 'Cash',
-            policeSubmitted: false,
-            policeSubmittedAt: null,
-            status: 'CHECKED_IN',
-          };
-          const rawStays = hotelService.getRawActiveStays();
-          rawStays.unshift(newStay);
-          localStorage.setItem(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(rawStays));
-          hotelService.addPoliceLogEntry(newStay);
-        }
-      } else if (status !== 'OCCUPIED' && previousStatus === 'OCCUPIED') {
+      if (status !== 'OCCUPIED' && previousStatus === 'OCCUPIED') {
         // If moved away from OCCUPIED, remove from active stays for this hotel
         const rawStays = hotelService.getRawActiveStays();
         const stayToRemove = rawStays.find(s => (s.hotelId === hId || (!s.hotelId && hId === 'HTL-101')) && String(s.roomNumber) === roomNo);
@@ -564,7 +528,9 @@ export const hotelService = {
 
   getRawActiveStays: () => {
     try {
-      return JSON.parse(localStorage.getItem(ACTIVE_STAYS_STORAGE_KEY)) || [];
+      const stays = JSON.parse(localStorage.getItem(ACTIVE_STAYS_STORAGE_KEY)) || [];
+      // Strip any accidental Walk-in Guest placeholders
+      return stays.filter(s => !s.primaryGuest?.name?.includes('Walk-in Guest') && s.primaryGuest?.address !== 'Manual Room Allocation');
     } catch (e) {
       return [];
     }
