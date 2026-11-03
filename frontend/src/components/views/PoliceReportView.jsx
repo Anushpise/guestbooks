@@ -4,6 +4,7 @@ import {
   Download, Filter, CheckCircle2, Clock, Users, X
 } from 'lucide-react';
 import { hotelService } from '../../services/hotelService';
+import Pagination from '../common/Pagination';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,9 @@ export default function PoliceReportView({ hotelId = null, hotel = null }) {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo]     = useState('');
   const [search, setSearch]         = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize]     = useState(20);
+  const [isPrinting, setIsPrinting] = useState(false);
   const printRef = useRef(null);
 
   const effectiveHotelId = hotelId || hotel?.id || hotelService.getCurrentHotelId();
@@ -106,7 +110,11 @@ export default function PoliceReportView({ hotelId = null, hotel = null }) {
       style.innerHTML = PRINT_CSS;
       document.head.appendChild(style);
     }
-    window.print();
+    setIsPrinting(true);
+    setTimeout(() => {
+      window.print();
+      setIsPrinting(false);
+    }, 150);
   };
 
   const FILTER_BTNS = [
@@ -253,7 +261,7 @@ export default function PoliceReportView({ hotelId = null, hotel = null }) {
                   </td>
                 </tr>
               ) : (
-                logs.map((log, i) => (
+                (isPrinting ? logs : logs.slice((currentPage - 1) * pageSize, currentPage * pageSize)).map((log, i) => (
                   <tr
                     key={log.id || i}
                     className={`border-t border-slate-100 transition-colors ${
@@ -320,6 +328,21 @@ export default function PoliceReportView({ hotelId = null, hotel = null }) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Screen-only Pagination */}
+        <div className="prt-hide">
+          <Pagination
+            currentPage={currentPage}
+            totalItems={logs.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={(newSize) => {
+              setPageSize(newSize);
+              setCurrentPage(1);
+            }}
+            pageSizeOptions={[10, 20, 50, 100]}
+          />
         </div>
 
         {/* Print-only footer signatures */}

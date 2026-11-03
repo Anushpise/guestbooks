@@ -28,10 +28,13 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import Pagination from '../common/Pagination';
 
 export default function GuestLedger({ openExpressModal }) {
   const [guests, setGuests] = useState(hotelService.getAllGuests());
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     const handleSync = () => {
@@ -85,7 +88,7 @@ export default function GuestLedger({ openExpressModal }) {
             className="pl-9 h-9 text-xs bg-slate-50/60 border-slate-200 focus:bg-white focus:ring-[#0b3c33]"
             placeholder="Search by Name, Mobile, or Aadhaar..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
           />
         </div>
       </div>
@@ -105,7 +108,7 @@ export default function GuestLedger({ openExpressModal }) {
             </TableRow>
           </TableHeader>
           <TableBody className="divide-y divide-slate-100 text-slate-700 text-xs">
-            {filteredGuests.map((g, idx) => (
+            {filteredGuests.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((g, idx) => (
               <TableRow key={idx} className={g.isBlacklisted ? 'bg-red-50/60' : 'hover:bg-emerald-50/20 transition-colors'}>
                 {/* Primary Guest */}
                 <TableCell>
@@ -224,6 +227,19 @@ export default function GuestLedger({ openExpressModal }) {
             ))}
           </TableBody>
         </Table>
+
+        {/* Frequent Guests Pagination */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredGuests.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[10, 20, 50]}
+        />
       </div>
     </div>
   );

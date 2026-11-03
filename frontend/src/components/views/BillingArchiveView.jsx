@@ -8,6 +8,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { formatRegisterTime, isDateInFilterRange } from '../../lib/dateUtils';
+import Pagination from '../common/Pagination';
 
 export default function BillingArchiveView({ onViewReceipt, hotelId = null, hotel = null }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,7 +17,7 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   const effectiveHotelId = hotelId || hotel?.id || hotelService.getCurrentHotelId();
 
@@ -350,42 +351,18 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
           </table>
         </div>
 
-        {/* Pagination Bar: Exactly 10 entries per page */}
-        {filteredRecords.length > 0 && (
-          <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
-            <div>
-              Showing <span className="font-bold text-slate-900">{startIndex + 1}</span> to{' '}
-              <span className="font-bold text-slate-900">{endIndex}</span> of{' '}
-              <span className="font-bold text-slate-900">{filteredRecords.length}</span> entries
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="h-8 px-2.5 gap-1 text-xs font-bold border-slate-200 cursor-pointer disabled:opacity-40"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" /> Prev
-              </Button>
-
-              <div className="px-2 text-xs font-bold text-slate-700">
-                Page {currentPage} of {totalPages}
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="h-8 px-2.5 gap-1 text-xs font-bold border-slate-200 cursor-pointer disabled:opacity-40"
-              >
-                Next <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
+        {/* Unified Responsive Pagination */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredRecords.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[10, 20, 50]}
+        />
       </div>
     </div>
   );

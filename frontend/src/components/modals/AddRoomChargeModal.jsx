@@ -11,6 +11,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { hotelService } from '../../services/hotelService';
+import { toast } from 'sonner';
 
 const DEFAULT_CATALOG = [
   { name: 'Water Bottle (1L)', price: 20 },
@@ -127,6 +128,7 @@ export default function AddRoomChargeModal({
     try {
       await hotelService.addExtraCharge(stay.roomNumber, itemData, stay.hotelId);
       setSuccessToast(`✓ Added ₹${itemData.total} (${itemData.name}) to room bill!`);
+      toast.success(`✓ Added ₹${itemData.total} (${itemData.name}) to Room ${stay.roomNumber} bill!`);
       setTimeout(() => setSuccessToast(''), 2500);
       
       // Update local stay object immediately
@@ -144,6 +146,7 @@ export default function AddRoomChargeModal({
       if (onChargeUpdated) {
         onChargeUpdated();
       }
+      toast.info(`Removed charge item from Room ${stay.roomNumber} bill`);
     } catch (err) {
       console.error('Error adding charge:', err);
     } finally {

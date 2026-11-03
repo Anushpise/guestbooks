@@ -9,6 +9,7 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { hotelService } from '../../services/hotelService';
 import { calculateAccurateAge } from '../../lib/ocrUtils';
+import Pagination from '../common/Pagination';
 
 export default function GuestDatabaseView({ hotelId = null }) {
   const [records, setRecords] = useState([]);
@@ -18,6 +19,8 @@ export default function GuestDatabaseView({ hotelId = null }) {
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
 
   const fetchRecords = async (query = '') => {
     setLoading(true);
@@ -32,6 +35,7 @@ export default function GuestDatabaseView({ hotelId = null }) {
   };
 
   useEffect(() => {
+    setCurrentPage(1);
     fetchRecords(search);
 
     const handleSync = () => {
@@ -219,7 +223,7 @@ export default function GuestDatabaseView({ hotelId = null }) {
                   <button
                     key={f.key}
                     type="button"
-                    onClick={() => setDateFilter(f.key)}
+                    onClick={() => { setDateFilter(f.key); setCurrentPage(1); }}
                     className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                       isActive
                         ? 'bg-[#0b3c33] text-white font-bold shadow-xs'
@@ -273,7 +277,7 @@ export default function GuestDatabaseView({ hotelId = null }) {
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((r) => {
+                filteredRecords.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((r) => {
                   const rPartner = getPartnerData(r);
                   const hasPartnerDoc = (r.has_partner_doc === 1) || !!r.partner_document_front || !!r.partner_document_back || !!rPartner?.documentFront || !!rPartner?.document_front;
                   const hasCheckoutSig = (r.has_checkout_signature === 1) || !!r.checkout_signature;
@@ -406,6 +410,19 @@ export default function GuestDatabaseView({ hotelId = null }) {
             </tbody>
           </table>
         </div>
+
+        {/* Sequential Guest Register Pagination */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredRecords.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(newSize) => {
+            setPageSize(newSize);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[15, 25, 50, 100]}
+        />
       </div>
 
       {/* Record Full View Modal */}

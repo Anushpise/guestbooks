@@ -25,6 +25,7 @@ import CounterQRModal from './components/modals/CounterQRModal';
 import GuestUploadPortal from './components/views/GuestUploadPortal';
 import { hotelService } from './services/hotelService';
 import { authService } from './services/authService';
+import { Toaster, toast } from 'sonner';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser());
@@ -331,6 +332,7 @@ export default function App() {
     };
     await hotelService.checkInGuest(dataWithHotel);
     await refreshData(currentUser);
+    toast.success(`✓ Guest check-in saved for Room ${stayData.roomNumber}!`);
   };
 
   const handleCheckOut = async (stayIdOrStay) => {
@@ -353,6 +355,7 @@ export default function App() {
       const checkedOut = await hotelService.checkOutGuest(stayIdOrStay, currentUser?.hotelId);
       await refreshData(currentUser);
       if (checkedOut) {
+        toast.success(`✓ Room ${checkedOut.roomNumber || stayIdOrStay} checked out successfully!`);
         handleViewReceipt(checkedOut);
       }
     }
@@ -364,6 +367,7 @@ export default function App() {
     setIsCheckOutModalOpen(false);
     setStayToCheckout(null);
     if (checkedOut) {
+      toast.success(`✓ Room ${checkedOut.roomNumber || stayIdOrRoom} checked out successfully!`);
       handleViewReceipt(checkedOut);
     }
   };
@@ -371,11 +375,13 @@ export default function App() {
   const handleRoomStatusChange = async (roomId, newStatus) => {
     await hotelService.updateRoomStatus(roomId, newStatus, false, currentHotel?.id || currentUser?.hotelId);
     await refreshData(currentUser);
+    toast.success(`Room status updated to ${newStatus}`);
   };
 
   const handleRoomTariffChange = async (roomId, newRate) => {
     await hotelService.updateRoomTariff(roomId, newRate, currentHotel?.id || currentUser?.hotelId);
     await refreshData(currentUser);
+    toast.success(`Room tariff updated to ₹${newRate}`);
   };
 
   const handleRoomDetailsChange = async (roomId, updateData) => {
@@ -694,6 +700,9 @@ export default function App() {
         onClose={() => setIsCounterQRModalOpen(false)}
         hotel={currentHotel}
       />
+
+      {/* Sonner Global Toast Notifications */}
+      <Toaster richColors position="top-right" closeButton expand={false} duration={3500} />
     </div>
   );
 }
