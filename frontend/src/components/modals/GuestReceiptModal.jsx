@@ -26,8 +26,12 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
   const roomNo = stayRecord.roomNumber || stayRecord.room_number || '101';
   const stayType = stayRecord.stayType || stayRecord.stay_type || '24 Hours Full Stay';
   const roomRate = Number(stayRecord.roomRate || stayRecord.room_rate || 0);
+  const extraCharges = Number(stayRecord.extraCharges || stayRecord.extra_charges || 0);
+  const extraItems = Array.isArray(stayRecord.extraItems) ? stayRecord.extraItems : [];
   const advancePaid = Number(stayRecord.advancePaid || stayRecord.advance_paid || roomRate);
   const paymentMode = stayRecord.paymentMode || stayRecord.payment_mode || 'Cash';
+  const totalBill = roomRate + extraCharges;
+  const balanceDue = totalBill - advancePaid;
   const primarySig = stayRecord.signature || null;
   const partnerSig = stayRecord.partnerSignature || stayRecord.partner_signature || partner?.signature || null;
 
@@ -104,13 +108,36 @@ export default function GuestReceiptModal({ isOpen, onClose, stayRecord }) {
                 <td className="py-1.5">Room Tariff ({stayType})</td>
                 <td className="py-1.5 text-right font-medium">₹{roomRate}</td>
               </tr>
+              {extraCharges > 0 && (
+                <>
+                  {extraItems.length > 0 ? (
+                    extraItems.map((item, idx) => (
+                      <tr key={idx} className="text-slate-600">
+                        <td className="py-1 pl-2">↳ {item.name} ({item.qty || 1}x)</td>
+                        <td className="py-1 text-right font-mono">₹{item.total || (item.price * (item.qty || 1))}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="py-1.5">Additional Services & Extras</td>
+                      <td className="py-1.5 text-right font-mono font-medium">₹{extraCharges}</td>
+                    </tr>
+                  )}
+                  <tr className="font-bold text-slate-900 bg-slate-50/50">
+                    <td className="py-1.5">Total Stay & Services Bill</td>
+                    <td className="py-1.5 text-right font-mono">₹{totalBill}</td>
+                  </tr>
+                </>
+              )}
               <tr>
                 <td className="py-1.5 font-bold">Advance Amount Paid ({paymentMode})</td>
                 <td className="py-1.5 text-right font-extrabold text-slate-900">₹{advancePaid}</td>
               </tr>
               <tr>
-                <td className="py-1.5">Balance Dues</td>
-                <td className="py-1.5 text-right font-bold text-emerald-700">₹0.00 (Cleared)</td>
+                <td className="py-1.5 font-bold">Balance Dues / Settlement</td>
+                <td className={`py-1.5 text-right font-bold ${balanceDue > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                  ₹{balanceDue > 0 ? balanceDue : 0} {balanceDue <= 0 ? '(Cleared)' : ''}
+                </td>
               </tr>
             </tbody>
           </table>

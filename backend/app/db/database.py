@@ -130,7 +130,8 @@ def init_db():
                 partner_document_back TEXT,
                 checkout_signature TEXT,
                 partner_signature TEXT,
-                partner_signature TEXT
+                extra_charges NUMERIC DEFAULT 0,
+                extra_charges_json TEXT DEFAULT '[]'
             )
         """)
         conn.commit()
@@ -140,7 +141,8 @@ def init_db():
             ("partner_document_back", "TEXT"),
             ("checkout_signature", "TEXT"),
             ("partner_signature", "TEXT"),
-            ("partner_signature", "TEXT")
+            ("extra_charges", "NUMERIC DEFAULT 0"),
+            ("extra_charges_json", "TEXT DEFAULT '[]'")
         ]:
             try:
                 execute_query(conn, db_type, f"ALTER TABLE guest_records ADD COLUMN IF NOT EXISTS {col_def[0]} {col_def[1]}")
@@ -254,7 +256,8 @@ def init_db():
                 partner_document_back TEXT,
                 checkout_signature TEXT,
                 partner_signature TEXT,
-                partner_signature TEXT
+                extra_charges REAL DEFAULT 0,
+                extra_charges_json TEXT DEFAULT '[]'
             )
         """)
         for col_def in [
@@ -263,7 +266,8 @@ def init_db():
             ("partner_document_back", "TEXT"),
             ("checkout_signature", "TEXT"),
             ("partner_signature", "TEXT"),
-            ("partner_signature", "TEXT")
+            ("extra_charges", "REAL DEFAULT 0"),
+            ("extra_charges_json", "TEXT DEFAULT '[]'")
         ]:
             try:
                 cursor.execute(f"ALTER TABLE guest_records ADD COLUMN {col_def[0]} {col_def[1]}")
@@ -1682,6 +1686,15 @@ def db_get_active_stays(hotel_id: str = None) -> list:
             except Exception:
                 partner = None
 
+        extra_items = []
+        if rec.get("extra_charges_json"):
+            try:
+                extra_items = json.loads(rec["extra_charges_json"])
+                if not isinstance(extra_items, list):
+                    extra_items = []
+            except Exception:
+                extra_items = []
+
         stays.append({
             "id": f"STAY-{rec.get('id')}",
             "dbId": rec.get("id"),
@@ -1694,6 +1707,8 @@ def db_get_active_stays(hotel_id: str = None) -> list:
             "roomRate": float(rec.get("room_rate") or 0),
             "advancePaid": float(rec.get("advance_paid") or 0),
             "paymentMode": rec.get("payment_mode") or "Cash",
+            "extraCharges": float(rec.get("extra_charges") or 0.0),
+            "extraItems": extra_items,
             "status": "CHECKED_IN",
             "primaryGuest": {
                 "name": rec.get("guest_name"),
@@ -1719,3 +1734,110 @@ def db_get_active_stays(hotel_id: str = None) -> list:
     return stays
 
 
+
+
+def db_add_extra_charge(room_or_id: str, item: dict, hotel_id: str = None) -> dict:
+    """Adds an extra service / item charge to an active guest stay record in the database."""
+    conn, db_type = get_db_connection()
+    clean_val = str(room_or_id).strip()
+    clean_room = clean_val.split('_')[-1]
+    
+    if hotel_id and hotel_id != "ALL":
+        query = "SELECT id, extra_charges, extra_charges_json FROM guest_records WHERE (room_number = ? OR room_number = ?) AND (hotel_id = ? OR hotel_id IS NULL) AND status = 'CHECKED_IN' ORDER BY id DESC"
+        cursor = execute_query(conn, db_type, query, (clean_val, clean_room, hotel_id))
+    else:
+        query = "SELECT id, extra_charges, extra_charges_json FROM guest_records WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN' ORDER BY id DESC"
+        cursor = execute_query(conn, db_type, query, (clean_val, clean_room))
+    
+    row = cursor.fetchone()
+    if not row and clean_val.isdigit():
+        cursor = execute_query(conn, db_type, "SELECT id, extra_charges, extra_charges_json FROM guest_records WHERE id = ? AND status = 'CHECKED_IN'", (int(clean_val),))
+        row = cursor.fetchone()
+    
+    if not row:
+        conn.close()
+        return {"success": False, "message": f"No active checked-in stay found for room {room_or_id}"}
+    
+    rec = dict(row)
+    rec_id = rec["id"]
+    existing_items = []
+    if rec.get("extra_charges_json"):
+        try:
+            existing_items = json.loads(rec["extra_charges_json"])
+            if not isinstance(existing_items, list):
+                existing_items = []
+        except Exception:
+            existing_items = []
+            
+    now = get_current_ist_iso()
+    qty = int(item.get("qty", 1))
+    price = float(item.get("price", 0))
+    total = float(item.get("total", price * qty))
+    
+    new_item = {
+        "id": f"ITEM-{int(datetime.now().timestamp() * 1000)}",
+        "name": str(item.get("name", "Extra Service")).strip(),
+        "qty": qty,
+        "price": price,
+        "total": total,
+        "addedAt": now
+    }
+    existing_items.append(new_item)
+    new_total = sum(float(x.get("total", 0)) for x in existing_items)
+    
+    execute_query(conn, db_type, "UPDATE guest_records SET extra_charges = ?, extra_charges_json = ? WHERE id = ?", (new_total, json.dumps(existing_items), rec_id))
+    conn.commit()
+    conn.close()
+    return {
+        "success": True,
+        "record_id": rec_id,
+        "extra_charges": new_total,
+        "items": existing_items,
+        "added_item": new_item
+    }
+
+def db_remove_extra_charge(room_or_id: str, item_id: str, hotel_id: str = None) -> dict:
+    """Removes an item charge from an active guest stay record."""
+    conn, db_type = get_db_connection()
+    clean_val = str(room_or_id).strip()
+    clean_room = clean_val.split('_')[-1]
+    
+    if hotel_id and hotel_id != "ALL":
+        query = "SELECT id, extra_charges, extra_charges_json FROM guest_records WHERE (room_number = ? OR room_number = ?) AND (hotel_id = ? OR hotel_id IS NULL) AND status = 'CHECKED_IN' ORDER BY id DESC"
+        cursor = execute_query(conn, db_type, query, (clean_val, clean_room, hotel_id))
+    else:
+        query = "SELECT id, extra_charges, extra_charges_json FROM guest_records WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN' ORDER BY id DESC"
+        cursor = execute_query(conn, db_type, query, (clean_val, clean_room))
+        
+    row = cursor.fetchone()
+    if not row and clean_val.isdigit():
+        cursor = execute_query(conn, db_type, "SELECT id, extra_charges, extra_charges_json FROM guest_records WHERE id = ? AND status = 'CHECKED_IN'", (int(clean_val),))
+        row = cursor.fetchone()
+        
+    if not row:
+        conn.close()
+        return {"success": False, "message": "No active checked-in stay found"}
+        
+    rec = dict(row)
+    rec_id = rec["id"]
+    existing_items = []
+    if rec.get("extra_charges_json"):
+        try:
+            existing_items = json.loads(rec["extra_charges_json"])
+            if not isinstance(existing_items, list):
+                existing_items = []
+        except Exception:
+            existing_items = []
+            
+    filtered_items = [x for x in existing_items if x.get("id") != item_id]
+    new_total = sum(float(x.get("total", 0)) for x in filtered_items)
+    
+    execute_query(conn, db_type, "UPDATE guest_records SET extra_charges = ?, extra_charges_json = ? WHERE id = ?", (new_total, json.dumps(filtered_items), rec_id))
+    conn.commit()
+    conn.close()
+    return {
+        "success": True,
+        "record_id": rec_id,
+        "extra_charges": new_total,
+        "items": filtered_items
+    }

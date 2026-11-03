@@ -12,7 +12,9 @@ from app.db.database import (
     get_all_guest_records,
     get_guest_record_by_id,
     checkout_guest_in_db,
-    db_get_active_stays
+    db_get_active_stays,
+    db_add_extra_charge,
+    db_remove_extra_charge
 )
 
 logger = logging.getLogger("guest_routes")
@@ -120,3 +122,51 @@ def checkout_guest_endpoint(
     if not success:
         return {"success": False, "message": "No active record found for checkout"}
     return {"success": True, "message": f"Guest {room_or_id} marked as checked out", "has_signature": bool(sig)}
+
+
+class ExtraChargePayload(BaseModel):
+    hotelId: Optional[str] = None
+    hotel_id: Optional[str] = None
+    roomNumber: Optional[str] = None
+    room_number: Optional[str] = None
+    name: str
+    price: float
+    qty: Optional[int] = 1
+    total: Optional[float] = None
+
+@router.post("/add-charge")
+def add_charge_endpoint(payload: ExtraChargePayload):
+    """Adds a service or item charge directly to an active stay's bill."""
+    hotel_id = payload.hotelId or payload.hotel_id
+    room = payload.roomNumber or payload.room_number
+    if not room:
+        raise HTTPException(status_code=400, detail="roomNumber is required")
+    qty = payload.qty if payload.qty and payload.qty > 0 else 1
+    total = payload.total if payload.total is not None else (payload.price * qty)
+    item_data = {
+        "name": payload.name,
+        "price": payload.price,
+        "qty": qty,
+        "total": total
+    }
+    result = db_add_extra_charge(room, item_data, hotel_id=hotel_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail=result.get("message", "Active stay not found"))
+    return result
+
+class RemoveChargePayload(BaseModel):
+    hotelId: Optional[str] = None
+    hotel_id: Optional[str] = None
+    roomNumber: Optional[str] = None
+    room_number: Optional[str] = None
+    itemId: str
+
+@router.post("/remove-charge")
+def remove_charge_endpoint(payload: RemoveChargePayload):
+    """Removes an item charge from an active stay's bill."""
+    hotel_id = payload.hotelId or payload.hotel_id
+    room = payload.roomNumber or payload.room_number
+    if not room or not payload.itemId:
+        raise HTTPException(status_code=400, detail="roomNumber and itemId are required")
+    result = db_remove_extra_charge(room, payload.itemId, hotel_id=hotel_id)
+    return result

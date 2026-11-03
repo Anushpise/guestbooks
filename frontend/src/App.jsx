@@ -585,6 +585,7 @@ export default function App() {
                   onViewReceipt={handleViewReceipt}
                   user={currentUser}
                   hotel={currentHotel}
+                  refreshData={() => refreshData(currentUser)}
                 />
               )}
 

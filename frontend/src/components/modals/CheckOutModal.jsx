@@ -240,6 +240,24 @@ export default function CheckOutModal({
                 </div>
               </div>
 
+              {/* Itemized Extra Services Breakdown */}
+              {stay.extraItems && stay.extraItems.length > 0 && (
+                <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-200 text-xs space-y-1.5">
+                  <div className="flex justify-between items-center text-[10px] font-black uppercase text-emerald-900 tracking-wider">
+                    <span>Added Room Services & Items ({stay.extraItems.length}):</span>
+                    <span className="font-mono">Total: ₹{stay.extraCharges}</span>
+                  </div>
+                  <div className="divide-y divide-emerald-100">
+                    {stay.extraItems.map((item, i) => (
+                      <div key={i} className="flex justify-between py-1 text-slate-700">
+                        <span>• {item.name} ({item.qty || 1}x)</span>
+                        <span className="font-mono font-bold text-slate-900">₹{item.total || (item.price * (item.qty || 1))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Extra Charges Input */}
               <div className="pt-1 flex items-center justify-between gap-3">
                 <div className="flex-1">

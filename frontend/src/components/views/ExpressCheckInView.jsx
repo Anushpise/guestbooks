@@ -4,6 +4,7 @@ import { hotelService } from '../../services/hotelService';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
+import StayPackageSelector from '../common/StayPackageSelector';
 
 export default function ExpressCheckInView({ vacantRooms, onCheckInComplete, switchToNewGuest }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -202,19 +203,11 @@ export default function ExpressCheckInView({ vacantRooms, onCheckInComplete, swi
                 </select>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Stay Package / Slot</label>
-                <select
-                  className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-600"
-                  value={stayType}
-                  onChange={(e) => setStayType(e.target.value)}
-                >
-                  <option value="3 Hours Express">3 Hours Express Slot</option>
-                  <option value="6 Hours Flexi">6 Hours Flexi Slot</option>
-                  <option value="12 Hours Day Stay">12 Hours Day Stay</option>
-                  <option value="24 Hours Full Stay">24 Hours Full Stay</option>
-                </select>
-              </div>
+              <StayPackageSelector
+                value={stayType}
+                onChange={(newVal) => setStayType(newVal)}
+                required
+              />
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700">Room Rate (₹)</label>

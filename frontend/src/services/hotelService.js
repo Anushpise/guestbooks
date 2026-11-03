@@ -784,6 +784,8 @@ export const hotelService = {
       roomRate: Number(stayData.roomRate) || 1800,
       advancePaid: Number(stayData.advancePaid) || Number(stayData.roomRate) || 1800,
       paymentMode: stayData.paymentMode || 'Cash',
+      extraCharges: Number(stayData.extraCharges || 0),
+      extraItems: Array.isArray(stayData.extraItems) ? stayData.extraItems : [],
       documentFront: stayData.documentFront || null,
       documentBack: stayData.documentBack || null,
       signature: stayData.signature || null,
@@ -827,6 +829,122 @@ export const hotelService = {
    * Checks out a guest. Accepts either a stay ID or room number, scoped by hotelId.
    * Also accepts checkOutData containing { checkOutSignature, settlementMode, notes }.
    */
+
+  addExtraCharge: async (stayIdOrRoom, item, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const rawStays = hotelService.getRawActiveStays();
+    const stay = rawStays.find(s => 
+      s.id === stayIdOrRoom || 
+      ((s.hotelId === hId || (!s.hotelId && hId === 'HTL-101')) && String(s.roomNumber) === String(stayIdOrRoom))
+    );
+
+    const qty = Math.max(1, parseInt(item.qty, 10) || 1);
+    const price = Math.max(0, parseFloat(item.price) || 0);
+    const total = parseFloat(item.total) || (price * qty);
+
+    const newItem = {
+      id: `ITEM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: String(item.name || 'Extra Service').trim(),
+      qty,
+      price,
+      total,
+      addedAt: new Date().toISOString()
+    };
+
+    if (stay) {
+      if (!Array.isArray(stay.extraItems)) stay.extraItems = [];
+      stay.extraItems.push(newItem);
+      stay.extraCharges = stay.extraItems.reduce((sum, x) => sum + Number(x.total || 0), 0);
+      safeLocalStorageSet(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(rawStays));
+
+      try {
+        const allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
+        const match = allStays.find(s => s.id === stay.id);
+        if (match) {
+          match.extraItems = stay.extraItems;
+          match.extraCharges = stay.extraCharges;
+          safeLocalStorageSet(ALL_STAYS_STORAGE_KEY, JSON.stringify(allStays));
+        }
+      } catch (_) {}
+    }
+
+    try {
+      const payload = {
+        hotelId: hId,
+        roomNumber: String(stay ? stay.roomNumber : stayIdOrRoom),
+        name: newItem.name,
+        price: newItem.price,
+        qty: newItem.qty,
+        total: newItem.total
+      };
+      let res = await fetch('/api/guests/add-charge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        await fetch(getBackendFallbackUrl('/api/guests/add-charge'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+    } catch (e) {
+      console.warn('Backend add-charge offline note:', e);
+    }
+
+    return { success: true, stay, newItem };
+  },
+
+  removeExtraCharge: async (stayIdOrRoom, itemId, targetHotelId = null) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const rawStays = hotelService.getRawActiveStays();
+    const stay = rawStays.find(s => 
+      s.id === stayIdOrRoom || 
+      ((s.hotelId === hId || (!s.hotelId && hId === 'HTL-101')) && String(s.roomNumber) === String(stayIdOrRoom))
+    );
+
+    if (stay && Array.isArray(stay.extraItems)) {
+      stay.extraItems = stay.extraItems.filter(x => x.id !== itemId);
+      stay.extraCharges = stay.extraItems.reduce((sum, x) => sum + Number(x.total || 0), 0);
+      safeLocalStorageSet(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(rawStays));
+
+      try {
+        const allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
+        const match = allStays.find(s => s.id === stay.id);
+        if (match) {
+          match.extraItems = stay.extraItems;
+          match.extraCharges = stay.extraCharges;
+          safeLocalStorageSet(ALL_STAYS_STORAGE_KEY, JSON.stringify(allStays));
+        }
+      } catch (_) {}
+    }
+
+    try {
+      const payload = {
+        hotelId: hId,
+        roomNumber: String(stay ? stay.roomNumber : stayIdOrRoom),
+        itemId
+      };
+      let res = await fetch('/api/guests/remove-charge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        await fetch(getBackendFallbackUrl('/api/guests/remove-charge'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+    } catch (e) {
+      console.warn('Backend remove-charge offline note:', e);
+    }
+
+    return { success: true, stay };
+  },
+
   checkOutGuest: async (stayIdOrRoom, targetHotelId = null, checkOutData = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const rawStays = hotelService.getRawActiveStays();
@@ -890,6 +1008,9 @@ export const hotelService = {
             checkOutTime: nowIso,
             checkOutSignature: checkoutSignature || s.checkOutSignature || null,
             settlementMode: checkOutData?.settlementMode || s.paymentMode || 'Cash',
+            extraCharges: Number(checkOutData?.extraCharges ?? s.extraCharges ?? 0),
+            extraChargesNote: checkOutData?.extraChargesNote || s.extraChargesNote || '',
+            extraItems: s.extraItems || [],
           };
         }
         return s;

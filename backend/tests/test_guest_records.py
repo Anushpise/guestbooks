@@ -5,7 +5,7 @@ from pathlib import Path
 backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db.database import init_db, get_all_guest_records, create_guest_record, checkout_guest_in_db
+from app.db.database import init_db, get_all_guest_records, create_guest_record, checkout_guest_in_db, db_add_extra_charge, db_remove_extra_charge, db_get_active_stays
 
 class TestGuestRecords(unittest.TestCase):
     @classmethod
@@ -93,6 +93,51 @@ class TestGuestRecords(unittest.TestCase):
         self.assertEqual(found_after["status"], "CHECKED_OUT")
         self.assertIsNotNone(found_after["checked_out_at"])
         self.assertIn("+05:30", found_after["checked_out_at"])
+
+
+    def test_extra_charges_on_active_stay(self):
+        sample_data = {
+            "roomNumber": "205",
+            "stayType": "6 Hours Stay",
+            "roomRate": 1200,
+            "advancePaid": 1200,
+            "paymentMode": "Cash",
+            "primaryGuest": {
+                "name": "Karan Mehra",
+                "phone": "9988776655",
+                "idType": "Aadhaar Card",
+                "idNumber": "1111 2222 3333"
+            },
+            "hotelId": "HTL-9999"
+        }
+        create_guest_record(sample_data)
+
+        # 1. Add extra charge: Water Bottle (2 x 20 = 40)
+        res1 = db_add_extra_charge("205", {"name": "Water Bottle", "qty": 2, "price": 20, "total": 40}, hotel_id="HTL-9999")
+        self.assertTrue(res1["success"])
+        self.assertEqual(res1["extra_charges"], 40.0)
+        self.assertEqual(len(res1["items"]), 1)
+
+        # 2. Add extra charge: Food (1 x 150 = 150)
+        res2 = db_add_extra_charge("205", {"name": "Food / Snacks", "qty": 1, "price": 150, "total": 150}, hotel_id="HTL-9999")
+        self.assertTrue(res2["success"])
+        self.assertEqual(res2["extra_charges"], 190.0)
+        self.assertEqual(len(res2["items"]), 2)
+
+        # 3. Verify in db_get_active_stays
+        active_stays = db_get_active_stays(hotel_id="HTL-9999")
+        stay = next((s for s in active_stays if s["roomNumber"] == "205"), None)
+        self.assertIsNotNone(stay)
+        self.assertEqual(stay["extraCharges"], 190.0)
+        self.assertEqual(len(stay["extraItems"]), 2)
+
+        # 4. Remove one item
+        item_to_remove = res1["added_item"]["id"]
+        res_del = db_remove_extra_charge("205", item_to_remove, hotel_id="HTL-9999")
+        self.assertTrue(res_del["success"])
+        self.assertEqual(res_del["extra_charges"], 150.0)
+        self.assertEqual(len(res_del["items"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

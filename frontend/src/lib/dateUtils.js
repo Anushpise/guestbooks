@@ -171,11 +171,42 @@ export function calculateExpectedCheckout(checkInVal, stayType = '24 Hours Full 
   else if (st.includes('12 hour')) hours = 12;
   else if (st.includes('24 hour')) hours = 24;
   else {
-    const match = st.match(/(\d+)\s*hour/);
-    if (match) hours = parseInt(match[1], 10);
+    const hourMatch = st.match(/(\d+)\s*hour/);
+    if (hourMatch) {
+      hours = parseInt(hourMatch[1], 10);
+    } else {
+      const dayMatch = st.match(/(\d+)\s*day/);
+      if (dayMatch) {
+        hours = parseInt(dayMatch[1], 10) * 24;
+      }
+    }
   }
 
   return new Date(baseDate.getTime() + hours * 3600 * 1000).toISOString();
+}
+
+/**
+ * Returns formatted expected checkout preview string for display in registration forms.
+ *
+ * @param {number|string} hoursOrStayType
+ * @param {Date|string} checkInVal
+ * @returns {{ iso: string, formatted: string }}
+ */
+export function getExpectedCheckoutPreview(hoursOrStayType, checkInVal = new Date()) {
+  const stayTypeStr = typeof hoursOrStayType === 'number' ? `${hoursOrStayType} Hours Stay` : String(hoursOrStayType || '');
+  const expIso = calculateExpectedCheckout(checkInVal, stayTypeStr);
+  const expDate = new Date(expIso);
+  const formatted = expDate.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  return {
+    iso: expIso,
+    formatted,
+  };
 }
 
 /**

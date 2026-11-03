@@ -15,13 +15,14 @@ import {
 import DocumentScannerZone from '../common/DocumentScannerZone';
 import SignatureModal from '../modals/SignatureModal';
 import CounterQRModal from '../modals/CounterQRModal';
+import StayPackageSelector from '../common/StayPackageSelector';
 import { base64ToFile } from '../../lib/imageCompressor';
 import { calculateAccurateAge } from '../../lib/ocrUtils';
 
 export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }) {
   const [resetKey, setResetKey] = useState(Date.now());
   const [selectedRoomNumber, setSelectedRoomNumber] = useState('');
-  const [stayType, setStayType] = useState('');
+  const [stayType, setStayType] = useState('24 Hours Full Stay');
   const [roomRate, setRoomRate] = useState('');
   const [advancePaid, setAdvancePaid] = useState('');
   const [paymentMode, setPaymentMode] = useState('UPI / GPay');
@@ -589,21 +590,11 @@ export default function NewCheckInView({ vacantRooms, onCheckInComplete, hotel }
               </select>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">Stay Package *</label>
-              <select
-                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:border-[#0b3c33] shadow-2xs"
-                value={stayType}
-                onChange={(e) => setStayType(e.target.value)}
-                required
-              >
-                <option value="" disabled>-- Select Stay Package / Slot * --</option>
-                <option value="3 Hours Express">3 Hours Express</option>
-                <option value="6 Hours Flexi">6 Hours Flexi</option>
-                <option value="12 Hours Day Stay">12 Hours Day Stay</option>
-                <option value="24 Hours Full Stay">24 Hours Full Stay</option>
-              </select>
-            </div>
+            <StayPackageSelector
+              value={stayType}
+              onChange={(newVal) => setStayType(newVal)}
+              required
+            />
 
             <div className="space-y-1">
               <div className="flex items-center justify-between">
