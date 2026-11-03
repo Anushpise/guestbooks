@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import LandingPage from './components/views/LandingPage';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
+import BottomNavBar from './components/layout/BottomNavBar';
 import Dashboard from './components/views/Dashboard';
 import GuestLedger from './components/views/GuestLedger';
 import PoliceReportView from './components/views/PoliceReportView';
@@ -525,7 +526,9 @@ export default function App() {
           </div>
         )}
 
-        <main className="flex-1 p-3.5 sm:p-5 lg:p-8 max-w-7xl mx-auto w-full min-w-0">
+        <main className={`flex-1 p-3.5 sm:p-5 lg:p-8 max-w-7xl mx-auto w-full min-w-0 ${
+          currentUser?.role === 'HOTEL' ? (isDesktopSidebarOpen ? 'pb-24 lg:pb-8' : 'pb-24') : ''
+        }`}>
           {/* SUPER ADMIN VIEW */}
           {activeTab === 'admin-approvals' && (
             <AdminDashboard />
@@ -653,6 +656,17 @@ export default function App() {
             </>
           )}
         </main>
+
+        {/* Mobile & Tablet App Bottom Navigation Bar (Appears when sidebar is hidden) */}
+        {currentUser?.role === 'HOTEL' && (
+          <BottomNavBar 
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            isDesktopSidebarOpen={isDesktopSidebarOpen}
+            isMobileSidebarOpen={isMobileSidebarOpen}
+            overdueCount={overdueStays.length}
+          />
+        )}
       </div>
 
       {/* Modal Dialogs for fast shortcuts anywhere */}
