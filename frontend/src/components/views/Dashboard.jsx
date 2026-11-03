@@ -231,12 +231,7 @@ export default function Dashboard({
             return (
               <div 
                 key={room.id}
-                className={`rounded-2xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden flex flex-col justify-between transition-all hover:shadow-md ${
-                  room.status === 'OCCUPIED' ? 'border-l-4 border-l-red-500' :
-                  room.status === 'VACANT' ? 'border-l-4 border-l-emerald-500' :
-                  room.status === 'CLEANING' ? 'border-l-4 border-l-orange-500' :
-                  'border-l-4 border-l-slate-400'
-                }`}
+                className="rounded-2xl bg-white border border-slate-200/90 shadow-2xs overflow-hidden flex flex-col justify-between transition-all hover:shadow-md hover:border-slate-300"
               >
                 {/* Card Header */}
                 <div className="p-4 pb-2.5 flex items-start justify-between border-b border-slate-100 bg-slate-50/40">
@@ -256,8 +251,8 @@ export default function Dashboard({
 
                   {/* Status Badge */}
                   {room.status === 'OCCUPIED' && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-extrabold text-rose-800 border border-rose-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" />
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-extrabold text-amber-900 border border-amber-200/90 shadow-2xs">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                       Occupied
                     </span>
                   )}
@@ -321,25 +316,36 @@ export default function Dashboard({
                       )}
 
                       {/* Timing & Expiry status */}
-                      <div className="pt-1.5 border-t border-slate-200 flex items-center justify-between text-[10px]">
-                        <span className="text-slate-500 font-mono">
-                          {stay.stayType || '24h Stay'}
-                        </span>
+                      <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-slate-700">
+                            {stay.stayType || '24h Stay'}
+                          </span>
 
-                        {expiry && (
-                          expiry.isOverdue ? (
-                            <span className="font-black text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
-                              Overdue ({expiry.statusBadgeText})
+                          {expiry && (
+                            expiry.isOverdue ? (
+                              <span className="font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                Overdue ({expiry.statusBadgeText})
+                              </span>
+                            ) : expiry.isDueSoon ? (
+                              <span className="font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                {expiry.statusBadgeText}
+                              </span>
+                            ) : (
+                              <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                {expiry.statusBadgeText}
+                              </span>
+                            )
+                          )}
+                        </div>
+
+                        {expiry?.expectedFormatted && (
+                          <div className="flex items-center justify-between bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Till:</span>
+                            <span className="text-xs font-black font-mono text-slate-900">
+                              {expiry.expectedFormatted}
                             </span>
-                          ) : expiry.isDueSoon ? (
-                            <span className="font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                              {expiry.statusBadgeText}
-                            </span>
-                          ) : (
-                            <span className="font-bold text-emerald-800">
-                              {expiry.statusBadgeText}
-                            </span>
-                          )
+                          </div>
                         )}
                       </div>
                     </div>
@@ -377,7 +383,7 @@ export default function Dashboard({
                         className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-[#0b3c33] font-black text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
                         title="Quick add item / food / water to bill"
                       >
-                        <Plus className="h-3 w-3 text-emerald-700" /> + Item
+                        <Plus className="h-3.5 w-3.5 text-emerald-700" /> Item
                       </button>
 
                       <button 
@@ -480,32 +486,38 @@ export default function Dashboard({
                           const expiry = stay ? getStayExpiryStatus(stay) : null;
                           if (expiry?.isOverdue) {
                             return (
-                              <div className="flex flex-col gap-0.5">
+                              <div className="flex flex-col gap-1">
                                 <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-extrabold text-rose-700 border border-rose-200">
                                   <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-pulse" />
                                   Time Up ({expiry.statusBadgeText})
                                 </span>
-                                <span className="text-[10px] text-slate-400 font-mono">Due: {expiry.expectedFormatted}</span>
+                                <span className="inline-flex items-center gap-1 text-[11px] font-black text-rose-950 font-mono bg-rose-100/90 border border-rose-200 px-2 py-0.5 rounded-md">
+                                  <Clock className="h-3 w-3 text-rose-600" /> Due: {expiry.expectedFormatted}
+                                </span>
                               </div>
                             );
                           }
                           if (expiry?.isDueSoon) {
                             return (
-                              <div className="flex flex-col gap-0.5">
+                              <div className="flex flex-col gap-1">
                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-extrabold text-amber-800 border border-amber-200">
                                   <Clock className="h-3 w-3 text-amber-600" />
                                   Due Soon ({expiry.statusBadgeText})
                                 </span>
-                                <span className="text-[10px] text-slate-400 font-mono">Due: {expiry.expectedFormatted}</span>
+                                <span className="inline-flex items-center gap-1 text-[11px] font-black text-amber-950 font-mono bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded-md">
+                                  <Clock className="h-3 w-3 text-amber-700" /> Due: {expiry.expectedFormatted}
+                                </span>
                               </div>
                             );
                           }
                           return (
-                            <div className="flex flex-col gap-0.5">
-                              <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-0.5 text-xs font-extrabold text-amber-800 border border-amber-200/80">
+                            <div className="flex flex-col gap-1">
+                              <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-extrabold text-amber-800 border border-amber-200/80">
                                 Occupied
                               </span>
-                              <span className="text-[10px] text-slate-400 font-mono">Till: {expiry?.expectedFormatted || '—'}</span>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-black text-slate-900 font-mono bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md">
+                                <Clock className="h-3 w-3 text-slate-600" /> Till: {expiry?.expectedFormatted || '—'}
+                              </span>
                             </div>
                           );
                         })()}
@@ -539,7 +551,7 @@ export default function Dashboard({
                                 className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-[#0b3c33] font-black text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
                                 title="Quick add water, tea, food, or services to room bill"
                               >
-                                <Plus className="h-3.5 w-3.5 text-emerald-700" /> + Add Item
+                                <Plus className="h-3.5 w-3.5 text-emerald-700" /> Add Item
                               </button>
                               <button 
                                 onClick={() => onViewReceipt(stay)}
