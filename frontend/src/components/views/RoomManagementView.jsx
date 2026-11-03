@@ -27,10 +27,11 @@ export default function RoomManagementView({
   onDeleteRoom,
   refreshData 
 }) {
-  const [editingRoomId, setEditingRoomId] = useState(null);
-  const [editTariffValue, setEditTariffValue] = useState('');
-  const [editingRoomNameId, setEditingRoomNameId] = useState(null);
-  const [editRoomNameValue, setEditRoomNameValue] = useState('');
+  const [editingRoom, setEditingRoom] = useState(null);
+  const [editRoomType, setEditRoomType] = useState('');
+  const [editRoomFloor, setEditRoomFloor] = useState('1st Floor');
+  const [editRoomRate, setEditRoomRate] = useState('');
+  const [editError, setEditError] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterFloor, setFilterFloor] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,34 +70,45 @@ export default function RoomManagementView({
     showNotification(`✓ Room ${roomNumber} updated to ${newStatus}`);
   };
 
-  const handleStartEditTariff = (room) => {
-    setEditingRoomId(room.id);
-    setEditTariffValue(String(room.rate));
+  const handleStartEdit = (room) => {
+    setEditingRoom(room);
+    setEditRoomType(room.type || 'Standard Room');
+    setEditRoomFloor(room.floor || '1st Floor');
+    setEditRoomRate(String(room.rate || '1000'));
+    setEditError('');
   };
 
-  const handleSaveTariff = async (roomId, roomNumber) => {
-    if (editTariffValue && !isNaN(editTariffValue) && Number(editTariffValue) > 0) {
-      if (onRoomTariffChange) {
-        await onRoomTariffChange(roomId, Number(editTariffValue));
-      }
-      showNotification(`✓ Tariff for Room ${roomNumber} set to ₹${editTariffValue}`);
+  const handleSaveEditRoom = async (e) => {
+    e.preventDefault();
+    if (!editingRoom) return;
+
+    if (!editRoomType.trim()) {
+      setEditError('Please enter a room type / name.');
+      return;
     }
-    setEditingRoomId(null);
-  };
-
-  const handleStartEditName = (room) => {
-    setEditingRoomNameId(room.id);
-    setEditRoomNameValue(room.type || '');
-  };
-
-  const handleSaveName = async (roomId, roomNumber) => {
-    if (editRoomNameValue.trim()) {
-      if (onRoomDetailsChange) {
-        await onRoomDetailsChange(roomId, { type: editRoomNameValue.trim() });
-      }
-      showNotification(`✓ Room ${roomNumber} name updated to "${editRoomNameValue.trim()}"`);
+    if (!editRoomRate || Number(editRoomRate) <= 0) {
+      setEditError('Please enter a valid tariff rate.');
+      return;
     }
-    setEditingRoomNameId(null);
+
+    const newRate = Number(editRoomRate);
+    const newType = editRoomType.trim();
+    const newFloor = editRoomFloor;
+
+    if (onRoomDetailsChange) {
+      await onRoomDetailsChange(editingRoom.id, {
+        type: newType,
+        floor: newFloor,
+        rate: newRate
+      });
+    }
+
+    if (onRoomTariffChange && newRate !== editingRoom.rate) {
+      await onRoomTariffChange(editingRoom.id, newRate);
+    }
+
+    showNotification(`✓ Room ${editingRoom.number} updated successfully!`);
+    setEditingRoom(null);
   };
 
   const handleCreateRoom = async (e) => {
@@ -342,6 +354,15 @@ export default function RoomManagementView({
                     </span>
                   )}
 
+                  <button
+                    type="button"
+                    onClick={() => handleStartEdit(room)}
+                    title="Edit Room Details"
+                    className="p-1 rounded-md text-slate-300 hover:text-[#0b3c33] hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </button>
+
                   {onDeleteRoom && (
                     <button
                       onClick={() => setDeleteConfirmId(deleteConfirmId === room.id ? null : room.id)}
@@ -385,90 +406,33 @@ export default function RoomManagementView({
               {/* Room Name & Tariff Row */}
               <div className="grid grid-cols-2 gap-2 pt-1">
                 {/* Room Name / Type */}
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Type</div>
-                  {editingRoomNameId === room.id ? (
-                    <div className="flex items-center gap-1 mt-1">
-                      <input
-                        type="text"
-                        className="flex-1 h-7 rounded border border-slate-300 px-2 text-xs font-semibold text-slate-900 outline-none focus:border-[#0b3c33] bg-white"
-                        value={editRoomNameValue}
-                        onChange={(e) => setEditRoomNameValue(e.target.value)}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => handleSaveName(room.id, room.number)}
-                        className="h-7 w-7 rounded bg-[#0b3c33] text-white flex items-center justify-center cursor-pointer"
-                        title="Save"
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setEditingRoomNameId(null)}
-                        className="h-7 w-7 rounded bg-slate-100 text-slate-600 flex items-center justify-center cursor-pointer"
-                        title="Cancel"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-xs font-semibold text-slate-800 truncate" title={room.type}>
-                        {room.type}
-                      </span>
-                      <button
-                        onClick={() => handleStartEditName(room)}
-                        className="text-slate-300 hover:text-slate-600 p-0.5 transition-colors cursor-pointer"
-                        title="Edit Type"
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )}
+                <div 
+                  onClick={() => handleStartEdit(room)}
+                  className="group cursor-pointer rounded-lg p-1.5 -m-1.5 hover:bg-slate-50 transition-colors"
+                  title="Click to edit room details"
+                >
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                    <span>Type</span>
+                    <Edit2 className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
+                  </div>
+                  <div className="text-xs font-semibold text-slate-800 truncate mt-0.5" title={room.type}>
+                    {room.type}
+                  </div>
                 </div>
 
                 {/* Nightly Tariff */}
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tariff</div>
-                  {editingRoomId === room.id ? (
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className="text-xs text-slate-500 font-mono">₹</span>
-                      <input
-                        type="number"
-                        className="w-16 h-7 rounded border border-slate-300 px-1 text-xs font-mono font-bold text-slate-900 outline-none focus:border-[#0b3c33] bg-white"
-                        value={editTariffValue}
-                        onChange={(e) => setEditTariffValue(e.target.value)}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => handleSaveTariff(room.id, room.number)}
-                        className="h-7 w-7 rounded bg-[#0b3c33] text-white flex items-center justify-center cursor-pointer"
-                        title="Save"
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setEditingRoomId(null)}
-                        className="h-7 w-7 rounded bg-slate-100 text-slate-600 flex items-center justify-center cursor-pointer"
-                        title="Cancel"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-xs font-bold text-slate-900 font-mono">
-                        ₹{room.rate} <span className="text-[10px] font-normal text-slate-400">/night</span>
-                      </span>
-                      <button
-                        onClick={() => handleStartEditTariff(room)}
-                        className="text-slate-300 hover:text-slate-600 p-0.5 transition-colors cursor-pointer"
-                        title="Edit Tariff"
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )}
+                <div 
+                  onClick={() => handleStartEdit(room)}
+                  className="group cursor-pointer rounded-lg p-1.5 -m-1.5 hover:bg-slate-50 transition-colors"
+                  title="Click to edit room details"
+                >
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                    <span>Tariff</span>
+                    <Edit2 className="h-2.5 w-2.5 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
+                  </div>
+                  <div className="text-xs font-bold text-slate-900 font-mono mt-0.5">
+                    ₹{room.rate} <span className="text-[10px] font-normal text-slate-400">/night</span>
+                  </div>
                 </div>
               </div>
 
@@ -613,6 +577,131 @@ export default function RoomManagementView({
         </div>
       )}
 
+      {/* ── Edit Room Modal Dialog (Clean & Professional) ──────────────── */}
+      {editingRoom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-50 text-[#0b3c33] rounded-lg border border-emerald-200">
+                  <BedDouble className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="font-heading text-base font-bold text-slate-900">
+                    Edit Room {editingRoom.number}
+                  </h3>
+                  <p className="text-xs text-slate-500">Update room category, floor, or nightly tariff</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setEditingRoom(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-xs font-medium text-rose-800 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditRoom} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Room Number
+                </label>
+                <input
+                  type="text"
+                  value={editingRoom.number}
+                  disabled
+                  className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs font-mono font-bold text-slate-500 bg-slate-50 cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Room Type / Category *
+                </label>
+                <input
+                  type="text"
+                  list="edit-room-type-options"
+                  placeholder="e.g. NON AC, Deluxe AC Suite, Executive King"
+                  value={editRoomType}
+                  onChange={(e) => setEditRoomType(e.target.value)}
+                  className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-900 outline-none focus:border-[#0b3c33] focus:ring-1 focus:ring-[#0b3c33]"
+                  required
+                  autoFocus
+                />
+                <datalist id="edit-room-type-options">
+                  <option value="NON AC" />
+                  <option value="AC" />
+                  <option value="BATHTUB AC" />
+                  <option value="Standard AC Room" />
+                  <option value="Deluxe AC Suite" />
+                  <option value="Executive Suite" />
+                  <option value="Family Luxury Suite" />
+                </datalist>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Floor *
+                  </label>
+                  <select
+                    value={editRoomFloor}
+                    onChange={(e) => setEditRoomFloor(e.target.value)}
+                    className="w-full h-9 rounded-lg border border-slate-200 px-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-[#0b3c33] focus:ring-1 focus:ring-[#0b3c33] cursor-pointer"
+                  >
+                    {floorOptions.map(f => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                    {!floorOptions.includes(editRoomFloor) && (
+                      <option value={editRoomFloor}>{editRoomFloor}</option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nightly Tariff (₹) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    placeholder="800"
+                    value={editRoomRate}
+                    onChange={(e) => setEditRoomRate(e.target.value)}
+                    className="w-full h-9 rounded-lg border border-slate-200 px-3 text-xs font-mono font-semibold text-slate-900 outline-none focus:border-[#0b3c33] focus:ring-1 focus:ring-[#0b3c33]"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingRoom(null)}
+                  className="text-xs font-semibold border-slate-200 h-8 cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-[#0b3c33] hover:bg-[#082e27] text-white text-xs font-bold shadow-2xs h-8 cursor-pointer"
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
