@@ -5,7 +5,7 @@ from pathlib import Path
 backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db.database import init_db, get_all_guest_records, create_guest_record, checkout_guest_in_db, db_add_extra_charge, db_remove_extra_charge, db_get_active_stays
+from app.db.database import init_db, get_all_guest_records, create_guest_record, checkout_guest_in_db, db_add_extra_charge, db_remove_extra_charge, db_get_active_stays, db_upgrade_stay_room
 
 class TestGuestRecords(unittest.TestCase):
     @classmethod
@@ -137,6 +137,46 @@ class TestGuestRecords(unittest.TestCase):
         self.assertTrue(res_del["success"])
         self.assertEqual(res_del["extra_charges"], 150.0)
         self.assertEqual(len(res_del["items"]), 1)
+
+
+    def test_room_upgrade(self):
+        # 1. Create active stay in room 301
+        sample_data = {
+            "roomNumber": "301",
+            "stayType": "24 Hours Full Stay",
+            "roomRate": 1000,
+            "advancePaid": 1000,
+            "paymentMode": "Cash",
+            "primaryGuest": {
+                "name": "Upgrade Test Guest",
+                "phone": "9998887776",
+                "idType": "Aadhaar Card",
+                "idNumber": "1111 2222 3333"
+            },
+            "hotelId": "HTL-TEST"
+        }
+        create_guest_record(sample_data)
+
+        # 2. Upgrade room from 301 to 302 with 200 diff
+        res = db_upgrade_stay_room(
+            current_room="301",
+            new_room="302",
+            hotel_id="HTL-TEST",
+            new_rate=1200,
+            price_difference=200,
+            add_diff_to_extras=True,
+            old_room_status="CLEANING"
+        )
+        self.assertTrue(res["success"])
+        self.assertEqual(res["new_room"], "302")
+        self.assertEqual(res["extra_charges"], 200.0)
+
+        # 3. Verify in active stays
+        active_stays = db_get_active_stays(hotel_id="HTL-TEST")
+        stay = next((s for s in active_stays if s["roomNumber"] == "302"), None)
+        self.assertIsNotNone(stay)
+        self.assertEqual(stay["primaryGuest"]["name"], "Upgrade Test Guest")
+        self.assertEqual(stay["extraCharges"], 200.0)
 
 
 if __name__ == "__main__":

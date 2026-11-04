@@ -1860,116 +1860,127 @@ def db_upgrade_stay_room(
     the rooms table statuses for both the old room (e.g. CLEANING) and new room (OCCUPIED).
     """
     conn, db_type = get_db_connection()
-    clean_curr = str(current_room).strip().split('_')[-1]
-    clean_new = str(new_room).strip().split('_')[-1]
+    clean_curr = str(current_room).strip().replace("RM-", "").replace("rm-", "").split('_')[-1]
+    clean_new = str(new_room).strip().replace("RM-", "").replace("rm-", "").split('_')[-1]
     now_iso = get_current_ist_iso()
     h_id = hotel_id or "HTL-101"
 
-    # 1. Find the active checked-in guest record for current_room
-    if hotel_id and hotel_id != "ALL":
-        query = """
-            SELECT id, guest_name, room_number, room_rate, extra_charges, extra_charges_json, total_amount, advance_paid
-            FROM guest_records
-            WHERE (room_number = ? OR room_number = ?) AND (hotel_id = ? OR hotel_id IS NULL) AND status = 'CHECKED_IN'
-            ORDER BY id DESC
-        """
-        cursor = execute_query(conn, db_type, query, (str(current_room).strip(), clean_curr, hotel_id))
-    else:
-        query = """
-            SELECT id, guest_name, room_number, room_rate, extra_charges, extra_charges_json, total_amount, advance_paid
-            FROM guest_records
-            WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN'
-            ORDER BY id DESC
-        """
-        cursor = execute_query(conn, db_type, query, (str(current_room).strip(), clean_curr))
+    try:
+        # 1. Find the active checked-in guest record for current_room
+        if hotel_id and hotel_id != "ALL":
+            query = """
+                SELECT id, guest_name, room_number, room_rate, extra_charges, extra_charges_json, advance_paid
+                FROM guest_records
+                WHERE (room_number = ? OR room_number = ?) AND (hotel_id = ? OR hotel_id IS NULL) AND status = 'CHECKED_IN'
+                ORDER BY id DESC
+            """
+            cursor = execute_query(conn, db_type, query, (str(current_room).strip(), clean_curr, hotel_id))
+        else:
+            query = """
+                SELECT id, guest_name, room_number, room_rate, extra_charges, extra_charges_json, advance_paid
+                FROM guest_records
+                WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN'
+                ORDER BY id DESC
+            """
+            cursor = execute_query(conn, db_type, query, (str(current_room).strip(), clean_curr))
 
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return {"success": False, "message": f"No active checked-in stay found for Room {current_room}."}
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return {"success": False, "message": f"No active checked-in stay found for Room {current_room}."}
 
-    rec = dict(row)
-    rec_id = rec["id"]
-    guest_name = rec.get("guest_name", "Guest")
+        rec = dict(row)
+        rec_id = rec["id"]
+        guest_name = rec.get("guest_name", "Guest")
 
-    # 2. Check if new_room is already occupied by ANOTHER guest
-    if hotel_id and hotel_id != "ALL":
-        c_occ = execute_query(conn, db_type, """
-            SELECT id, guest_name FROM guest_records
-            WHERE (room_number = ? OR room_number = ?) AND (hotel_id = ? OR hotel_id IS NULL) AND status = 'CHECKED_IN' AND id != ?
-        """, (str(new_room).strip(), clean_new, hotel_id, rec_id))
-    else:
-        c_occ = execute_query(conn, db_type, """
-            SELECT id, guest_name FROM guest_records
-            WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN' AND id != ?
-        """, (str(new_room).strip(), clean_new, rec_id))
+        # 2. Check if new_room is already occupied by ANOTHER guest
+        if hotel_id and hotel_id != "ALL":
+            c_occ = execute_query(conn, db_type, """
+                SELECT id, guest_name FROM guest_records
+                WHERE (room_number = ? OR room_number = ?) AND (hotel_id = ? OR hotel_id IS NULL) AND status = 'CHECKED_IN' AND id != ?
+            """, (str(new_room).strip(), clean_new, hotel_id, rec_id))
+        else:
+            c_occ = execute_query(conn, db_type, """
+                SELECT id, guest_name FROM guest_records
+                WHERE (room_number = ? OR room_number = ?) AND status = 'CHECKED_IN' AND id != ?
+            """, (str(new_room).strip(), clean_new, rec_id))
 
-    other_guest = c_occ.fetchone()
-    if other_guest:
-        conn.close()
-        return {"success": False, "message": f"Cannot move to Room {new_room}. It is already OCCUPIED by {dict(other_guest).get('guest_name')}."}
+        other_guest = c_occ.fetchone()
+        if other_guest:
+            conn.close()
+            return {"success": False, "message": f"Cannot move to Room {new_room}. It is already OCCUPIED by {dict(other_guest).get('guest_name')}."}
 
-    # 3. Handle extra charges if price difference is charged to extras
-    existing_items = []
-    if rec.get("extra_charges_json"):
-        try:
-            existing_items = json.loads(rec["extra_charges_json"])
-            if not isinstance(existing_items, list):
+        # 3. Handle extra charges if price difference is charged to extras
+        existing_items = []
+        if rec.get("extra_charges_json"):
+            try:
+                existing_items = json.loads(rec["extra_charges_json"])
+                if not isinstance(existing_items, list):
+                    existing_items = []
+            except Exception:
                 existing_items = []
-        except Exception:
-            existing_items = []
 
-    price_diff_num = float(price_difference or 0)
-    current_extra_charges = float(rec.get("extra_charges") or 0)
+        price_diff_num = float(price_difference or 0)
+        current_extra_charges = float(rec.get("extra_charges") or 0)
 
-    if add_diff_to_extras and price_diff_num > 0:
-        upgrade_item = {
-            "id": f"UPG-{int(datetime.now().timestamp() * 1000)}",
-            "name": f"Room Upgrade (RM-{clean_curr} \u2192 RM-{clean_new})",
-            "qty": 1,
-            "price": price_diff_num,
-            "total": price_diff_num,
-            "addedAt": now_iso
+        if add_diff_to_extras and price_diff_num > 0:
+            upgrade_item = {
+                "id": f"UPG-{int(datetime.now().timestamp() * 1000)}",
+                "name": f"Room Upgrade (RM-{clean_curr} -> RM-{clean_new})",
+                "qty": 1,
+                "price": price_diff_num,
+                "total": price_diff_num,
+                "addedAt": now_iso
+            }
+            existing_items.append(upgrade_item)
+            current_extra_charges = sum(float(x.get("total", 0)) for x in existing_items)
+
+        # 4. Determine rate update safely
+        try:
+            final_rate = float(new_rate) if (new_rate is not None and float(new_rate) > 0) else float(rec.get("room_rate") or 0)
+        except (ValueError, TypeError):
+            final_rate = float(rec.get("room_rate") or 0)
+
+        # 5. Update guest_records
+        execute_query(conn, db_type, """
+            UPDATE guest_records
+            SET room_number = ?,
+                room_rate = ?,
+                extra_charges = ?,
+                extra_charges_json = ?
+            WHERE id = ?
+        """, (clean_new, final_rate, current_extra_charges, json.dumps(existing_items), rec_id))
+
+        # 6. Update rooms table
+        old_status = old_room_status if old_room_status in ("CLEANING", "VACANT") else "CLEANING"
+        execute_query(conn, db_type, """
+            UPDATE rooms SET status = ?, updated_at = ?
+            WHERE hotel_id = ? AND (room_number = ? OR room_number = ? OR id = ?)
+        """, (old_status, now_iso, h_id, clean_curr, str(current_room).strip(), f"{h_id}_{clean_curr}"))
+
+        execute_query(conn, db_type, """
+            UPDATE rooms SET status = 'OCCUPIED', updated_at = ?
+            WHERE hotel_id = ? AND (room_number = ? OR room_number = ? OR id = ?)
+        """, (now_iso, h_id, clean_new, str(new_room).strip(), f"{h_id}_{clean_new}"))
+
+        conn.commit()
+        conn.close()
+
+        logger.info(f"Room upgrade: Guest {guest_name} (Record {rec_id}) moved from RM-{clean_curr} to RM-{clean_new}")
+        return {
+            "success": True,
+            "message": f"Room successfully changed from RM-{clean_curr} to RM-{clean_new} for {guest_name}",
+            "record_id": rec_id,
+            "old_room": clean_curr,
+            "new_room": clean_new,
+            "new_rate": final_rate,
+            "extra_charges": current_extra_charges,
+            "items": existing_items
         }
-        existing_items.append(upgrade_item)
-        current_extra_charges = sum(float(x.get("total", 0)) for x in existing_items)
-
-    # 4. Determine rate update
-    final_rate = float(new_rate) if (new_rate is not None and float(new_rate) > 0) else float(rec.get("room_rate") or 0)
-
-    # 5. Update guest_records
-    execute_query(conn, db_type, """
-        UPDATE guest_records
-        SET room_number = ?,
-            room_rate = ?,
-            extra_charges = ?,
-            extra_charges_json = ?
-        WHERE id = ?
-    """, (clean_new, final_rate, current_extra_charges, json.dumps(existing_items), rec_id))
-
-    # 6. Update rooms table
-    old_status = old_room_status if old_room_status in ("CLEANING", "VACANT") else "CLEANING"
-    execute_query(conn, db_type, """
-        UPDATE rooms SET status = ?, updated_at = ?
-        WHERE hotel_id = ? AND (room_number = ? OR room_number = ?)
-    """, (old_status, now_iso, h_id, clean_curr, str(current_room).strip()))
-
-    execute_query(conn, db_type, """
-        UPDATE rooms SET status = 'OCCUPIED', updated_at = ?
-        WHERE hotel_id = ? AND (room_number = ? OR room_number = ?)
-    """, (now_iso, h_id, clean_new, str(new_room).strip()))
-
-    conn.commit()
-    conn.close()
-
-    logger.info(f"Room upgrade: Guest {guest_name} (Record {rec_id}) moved from RM-{clean_curr} to RM-{clean_new}")
-    return {
-        "success": True,
-        "message": f"Room successfully changed from RM-{clean_curr} to RM-{clean_new} for {guest_name}",
-        "record_id": rec_id,
-        "old_room": clean_curr,
-        "new_room": clean_new,
-        "new_rate": final_rate,
-        "extra_charges": current_extra_charges,
-        "items": existing_items
-    }
+    except Exception as e:
+        if db_type == "postgres":
+            try: conn.rollback()
+            except Exception: pass
+        conn.close()
+        logger.error(f"Error in db_upgrade_stay_room: {e}", exc_info=True)
+        return {"success": False, "message": f"Database error during room upgrade: {str(e)}"}
