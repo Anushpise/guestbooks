@@ -14,7 +14,8 @@ from app.db.database import (
     checkout_guest_in_db,
     db_get_active_stays,
     db_add_extra_charge,
-    db_remove_extra_charge
+    db_remove_extra_charge,
+    db_upgrade_stay_room
 )
 
 logger = logging.getLogger("guest_routes")
@@ -170,3 +171,49 @@ def remove_charge_endpoint(payload: RemoveChargePayload):
         raise HTTPException(status_code=400, detail="roomNumber and itemId are required")
     result = db_remove_extra_charge(room, payload.itemId, hotel_id=hotel_id)
     return result
+
+
+class UpgradeRoomPayload(BaseModel):
+    hotelId: Optional[str] = None
+    hotel_id: Optional[str] = None
+    currentRoomNumber: Optional[str] = None
+    current_room: Optional[str] = None
+    newRoomNumber: Optional[str] = None
+    new_room: Optional[str] = None
+    newRate: Optional[float] = None
+    new_rate: Optional[float] = None
+    priceDifference: Optional[float] = 0.0
+    price_difference: Optional[float] = 0.0
+    addDiffToExtras: Optional[bool] = True
+    add_diff_to_extras: Optional[bool] = True
+    oldRoomStatus: Optional[str] = "CLEANING"
+    old_room_status: Optional[str] = "CLEANING"
+    notes: Optional[str] = ""
+
+@router.post("/upgrade-room")
+def upgrade_room_endpoint(payload: UpgradeRoomPayload):
+    """Upgrades or changes the room of an active checked-in guest."""
+    hotel_id = payload.hotelId or payload.hotel_id or 'HTL-101'
+    curr_rm = payload.currentRoomNumber or payload.current_room
+    new_rm = payload.newRoomNumber or payload.new_room
+    if not curr_rm or not new_rm:
+        raise HTTPException(status_code=400, detail="Both current room and new room numbers are required")
+
+    diff = payload.priceDifference if payload.priceDifference is not None else (payload.price_difference or 0.0)
+    rate = payload.newRate if payload.newRate is not None else payload.new_rate
+    add_extras = payload.addDiffToExtras if payload.addDiffToExtras is not None else payload.add_diff_to_extras
+    old_st = payload.oldRoomStatus or payload.old_room_status or 'CLEANING'
+
+    res = db_upgrade_stay_room(
+        current_room=curr_rm,
+        new_room=new_rm,
+        hotel_id=hotel_id,
+        new_rate=rate,
+        price_difference=diff,
+        add_diff_to_extras=add_extras,
+        old_room_status=old_st,
+        notes=payload.notes or ''
+    )
+    if not res.get('success'):
+        raise HTTPException(status_code=400, detail=res.get('message', 'Failed to upgrade room'))
+    return res

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { getStayExpiryStatus } from '../../lib/dateUtils';
 import AddRoomChargeModal from '../modals/AddRoomChargeModal';
+import RoomUpgradeModal from '../modals/RoomUpgradeModal';
 import { 
   Clock,
   AlertTriangle,
@@ -16,7 +17,8 @@ import {
   LayoutGrid,
   List,
   User,
-  Users
+  Users,
+  ArrowUpCircle
 } from 'lucide-react';
 
 export default function Dashboard({ 
@@ -41,10 +43,17 @@ export default function Dashboard({
 
   const [isAddChargeModalOpen, setIsAddChargeModalOpen] = useState(false);
   const [stayForCharge, setStayForCharge] = useState(null);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [stayForUpgrade, setStayForUpgrade] = useState(null);
 
   const handleOpenAddCharge = (stayObj) => {
     setStayForCharge(stayObj);
     setIsAddChargeModalOpen(true);
+  };
+
+  const handleOpenUpgradeRoom = (stayObj) => {
+    setStayForUpgrade(stayObj);
+    setIsUpgradeModalOpen(true);
   };
 
   const handleViewModeChange = (mode) => {
@@ -295,17 +304,29 @@ export default function Dashboard({
                   {/* Occupied Guest Details Box */}
                   {room.status === 'OCCUPIED' && stay && (
                     <div className="rounded-xl bg-slate-50 p-3 border border-slate-200/80 text-xs space-y-2">
-                      <div className="flex items-start gap-2">
-                        <User className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
-                        <div className="min-w-0 flex-1">
-                          <div className="font-extrabold text-slate-900 truncate leading-tight">
-                            {stay.primaryGuest?.name || 'Guest'}
-                          </div>
-                          <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                            <Phone className="h-3 w-3 text-slate-400" />
-                            {stay.primaryGuest?.phone || '—'}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 min-w-0">
+                          <User className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+                          <div className="min-w-0 flex-1">
+                            <div className="font-extrabold text-slate-900 truncate leading-tight">
+                              {stay.primaryGuest?.name || 'Guest'}
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                              <Phone className="h-3 w-3 text-slate-400" />
+                              {stay.primaryGuest?.phone || '—'}
+                            </div>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenUpgradeRoom(stay)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-bold transition-all shadow-2xs shrink-0 cursor-pointer active:scale-95"
+                          title="Upgrade or change room for this guest"
+                        >
+                          <ArrowUpCircle className="h-3.5 w-3.5 text-indigo-600" />
+                          <span>Upgrade</span>
+                        </button>
                       </div>
 
                       {stay.accompanyingGuest && (
@@ -547,6 +568,13 @@ export default function Dashboard({
                           {room.status === 'OCCUPIED' && stay && (
                             <>
                               <button 
+                                onClick={() => handleOpenUpgradeRoom(stay)}
+                                className="flex items-center gap-1 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
+                                title="Upgrade or change room for this guest"
+                              >
+                                <ArrowUpCircle className="h-3.5 w-3.5 text-indigo-600" /> Upgrade
+                              </button>
+                              <button 
                                 onClick={() => handleOpenAddCharge(stay)}
                                 className="flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-[#0b3c33] font-black text-xs transition-all cursor-pointer shadow-2xs active:scale-95"
                                 title="Quick add water, tea, food, or services to room bill"
@@ -596,6 +624,20 @@ export default function Dashboard({
         stay={stayForCharge}
         onChargeUpdated={() => {
           if (refreshData) refreshData();
+        }}
+      />
+
+      {/* Room Upgrade / Change Modal */}
+      <RoomUpgradeModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => {
+          setIsUpgradeModalOpen(false);
+          setStayForUpgrade(null);
+        }}
+        stay={stayForUpgrade}
+        rooms={rooms}
+        onUpgradeComplete={async () => {
+          if (refreshData) await refreshData();
         }}
       />
     </div>

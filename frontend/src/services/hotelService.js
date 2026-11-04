@@ -945,6 +945,101 @@ export const hotelService = {
     return { success: true, stay };
   },
 
+  upgradeStayRoom: async ({
+    currentRoomNumber,
+    newRoomNumber,
+    newRate = null,
+    priceDifference = 0,
+    addDiffToExtras = true,
+    oldRoomStatus = 'CLEANING',
+    targetHotelId = null
+  }) => {
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const rawStays = hotelService.getRawActiveStays();
+    const cleanCurr = String(currentRoomNumber).split('_').pop();
+    const cleanNew = String(newRoomNumber).split('_').pop();
+
+    const stay = rawStays.find(s => 
+      ((s.hotelId === hId || (!s.hotelId && hId === 'HTL-101')) && String(s.roomNumber) === cleanCurr)
+    );
+
+    if (stay) {
+      stay.roomNumber = cleanNew;
+      if (newRate !== null && newRate !== undefined && Number(newRate) > 0) {
+        stay.roomRate = Number(newRate);
+      }
+      if (addDiffToExtras && Number(priceDifference) > 0) {
+        const upgradeItem = {
+          id: `UPG-${Date.now()}`,
+          name: `Room Upgrade (RM-${cleanCurr} → RM-${cleanNew})`,
+          price: Number(priceDifference),
+          qty: 1,
+          total: Number(priceDifference),
+          addedAt: new Date().toISOString()
+        };
+        stay.extraItems = Array.isArray(stay.extraItems) ? [...stay.extraItems, upgradeItem] : [upgradeItem];
+        stay.extraCharges = stay.extraItems.reduce((sum, x) => sum + Number(x.total || 0), 0);
+      }
+      safeLocalStorageSet(ACTIVE_STAYS_STORAGE_KEY, JSON.stringify(rawStays));
+
+      try {
+        const allStays = JSON.parse(localStorage.getItem(ALL_STAYS_STORAGE_KEY)) || [];
+        const match = allStays.find(s => s.id === stay.id);
+        if (match) {
+          match.roomNumber = cleanNew;
+          if (newRate !== null && Number(newRate) > 0) match.roomRate = Number(newRate);
+          match.extraItems = stay.extraItems;
+          match.extraCharges = stay.extraCharges;
+          safeLocalStorageSet(ALL_STAYS_STORAGE_KEY, JSON.stringify(allStays));
+        }
+      } catch (_) {}
+    }
+
+    // Update rooms in localStorage
+    const storageKey = hotelService.getRoomsStorageKey(hId);
+    const rooms = hotelService.getRooms(hId);
+    const updatedRooms = rooms.map(r => {
+      if (String(r.number) === cleanCurr) {
+        return { ...r, status: oldRoomStatus || 'CLEANING' };
+      }
+      if (String(r.number) === cleanNew) {
+        return { ...r, status: 'OCCUPIED' };
+      }
+      return r;
+    });
+    localStorage.setItem(storageKey, JSON.stringify(updatedRooms));
+    syncHotelOccupancyStats(updatedRooms, hId);
+
+    // Sync to backend DB
+    try {
+      const payload = {
+        hotelId: hId,
+        currentRoomNumber: cleanCurr,
+        newRoomNumber: cleanNew,
+        newRate: newRate !== null ? Number(newRate) : null,
+        priceDifference: Number(priceDifference) || 0,
+        addDiffToExtras: Boolean(addDiffToExtras),
+        oldRoomStatus: oldRoomStatus || 'CLEANING'
+      };
+      let res = await fetch('/api/guests/upgrade-room', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        await fetch(getBackendFallbackUrl('/api/guests/upgrade-room'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      }
+    } catch (e) {
+      console.warn('Backend upgrade-room offline note:', e);
+    }
+
+    return { success: true, stay, updatedRooms };
+  },
+
   checkOutGuest: async (stayIdOrRoom, targetHotelId = null, checkOutData = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const rawStays = hotelService.getRawActiveStays();
