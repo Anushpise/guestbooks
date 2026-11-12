@@ -1301,10 +1301,11 @@ def _generate_fallback_rooms(hotel_id: str, count: int = 15) -> list:
     ]
     rooms = []
     tot = count if count > 0 else 15
+    per_floor = 4 if (tot <= 12 and tot % 4 == 0) else 5
     for i in range(1, tot + 1):
-        fl_num = (i - 1) // 5 + 1
+        fl_num = (i - 1) // per_floor + 1
         fl_suffix = "st" if fl_num == 1 else "nd" if fl_num == 2 else "rd" if fl_num == 3 else "th"
-        r_num = str(fl_num * 100 + ((i - 1) % 5 + 1))
+        r_num = str(fl_num * 100 + ((i - 1) % per_floor + 1))
         t_name, t_rate = room_types[(i - 1) % len(room_types)]
         rooms.append({
             "id": f"{hotel_id}_{r_num}",
@@ -1359,10 +1360,11 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
                     except Exception: pass
                 tot_rooms = 15
 
+            per_floor = 4 if (tot_rooms <= 12 and tot_rooms % 4 == 0) else 5
             for i in range(1, tot_rooms + 1):
-                fl_num = (i - 1) // 5 + 1
+                fl_num = (i - 1) // per_floor + 1
                 fl_suffix = "st" if fl_num == 1 else "nd" if fl_num == 2 else "rd" if fl_num == 3 else "th"
-                r_num = str(fl_num * 100 + ((i - 1) % 5 + 1))
+                r_num = str(fl_num * 100 + ((i - 1) % per_floor + 1))
                 t_name, t_rate = room_types[(i - 1) % len(room_types)]
                 try:
                     execute_query(conn, db_type, """
@@ -1456,8 +1458,10 @@ def db_get_rooms(hotel_id: str = "HTL-101") -> list:
 
 def db_sync_rooms(hotel_id: str, custom_rooms: list) -> list:
     """
-    Upserts a list of rooms for a hotel into the central database.
-    Preserves custom rates, types, floors, and newly added rooms from local devices.
+    Initializes rooms for a hotel from local device data ONLY if the central database
+    has no rooms yet for that hotel. Once rooms exist in the central DB, the central DB
+    is the single source of truth — preventing stale client caches from resurrecting
+    deleted rooms or overwriting updated room rates/names.
     """
     if not custom_rooms or not isinstance(custom_rooms, list):
         return db_get_rooms(hotel_id)
@@ -1467,6 +1471,21 @@ def db_sync_rooms(hotel_id: str, custom_rooms: list) -> list:
         conn, db_type = get_db_connection()
     except Exception as e:
         logger.error(f"Failed to connect in db_sync_rooms: {e}")
+        return db_get_rooms(h_id)
+
+    try:
+        c_cnt = execute_query(conn, db_type, "SELECT COUNT(*) FROM rooms WHERE hotel_id = ?", (h_id,))
+        existing_count = int(get_first_val(c_cnt.fetchone(), 0) or 0)
+        if existing_count > 0:
+            conn.close()
+            return db_get_rooms(h_id)
+    except Exception as cnt_err:
+        if db_type == "postgres":
+            try: conn.rollback()
+            except Exception: pass
+        logger.warning(f"Error checking existing rooms in db_sync_rooms for {h_id}: {cnt_err}")
+        try: conn.close()
+        except Exception: pass
         return db_get_rooms(h_id)
 
     now_iso = get_current_ist_iso()
@@ -1485,17 +1504,10 @@ def db_sync_rooms(hotel_id: str, custom_rooms: list) -> list:
         r_status = r.get("status") or "VACANT"
 
         try:
-            c = execute_query(conn, db_type, "SELECT id FROM rooms WHERE hotel_id = ? AND room_number = ?", (h_id, r_num))
-            if c.fetchone():
-                execute_query(conn, db_type, """
-                    UPDATE rooms SET type = ?, floor = ?, rate = ?, updated_at = ?
-                    WHERE hotel_id = ? AND room_number = ?
-                """, (r_type, r_floor, r_rate, now_iso, h_id, r_num))
-            else:
-                execute_query(conn, db_type, """
-                    INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (r_id, h_id, r_num, r_type, r_floor, r_rate, r_status, now_iso))
+            execute_query(conn, db_type, """
+                INSERT INTO rooms (id, hotel_id, room_number, type, floor, rate, status, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (r_id, h_id, r_num, r_type, r_floor, r_rate, r_status, now_iso))
             conn.commit()
         except Exception as q_err:
             if db_type == "postgres":
@@ -1608,6 +1620,12 @@ def db_delete_room(hotel_id: str, room_identifier: str) -> dict:
         DELETE FROM rooms
         WHERE hotel_id = ? AND (room_number = ? OR id = ?)
     """, (h_id, actual_num, str(room_identifier)))
+    try:
+        cnt_cur = execute_query(conn, db_type, "SELECT COUNT(*) FROM rooms WHERE hotel_id = ?", (h_id,))
+        new_tot = int(get_first_val(cnt_cur.fetchone(), 0) or 0)
+        execute_query(conn, db_type, "UPDATE hotels SET total_rooms = ? WHERE id = ?", (new_tot, h_id))
+    except Exception:
+        pass
     conn.commit()
     conn.close()
     return {"success": True, "message": f"Room {actual_num} deleted from hotel {h_id} inventory."}
@@ -1638,6 +1656,12 @@ def db_add_room(hotel_id: str, room_data: dict) -> dict:
         "VACANT",
         now_iso
     ))
+    try:
+        cnt_cur = execute_query(conn, db_type, "SELECT COUNT(*) FROM rooms WHERE hotel_id = ?", (h_id,))
+        new_tot = int(get_first_val(cnt_cur.fetchone(), 0) or 0)
+        execute_query(conn, db_type, "UPDATE hotels SET total_rooms = ? WHERE id = ?", (new_tot, h_id))
+    except Exception:
+        pass
     conn.commit()
     conn.close()
     return {

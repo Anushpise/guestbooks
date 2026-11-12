@@ -128,5 +128,49 @@ class TestRoomCrud(unittest.TestCase):
             except Exception:
                 pass
 
+    def test_twelve_room_layout_and_sync_no_resurrection(self):
+        """Verify 12-room hotels use 4-per-floor (101-104, 201-204, 301-304) and db_sync_rooms never resurrects deleted rooms or overwrites rates."""
+        from app.db.database import get_db_connection, execute_query, db_delete_hotel, db_sync_rooms
+        conn, db_type = get_db_connection()
+        test_htl = "HTL-12RM-TEST"
+        try:
+            execute_query(conn, db_type, "DELETE FROM hotels WHERE id = ?", (test_htl,))
+            execute_query(conn, db_type, "DELETE FROM rooms WHERE hotel_id = ?", (test_htl,))
+            execute_query(conn, db_type, """
+                INSERT INTO hotels (id, name, email, phone, total_rooms, status, registered_at)
+                VALUES (?, ?, ?, ?, 12, 'APPROVED', '2026-11-12T00:00:00Z')
+            """, (test_htl, "Twelve Room Hotel", "12rm@test.com", "9999999998"))
+            conn.commit()
+        finally:
+            conn.close()
+
+        try:
+            rooms = db_get_rooms(test_htl)
+            nums = [r["number"] for r in rooms]
+            self.assertEqual(nums, ["101", "102", "103", "104", "201", "202", "203", "204", "301", "302", "303", "304"])
+
+            # Customize room 101 and delete room 304
+            db_update_room(test_htl, "101", {"type": "NON AC", "rate": 800.0})
+            db_delete_room(test_htl, "304")
+
+            # Simulate stale device pushing old cache with 304 and old 101 rate
+            stale_cache = [
+                {"number": "101", "type": "Executive Deluxe", "floor": "1st Floor", "rate": 1800.0},
+                {"number": "304", "type": "Standard Suite", "floor": "3rd Floor", "rate": 1500.0},
+                {"number": "105", "type": "Phantom", "floor": "1st Floor", "rate": 1500.0},
+            ]
+            synced = db_sync_rooms(test_htl, stale_cache)
+            synced_nums = [r["number"] for r in synced]
+            self.assertNotIn("304", synced_nums)
+            self.assertNotIn("105", synced_nums)
+            r101 = next(r for r in synced if r["number"] == "101")
+            self.assertEqual(r101["type"], "NON AC")
+            self.assertEqual(r101["rate"], 800.0)
+        finally:
+            try:
+                db_delete_hotel(test_htl)
+            except Exception:
+                pass
+
 if __name__ == "__main__":
     unittest.main()

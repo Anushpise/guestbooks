@@ -175,41 +175,9 @@ export const hotelService = {
   fetchRooms: async (targetHotelId = null) => {
     const hId = targetHotelId || hotelService.getCurrentHotelId();
     const storageKey = hotelService.getRoomsStorageKey(hId);
-    let localRooms = [];
-    try {
-      localRooms = JSON.parse(localStorage.getItem(storageKey)) || [];
-    } catch (e) {}
 
-    // Upstream local custom rooms once per session if local device modified rooms
-    if (localRooms.length > 0 && !hotelService._hasSyncedRooms) {
-      hotelService._hasSyncedRooms = true;
-      try {
-        const syncUrl = `/api/rooms/sync`;
-        let sRes = await fetch(syncUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ hotel_id: hId, rooms: localRooms })
-        });
-        if (!sRes.ok) {
-          sRes = await fetch(getBackendFallbackUrl(syncUrl), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hotel_id: hId, rooms: localRooms })
-          });
-        }
-        if (sRes && sRes.ok) {
-          const sJson = await sRes.json();
-          if (sJson.rooms && Array.isArray(sJson.rooms)) {
-            localStorage.setItem(storageKey, JSON.stringify(sJson.rooms));
-            syncHotelOccupancyStats(sJson.rooms, hId);
-            return sJson.rooms;
-          }
-        }
-      } catch (e) {
-        console.warn('Initial room upstream sync note:', e);
-      }
-    }
-
+    // Central DB is the single source of truth; do not push stale localStorage
+    // rooms back to /api/rooms/sync (which would resurrect deleted rooms or overwrite rates).
     try {
       let res = await fetch(`/api/rooms?hotel_id=${encodeURIComponent(hId)}`);
       if (!res.ok) {
@@ -265,9 +233,10 @@ export const hotelService = {
 
     const generatedRooms = [];
     const roomTypes = ['Executive Deluxe', 'Super Deluxe', 'Standard Suite', 'Presidential Suite'];
+    const perFloor = (totalRoomsCount <= 12 && totalRoomsCount % 4 === 0) ? 4 : 5;
     for (let i = 1; i <= totalRoomsCount; i++) {
-      const floorNum = Math.floor((i - 1) / 5) + 1;
-      const roomNum = floorNum * 100 + ((i - 1) % 5 + 1);
+      const floorNum = Math.floor((i - 1) / perFloor) + 1;
+      const roomNum = floorNum * 100 + ((i - 1) % perFloor + 1);
       const type = roomTypes[(i - 1) % roomTypes.length];
       const rate = type === 'Presidential Suite' ? 3500 : type === 'Super Deluxe' ? 2200 : type === 'Executive Deluxe' ? 1800 : 1500;
       generatedRooms.push({
