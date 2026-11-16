@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Zap, Search, Star, CheckCircle2, User, Users, Building2, UserPlus } from 'lucide-react';
+import { Zap, Search, Star, CheckCircle2, User, Users, Building2, UserPlus, Loader2 } from 'lucide-react';
 import { hotelService } from '../../services/hotelService';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -10,6 +10,7 @@ export default function ExpressCheckInView({ vacantRooms, onCheckInComplete, swi
   const [searchQuery, setSearchQuery] = useState('');
   const [foundGuestProfile, setFoundGuestProfile] = useState(null);
   const [searchPerformed, setSearchPerformed] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Form State
   const [selectedRoomNumber, setSelectedRoomNumber] = useState(vacantRooms[0]?.number || '');
@@ -20,20 +21,38 @@ export default function ExpressCheckInView({ vacantRooms, onCheckInComplete, swi
   const [purpose, setPurpose] = useState('Personal / Stay');
   const [vehicleNo, setVehicleNo] = useState('');
 
-  const handleSearch = (e) => {
-    e.preventDefault();
+  const handleSearch = async (e) => {
+    if (e) e.preventDefault();
     if (!searchQuery.trim()) return;
 
-    const result = hotelService.lookupGuestByPhoneOrAadhaar(searchQuery);
-    setFoundGuestProfile(result);
-    setSearchPerformed(true);
+    setIsSearching(true);
+    setSearchPerformed(false);
+    try {
+      const result = await hotelService.lookupGuestByPhoneOrAadhaar(searchQuery);
+      setFoundGuestProfile(result);
+    } catch (err) {
+      console.warn('Guest lookup error:', err);
+      setFoundGuestProfile(null);
+    } finally {
+      setIsSearching(false);
+      setSearchPerformed(true);
+    }
   };
 
-  const handleQuickDemoClick = (phone) => {
+  const handleQuickDemoClick = async (phone) => {
     setSearchQuery(phone);
-    const result = hotelService.lookupGuestByPhoneOrAadhaar(phone);
-    setFoundGuestProfile(result);
-    setSearchPerformed(true);
+    setIsSearching(true);
+    setSearchPerformed(false);
+    try {
+      const result = await hotelService.lookupGuestByPhoneOrAadhaar(phone);
+      setFoundGuestProfile(result);
+    } catch (err) {
+      console.warn('Guest demo lookup error:', err);
+      setFoundGuestProfile(null);
+    } finally {
+      setIsSearching(false);
+      setSearchPerformed(true);
+    }
   };
 
   const handleRoomSelectChange = (roomNo) => {
@@ -63,6 +82,12 @@ export default function ExpressCheckInView({ vacantRooms, onCheckInComplete, swi
       vehicleNo,
       primaryGuest: foundGuestProfile.primaryGuest,
       accompanyingGuest: foundGuestProfile.accompanyingGuest,
+      documentFront: foundGuestProfile.primaryGuest?.documentFront || null,
+      documentBack: foundGuestProfile.primaryGuest?.documentBack || null,
+      signature: foundGuestProfile.primaryGuest?.signature || null,
+      partnerDocumentFront: foundGuestProfile.accompanyingGuest?.documentFront || null,
+      partnerDocumentBack: foundGuestProfile.accompanyingGuest?.documentBack || null,
+      partnerSignature: foundGuestProfile.accompanyingGuest?.signature || null,
     };
 
     onCheckInComplete(stayRecordData);
@@ -103,8 +128,16 @@ export default function ExpressCheckInView({ vacantRooms, onCheckInComplete, swi
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <Button type="submit" variant="express" className="h-10 px-6 shrink-0">
-            <Search className="h-4 w-4" /> Auto-Fill Data
+          <Button type="submit" variant="express" className="h-10 px-6 shrink-0" disabled={isSearching}>
+            {isSearching ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Searching...
+              </>
+            ) : (
+              <>
+                <Search className="h-4 w-4" /> Auto-Fill Data
+              </>
+            )}
           </Button>
         </form>
 

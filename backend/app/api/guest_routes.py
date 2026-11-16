@@ -15,11 +15,30 @@ from app.db.database import (
     db_get_active_stays,
     db_add_extra_charge,
     db_remove_extra_charge,
-    db_upgrade_stay_room
+    db_upgrade_stay_room,
+    db_lookup_guest
 )
 
 logger = logging.getLogger("guest_routes")
 router = APIRouter(prefix="/api/guests", tags=["Guests"])
+
+@router.get("/lookup")
+def lookup_guest_endpoint(
+    query: str = Query(..., description="Phone, Aadhaar ID, or Name"),
+    hotel_id: Optional[str] = Query(None, description="Hotel ID")
+):
+    """
+    Fast lookup for repeat guests by Mobile Number or Aadhaar ID (space/hyphen agnostic).
+    Returns verified profile data for 1-click Express Check-In auto-fill.
+    """
+    try:
+        profile = db_lookup_guest(query=query, hotel_id=hotel_id)
+        if profile:
+            return {"success": True, "found": True, "guest": profile}
+        return {"success": True, "found": False, "guest": None}
+    except Exception as e:
+        logger.error(f"Error looking up guest: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/active-stays")
 def list_active_stays_endpoint(hotel_id: Optional[str] = Query(None, description="Hotel ID")):

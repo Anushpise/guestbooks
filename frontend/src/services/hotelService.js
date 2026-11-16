@@ -580,15 +580,47 @@ export const hotelService = {
   // GUEST DATABASE (Frequent Guest Ledger)
   // ══════════════════════════════════════════════════════════════════════════
 
-  lookupGuestByPhoneOrAadhaar: (query) => {
+  lookupGuestByPhoneOrAadhaar: async (query, targetHotelId = null) => {
     if (!query || query.trim().length < 3) return null;
-    const cleanQuery = query.trim().replace(/\s+/g, '');
+    const hId = targetHotelId || hotelService.getCurrentHotelId();
+    const cleanQuery = query.trim();
+
+    // 1. Query Central Database first (Server is authoritative)
+    try {
+      const url = `/api/guests/lookup?query=${encodeURIComponent(cleanQuery)}${hId && hId !== 'ALL' ? `&hotel_id=${encodeURIComponent(hId)}` : ''}`;
+      let res = null;
+      try {
+        res = await fetch(url);
+      } catch {
+        res = await fetch(getBackendFallbackUrl(url));
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        if (data.found && data.guest) {
+          hotelService.saveOrUpdateGuestHistory(data.guest.primaryGuest, data.guest.accompanyingGuest);
+          return data.guest;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend guest lookup note:', err);
+    }
+
+    // 2. Offline / LocalStorage Fallback (with space & hyphen agnostic matching)
+    const digitsOnly = cleanQuery.replace(/[\s\-]+/g, '');
     const guests = hotelService.getAllGuests();
 
     const match = guests.find(g => {
-      const phoneMatch = g.phone && g.phone.replace(/\s+/g, '').includes(cleanQuery);
-      const aadhaarMatch = g.aadhaar && g.aadhaar.replace(/\s+/g, '').includes(cleanQuery);
-      const nameMatch = g.primaryGuest && g.primaryGuest.name.toLowerCase().includes(cleanQuery.toLowerCase());
+      const gPhone = (g.phone || g.primaryGuest?.phone || '').replace(/[\s\-]+/g, '');
+      const gAadhaar = (g.aadhaar || g.primaryGuest?.idNumber || '').replace(/[\s\-]+/g, '');
+      const gName = (g.primaryGuest?.name || '').toLowerCase();
+      const partnerPhone = (g.accompanyingGuest?.phone || '').replace(/[\s\-]+/g, '');
+      const partnerId = (g.accompanyingGuest?.idNumber || '').replace(/[\s\-]+/g, '');
+      const partnerName = (g.accompanyingGuest?.name || '').toLowerCase();
+
+      const phoneMatch = digitsOnly.length >= 3 && (gPhone.includes(digitsOnly) || partnerPhone.includes(digitsOnly));
+      const aadhaarMatch = digitsOnly.length >= 3 && (gAadhaar.includes(digitsOnly) || partnerId.includes(digitsOnly));
+      const nameMatch = cleanQuery.length >= 3 && (gName.includes(cleanQuery.toLowerCase()) || partnerName.includes(cleanQuery.toLowerCase()));
+
       return phoneMatch || aadhaarMatch || nameMatch;
     });
 
@@ -617,10 +649,14 @@ export const hotelService = {
       delete cleanAccompanying.signature;
     }
 
-    const existingIndex = guests.findIndex(g =>
-      (g.phone && g.phone === cleanPrimary.phone) ||
-      (g.aadhaar && g.aadhaar === cleanPrimary.idNumber)
-    );
+    const pPhoneClean = (cleanPrimary.phone || '').replace(/[\s\-]+/g, '');
+    const pIdClean = (cleanPrimary.idNumber || '').replace(/[\s\-]+/g, '');
+
+    const existingIndex = guests.findIndex(g => {
+      const gPhone = (g.phone || g.primaryGuest?.phone || '').replace(/[\s\-]+/g, '');
+      const gId = (g.aadhaar || g.primaryGuest?.idNumber || '').replace(/[\s\-]+/g, '');
+      return (pPhoneClean && gPhone === pPhoneClean) || (pIdClean && gId === pIdClean);
+    });
 
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -633,10 +669,10 @@ export const hotelService = {
         guests[existingIndex].accompanyingGuest = { ...guests[existingIndex].accompanyingGuest, ...cleanAccompanying };
       }
     } else {
-      // Create new profile (clean of heavy images to prevent QuotaExceededError)
+      // Create new profile
       const newProfile = {
         phone: cleanPrimary.phone || '',
-        aadhaar: cleanPrimary.idType === 'Aadhaar Card' ? cleanPrimary.idNumber : '',
+        aadhaar: cleanPrimary.idNumber || '',
         primaryGuest: cleanPrimary,
         accompanyingGuest: cleanAccompanying,
         totalVisits: 1,

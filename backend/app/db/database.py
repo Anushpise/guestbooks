@@ -5,6 +5,7 @@ Supports PostgreSQL (via DATABASE_URL environment variable) and fallback SQLite.
 """
 
 import os
+import re
 import json
 import sqlite3
 from datetime import datetime, timezone, timedelta
@@ -691,6 +692,183 @@ def get_guest_record_by_id(record_id: int) -> dict:
         if not record.get("partner_signature"):
             record["partner_signature"] = record["accompanying_guest"].get("signature") or record["accompanying_guest"].get("partnerSignature") or ""
     return record
+
+def db_lookup_guest(query: str, hotel_id: str = None) -> dict:
+    """
+    Looks up repeat guest history by Phone, Aadhaar, ID number, or Name from central DB.
+    Handles space-insensitive matching (e.g. '1234 5678 9012' vs '123456789012').
+    Searches both primary guest and accompanying partner profiles.
+    Returns structured profile for instant Express Check-in auto-fill.
+    """
+    if not query or not str(query).strip():
+        return None
+
+    raw_q = str(query).strip()
+    digits_only = re.sub(r'[\s\-]+', '', raw_q)
+    if len(raw_q) < 3 and len(digits_only) < 3:
+        return None
+
+    conn, db_type = get_db_connection()
+    like_op = "ILIKE" if db_type == "postgres" else "LIKE"
+
+    conditions = [
+        "guest_name NOT LIKE '%Walk-in Guest%'",
+        "(address IS NULL OR address != 'Manual Room Allocation')"
+    ]
+    params = []
+
+    if hotel_id and hotel_id != "ALL":
+        conditions.append("(hotel_id = ? OR hotel_id IS NULL)")
+        params.append(hotel_id)
+
+    match_clauses = []
+    if len(digits_only) >= 3:
+        match_clauses.append("REPLACE(REPLACE(phone, ' ', ''), '-', '') LIKE ?")
+        params.append(f"%{digits_only}%")
+        match_clauses.append("REPLACE(REPLACE(id_number, ' ', ''), '-', '') LIKE ?")
+        params.append(f"%{digits_only}%")
+        match_clauses.append("REPLACE(REPLACE(accompanying_guest_json, ' ', ''), '-', '') LIKE ?")
+        params.append(f"%{digits_only}%")
+
+    if len(raw_q) >= 3:
+        match_clauses.append(f"guest_name {like_op} ?")
+        params.append(f"%{raw_q}%")
+        match_clauses.append(f"id_number {like_op} ?")
+        params.append(f"%{raw_q}%")
+
+    if match_clauses:
+        conditions.append(f"({' OR '.join(match_clauses)})")
+
+    where_clause = f"WHERE {' AND '.join(conditions)}"
+    sql = f"""
+        SELECT * FROM guest_records
+        {where_clause}
+        ORDER BY id DESC
+        LIMIT 1
+    """
+
+    cursor = execute_query(conn, db_type, sql, tuple(params))
+    row = cursor.fetchone()
+
+    # If scoped by hotel_id and not found, search across all hotels as fallback
+    if not row and hotel_id and hotel_id != "ALL":
+        fallback_conds = [
+            "guest_name NOT LIKE '%Walk-in Guest%'",
+            "(address IS NULL OR address != 'Manual Room Allocation')"
+        ]
+        fallback_params = []
+        fb_clauses = []
+        if len(digits_only) >= 3:
+            fb_clauses.append("REPLACE(REPLACE(phone, ' ', ''), '-', '') LIKE ?")
+            fallback_params.append(f"%{digits_only}%")
+            fb_clauses.append("REPLACE(REPLACE(id_number, ' ', ''), '-', '') LIKE ?")
+            fallback_params.append(f"%{digits_only}%")
+            fb_clauses.append("REPLACE(REPLACE(accompanying_guest_json, ' ', ''), '-', '') LIKE ?")
+            fallback_params.append(f"%{digits_only}%")
+        if len(raw_q) >= 3:
+            fb_clauses.append(f"guest_name {like_op} ?")
+            fallback_params.append(f"%{raw_q}%")
+        if fb_clauses:
+            fallback_conds.append(f"({' OR '.join(fb_clauses)})")
+        fb_sql = f"SELECT * FROM guest_records WHERE {' AND '.join(fallback_conds)} ORDER BY id DESC LIMIT 1"
+        cursor = execute_query(conn, db_type, fb_sql, tuple(fallback_params))
+        row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return None
+
+    rec = dict(row)
+
+    # Calculate total visits
+    total_visits = 1
+    found_phone = rec.get("phone")
+    found_id_no = rec.get("id_number")
+    visit_conds = []
+    visit_params = []
+    if found_phone:
+        clean_p = re.sub(r'[\s\-]+', '', str(found_phone))
+        visit_conds.append("REPLACE(REPLACE(phone, ' ', ''), '-', '') = ?")
+        visit_params.append(clean_p)
+    if found_id_no and str(found_id_no).strip():
+        clean_found_id = re.sub(r'[\s\-]+', '', str(found_id_no))
+        visit_conds.append("REPLACE(REPLACE(id_number, ' ', ''), '-', '') = ?")
+        visit_params.append(clean_found_id)
+
+    if visit_conds:
+        v_sql = f"SELECT COUNT(*) FROM guest_records WHERE ({' OR '.join(visit_conds)})"
+        v_cur = execute_query(conn, db_type, v_sql, tuple(visit_params))
+        v_row = v_cur.fetchone()
+        total_visits = max(1, int(get_first_val(v_row, 1) or 1))
+
+    conn.close()
+
+    # Accompanying guest
+    partner_dict = None
+    if rec.get("accompanying_guest_json"):
+        try:
+            partner_dict = json.loads(rec["accompanying_guest_json"])
+        except Exception:
+            partner_dict = None
+
+    partner_front = rec.get("partner_document_front") or (partner_dict.get("documentFront") if partner_dict else None)
+    partner_back = rec.get("partner_document_back") or (partner_dict.get("documentBack") if partner_dict else None)
+    partner_sig = rec.get("partner_signature") or (partner_dict.get("signature") if partner_dict else None)
+
+    accompanying_guest = None
+    if partner_dict and isinstance(partner_dict, dict):
+        accompanying_guest = {
+            "name": partner_dict.get("name") or "Accompanying Partner",
+            "dob": partner_dict.get("dob") or "",
+            "age": partner_dict.get("age") or "",
+            "gender": partner_dict.get("gender") or "Female",
+            "relation": partner_dict.get("relation") or "Partner / Couple",
+            "idType": partner_dict.get("idType") or "Aadhaar Card",
+            "idNumber": partner_dict.get("idNumber") or "",
+            "address": partner_dict.get("address") or rec.get("address") or "",
+            "city": partner_dict.get("city") or rec.get("city") or "",
+            "documentFront": partner_front,
+            "documentBack": partner_back,
+            "signature": partner_sig
+        }
+
+    last_visited_date = ""
+    created_at = rec.get("created_at") or ""
+    if created_at:
+        try:
+            last_visited_date = created_at.split("T")[0]
+        except Exception:
+            last_visited_date = created_at[:10]
+
+    primary_guest = {
+        "name": rec.get("guest_name") or "",
+        "dob": rec.get("dob") or "",
+        "age": rec.get("age") or "",
+        "gender": rec.get("gender") or "",
+        "phone": rec.get("phone") or "",
+        "idType": rec.get("id_type") or "Aadhaar Card",
+        "idNumber": rec.get("id_number") or "",
+        "address": rec.get("address") or "",
+        "city": rec.get("city") or "",
+        "pincode": rec.get("pincode") or "",
+        "comingFrom": rec.get("coming_from") or "",
+        "goingTo": rec.get("going_to") or "",
+        "purpose": rec.get("purpose") or "",
+        "vehicleNo": rec.get("vehicle_no") or "",
+        "documentFront": rec.get("document_front") or None,
+        "documentBack": rec.get("document_back") or None,
+        "signature": rec.get("signature") or None
+    }
+
+    return {
+        "found": True,
+        "totalVisits": total_visits,
+        "lastVisited": last_visited_date or "Previous Stay",
+        "phone": rec.get("phone") or "",
+        "aadhaar": rec.get("id_number") or "",
+        "primaryGuest": primary_guest,
+        "accompanyingGuest": accompanying_guest,
+    }
 
 def checkout_guest_in_db(room_or_id: str, checkout_signature: str = None, hotel_id: str = None) -> bool:
     """Marks a guest record as checked out in IST time, saving checkout signature if provided."""

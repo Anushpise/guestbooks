@@ -5,7 +5,17 @@ from pathlib import Path
 backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db.database import init_db, get_all_guest_records, create_guest_record, checkout_guest_in_db, db_add_extra_charge, db_remove_extra_charge, db_get_active_stays, db_upgrade_stay_room
+from app.db.database import (
+    init_db,
+    get_all_guest_records,
+    create_guest_record,
+    checkout_guest_in_db,
+    db_add_extra_charge,
+    db_remove_extra_charge,
+    db_get_active_stays,
+    db_upgrade_stay_room,
+    db_lookup_guest
+)
 
 class TestGuestRecords(unittest.TestCase):
     @classmethod
@@ -140,6 +150,10 @@ class TestGuestRecords(unittest.TestCase):
 
 
     def test_room_upgrade(self):
+        # Checkout any existing room 301/302 stays for isolation
+        checkout_guest_in_db("301", hotel_id="HTL-TEST")
+        checkout_guest_in_db("302", hotel_id="HTL-TEST")
+
         # 1. Create active stay in room 301
         sample_data = {
             "roomNumber": "301",
@@ -177,6 +191,63 @@ class TestGuestRecords(unittest.TestCase):
         self.assertIsNotNone(stay)
         self.assertEqual(stay["primaryGuest"]["name"], "Upgrade Test Guest")
         self.assertEqual(stay["extraCharges"], 200.0)
+
+    def test_guest_lookup_phone_and_aadhaar(self):
+        # Create a sample check-in record with spaced Aadhaar and accompanying partner
+        hotel_id = "HTL-LOOKUP-TEST"
+        sample_data = {
+            "roomNumber": "108",
+            "stayType": "24 Hours Full Stay",
+            "roomRate": 2000,
+            "advancePaid": 2000,
+            "paymentMode": "UPI",
+            "primaryGuest": {
+                "name": "Rajesh Kumar Verma",
+                "phone": "9811223344",
+                "idType": "Aadhaar Card",
+                "idNumber": "7890 1234 5678",
+                "address": "Civil Lines",
+                "city": "Nagpur"
+            },
+            "accompanyingGuest": {
+                "name": "Sunita Verma",
+                "phone": "9811223345",
+                "relation": "Wife",
+                "idType": "Aadhaar Card",
+                "idNumber": "5555 6666 7777",
+                "city": "Nagpur"
+            },
+            "hotelId": hotel_id
+        }
+        create_guest_record(sample_data)
+
+        # 1. Lookup by phone
+        res_phone = db_lookup_guest("9811223344", hotel_id=hotel_id)
+        self.assertIsNotNone(res_phone)
+        self.assertTrue(res_phone["found"])
+        self.assertEqual(res_phone["primaryGuest"]["name"], "Rajesh Kumar Verma")
+
+        # 2. Lookup by Aadhaar WITHOUT spaces (e.g. 789012345678)
+        res_no_space = db_lookup_guest("789012345678", hotel_id=hotel_id)
+        self.assertIsNotNone(res_no_space)
+        self.assertTrue(res_no_space["found"])
+        self.assertEqual(res_no_space["primaryGuest"]["name"], "Rajesh Kumar Verma")
+
+        # 3. Lookup by Aadhaar WITH spaces (e.g. 7890 1234 5678)
+        res_with_space = db_lookup_guest("7890 1234 5678", hotel_id=hotel_id)
+        self.assertIsNotNone(res_with_space)
+        self.assertTrue(res_with_space["found"])
+        self.assertEqual(res_with_space["primaryGuest"]["name"], "Rajesh Kumar Verma")
+
+        # 4. Lookup by Accompanying Partner Aadhaar (e.g. 555566667777)
+        res_partner = db_lookup_guest("555566667777", hotel_id=hotel_id)
+        self.assertIsNotNone(res_partner)
+        self.assertTrue(res_partner["found"])
+        self.assertEqual(res_partner["accompanyingGuest"]["name"], "Sunita Verma")
+
+        # 5. Non-existent query
+        res_none = db_lookup_guest("0000000000", hotel_id=hotel_id)
+        self.assertIsNone(res_none)
 
 
 if __name__ == "__main__":
