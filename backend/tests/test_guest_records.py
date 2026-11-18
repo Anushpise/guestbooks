@@ -249,6 +249,13 @@ class TestGuestRecords(unittest.TestCase):
         res_none = db_lookup_guest("0000000000", hotel_id=hotel_id)
         self.assertIsNone(res_none)
 
+    def test_all_records_over_100_and_extra_charges(self):
+        # Verify that get_all_guest_records returns all records (over 100) and includes extra_charges
+        all_records = get_all_guest_records()
+        self.assertGreater(len(all_records), 100)
+        self.assertIn("extra_charges", all_records[0])
+        self.assertIn("extra_charges_json", all_records[0])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -28,6 +28,8 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
       const mapped = history.map((stay) => {
         const isCheckedOut = stay.status === 'CHECKED_OUT' || (stay.checkOutTime && stay.checkOutTime !== 'Active Stay');
         const rate = Number(stay.roomRate) || 0;
+        const extra = Number(stay.extraCharges || stay.extra_charges) || 0;
+        const total = Number(stay.totalAmount) || (rate + extra);
         const advance = Number(stay.advancePaid) || rate;
         const inTime = stay.checkInTime || stay.created_at || stay.check_in_at;
         const outTime = stay.checkOutTime || stay.checked_out_at || (isCheckedOut ? inTime : 'Active Stay');
@@ -42,8 +44,10 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
           checkOutTime: isCheckedOut ? outTime : 'Active Stay',
           status: isCheckedOut ? 'COMPLETED' : 'ACTIVE',
           roomRate: rate,
+          extraCharges: extra,
+          extraItems: stay.extraItems || [],
           advancePaid: advance,
-          totalAmount: rate,
+          totalAmount: total,
           stayType: stay.stayType || '24 Hours Full Stay',
           paymentMode: stay.paymentMode || 'Cash',
           primaryGuest: stay.primaryGuest || {
@@ -114,8 +118,11 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
     return true;
   });
 
-  // Accurate Filter-based Total Revenue Calculation
-  const totalRevenue = filteredRecords.reduce((acc, curr) => acc + curr.roomRate, 0);
+  // Accurate Filter-based Total Revenue Calculation (Room Tariff + Extras like Room Upgrades)
+  const totalRevenue = filteredRecords.reduce(
+    (acc, curr) => acc + (Number(curr.totalAmount) || (Number(curr.roomRate) + Number(curr.extraCharges || 0))),
+    0
+  );
 
   // Pagination Calculation: Exactly 10 entries per page
   const totalPages = Math.ceil(filteredRecords.length / pageSize) || 1;
@@ -314,7 +321,12 @@ export default function BillingArchiveView({ onViewReceipt, hotelId = null, hote
                       </td>
 
                       <td className="px-5 py-3.5 font-mono">
-                        <div className="text-sm font-extrabold text-[#0b3c33]">₹{rec.roomRate}</div>
+                        <div className="text-sm font-extrabold text-[#0b3c33]">₹{rec.totalAmount || rec.roomRate}</div>
+                        {rec.extraCharges > 0 && (
+                          <div className="text-[10px] text-amber-700 font-semibold">
+                            (₹{rec.roomRate} + ₹{rec.extraCharges} extra)
+                          </div>
+                        )}
                         <div className="text-[10px] text-slate-500">Adv: ₹{rec.advancePaid}</div>
                       </td>
 

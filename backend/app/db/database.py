@@ -590,8 +590,8 @@ def create_guest_record(data: dict) -> dict:
     conn.close()
     return record
 
-def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> list:
-    """Returns all guest check-in records in sequence, optionally filtered by hotel_id and search query."""
+def get_all_guest_records(search=None, hotel_id=None, limit=None, offset=0) -> list:
+    """Returns all guest check-in records in sequence, optionally filtered by hotel_id, search query, and pagination."""
     conn, db_type = get_db_connection()
     like_op = "ILIKE" if db_type == "postgres" else "LIKE"
 
@@ -613,7 +613,7 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     query = f"""
-        SELECT id, reg_no, created_at, room_number, stay_type, room_rate, advance_paid,
+        SELECT id, reg_no, created_at, room_number, stay_type, room_rate, advance_paid, extra_charges, extra_charges_json,
                payment_mode, guest_name, phone, id_type, id_number, dob, age, gender, address, city, pincode,
                status, checked_out_at, hotel_id,
                document_front, document_back, signature,
@@ -627,9 +627,10 @@ def get_all_guest_records(search=None, hotel_id=None, limit=100, offset=0) -> li
         FROM guest_records
         {where_clause}
         ORDER BY id DESC
-        LIMIT ? OFFSET ?
     """
-    params.extend([limit, offset])
+    if limit is not None and int(limit) > 0:
+        query += "\n        LIMIT ? OFFSET ?"
+        params.extend([int(limit), int(offset or 0)])
 
     cursor = execute_query(conn, db_type, query, tuple(params))
     rows = cursor.fetchall()

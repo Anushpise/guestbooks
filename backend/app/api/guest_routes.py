@@ -98,7 +98,7 @@ def checkin_guest_endpoint(payload: CheckInPayload):
 def list_guest_records(
     search: Optional[str] = Query(None, description="Search by name, phone, reg_no, room"),
     hotel_id: Optional[str] = Query(None, description="Filter by hotel ID"),
-    limit: int = 100,
+    limit: Optional[int] = Query(None, description="Limit records (omit to return all records)"),
     offset: int = 0
 ):
     """Returns sequential list of all guest check-in records."""

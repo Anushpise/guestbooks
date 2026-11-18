@@ -1202,6 +1202,15 @@ export const hotelService = {
         const pFront = bRec.partner_document_front || partner?.documentFront || partner?.document_front || null;
         const pBack = bRec.partner_document_back || partner?.documentBack || partner?.document_back || null;
         const key = `DB-${bRec.id}` || bRec.reg_no;
+        const rate = Number(bRec.room_rate) || 0;
+        const extra = Number(bRec.extra_charges) || 0;
+        let extraItems = [];
+        if (bRec.extra_charges_json) {
+          try {
+            extraItems = typeof bRec.extra_charges_json === 'string' ? JSON.parse(bRec.extra_charges_json) : bRec.extra_charges_json;
+            if (!Array.isArray(extraItems)) extraItems = [];
+          } catch (_) { extraItems = []; }
+        }
 
         return {
           id: key,
@@ -1212,8 +1221,11 @@ export const hotelService = {
           checkInTime: bRec.created_at,
           checkOutTime: bRec.checked_out_at || null,
           stayType: bRec.stay_type,
-          roomRate: bRec.room_rate,
-          advancePaid: bRec.advance_paid,
+          roomRate: rate,
+          extraCharges: extra,
+          extraItems: extraItems,
+          totalAmount: rate + extra,
+          advancePaid: Number(bRec.advance_paid) || 0,
           paymentMode: bRec.payment_mode,
           status: bRec.status,
           guestName: bRec.guest_name,
